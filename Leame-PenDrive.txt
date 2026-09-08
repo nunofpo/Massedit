@@ -1,0 +1,20 @@
+========================================================================
+ MassEdit POS - Instruções para Versão Portátil (Pen Drive / USB)
+========================================================================
+
+Esta versão é 100% PORTÁTIL e NATIVE PORTABLE para Windows.
+Não necessita de instalação de Python, Node.js ou qualquer software no computador onde for executada.
+
+COMO USAR NA PEN DRIVE:
+-----------------------
+1. Copie toda a pasta "MassEdit-Portable" (localizada em "dist\MassEdit-Portable") para a sua Pen Drive.
+2. Na Pen Drive, abra a pasta "MassEdit-Portable".
+3. Dê duplo clique no ficheiro "MassEdit-Portable.exe".
+4. O servidor iniciará automaticamente e abrirá o seu navegador web em:
+   http://localhost:8000
+
+CARACTERÍSTICAS DA VERSÃO PORTÁTIL:
+-----------------------------------
+- Todos os backups criados pela aplicação ficam salvos diretamente na pasta da Pen Drive.
+- A configuração da ligação ao SQL Server pode ser guardada e reutilizada em qualquer computador.
+- Funciona em qualquer letra de unidade (E:, F:, G:, H:, etc.) atribuída pelo Windows à Pen Drive.

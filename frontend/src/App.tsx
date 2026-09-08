@@ -1,0 +1,442 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Header } from './components/Header';
+import { FilterBar } from './components/FilterBar';
+import { ProductTable } from './components/ProductTable';
+import { BulkEditPanel } from './components/BulkEditPanel';
+import { PreviewModal } from './components/PreviewModal';
+import { BackupsModal } from './components/BackupsModal';
+import { ConfigModal } from './components/ConfigModal';
+import { FamilyColorsModal } from './components/FamilyColorsModal';
+import { ImportExcelModal } from './components/ImportExcelModal';
+import {
+  ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
+  BulkEditPreviewResponse, DatabaseConfig
+} from './types';
+
+export const App: React.FC = () => {
+  // DB Config State
+  const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
+    server: 'localhost',
+    port: 1433,
+    database: 'nuno',
+    trusted_connection: true,
+    driver: 'ODBC Driver 17 for SQL Server'
+  });
+  const [isConnected, setIsConnected] = useState(false);
+  const [useMock, setUseMock] = useState(false);
+  const [connectionMsg, setConnectionMsg] = useState('');
+
+  // Auxiliary Data
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [subfamilies, setSubfamilies] = useState<Subfamily[]>([]);
+  const [vats, setVats] = useState<Vat[]>([]);
+
+  // Filter & List State
+  const [filters, setFilters] = useState<ProductFilter>({
+    search: '',
+    page: 1,
+    page_size: 50
+  });
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+
+  // Selection State
+  const [selectedCodes, setSelectedCodes] = useState<Set<number>>(new Set());
+
+  // Modal Visibility
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isBackupsOpen, setIsBackupsOpen] = useState(false);
+  const [isFamilyColorsOpen, setIsFamilyColorsOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Dry-Run & Apply State
+  const [currentRequest, setCurrentRequest] = useState<BulkEditRequest | null>(null);
+  const [previewData, setPreviewData] = useState<BulkEditPreviewResponse | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Fetch Connection Config & Aux Lists
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const data = await res.json();
+        setDbConfig(data.config);
+        setIsConnected(data.is_connected);
+        setUseMock(data.use_mock);
+        setConnectionMsg(data.message);
+        
+        // Se não estiver conetado à base de dados, abre automaticamente o modal para introduzir a password/credenciais
+        if (!data.is_connected) {
+          setIsConfigOpen(true);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao consultar /api/config', e);
+    }
+  };
+
+  const fetchAuxData = async () => {
+    try {
+      const [fRes, sfRes, vRes] = await Promise.all([
+        fetch('/api/families'),
+        fetch('/api/subfamilies'),
+        fetch('/api/vats')
+      ]);
+      if (fRes.ok) setFamilies(await fRes.json());
+      if (sfRes.ok) setSubfamilies(await sfRes.json());
+      if (vRes.ok) setVats(await vRes.json());
+    } catch (e) {
+      console.error('Erro ao obter famílias, subfamílias e IVAs', e);
+    }
+  };
+
+  // Export CSV
+  const handleExportCSV = async () => {
+    try {
+      const selectedList = selectedCodes.size > 0 ? Array.from(selectedCodes) : null;
+      const res = await fetch('/api/products/export-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filters, selected_codes: selectedList })
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `artigos_massedit_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        alert('Falha ao exportar ficheiro CSV.');
+      }
+    } catch (e: any) {
+      alert(`Erro na exportação: ${e.message}`);
+    }
+  };
+
+  // Print Shelf Labels (PDF/HTML)
+  const handlePrintLabels = async () => {
+    if (selectedCodes.size === 0) {
+      alert('Selecione pelo menos 1 artigo para imprimir etiquetas.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/products/print-labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Array.from(selectedCodes))
+      });
+      if (res.ok) {
+        const html = await res.text();
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+        }
+      } else {
+        alert('Falha ao gerar etiquetas de prateleira.');
+      }
+    } catch (e: any) {
+      alert(`Erro de impressão: ${e.message}`);
+    }
+  };
+
+  // Search Products
+  const loadProducts = useCallback(async () => {
+    setIsLoadingProducts(true);
+    try {
+      const res = await fetch('/api/products/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProducts(data.items);
+        setTotalProducts(data.total);
+        setUseMock(data.use_mock);
+      }
+    } catch (e) {
+      console.error('Erro ao pesquisar produtos', e);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    fetchConfig();
+    fetchAuxData();
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  // Selection Handlers
+  const handleToggleSelect = (code: number) => {
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllPage = () => {
+    const allPageSelected = products.every(p => selectedCodes.has(p.codigo));
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        products.forEach(p => next.delete(p.codigo));
+      } else {
+        products.forEach(p => next.add(p.codigo));
+      }
+      return next;
+    });
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedCodes(new Set());
+  };
+
+  const handleInvertSelection = () => {
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      products.forEach(p => {
+        if (next.has(p.codigo)) {
+          next.delete(p.codigo);
+        } else {
+          next.add(p.codigo);
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleFilterChange = (newFilters: Partial<ProductFilter>) => {
+    setFilters(prev => ({ ...prev, ...newFilters }));
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      search: '',
+      page: 1,
+      page_size: 50
+    });
+  };
+
+  // Dry-Run Preview
+  const handleOpenPreview = async (req: BulkEditRequest) => {
+    if (req.product_codes.length === 0) return;
+    setCurrentRequest(req);
+    setNotification(null);
+
+    try {
+      const res = await fetch('/api/products/preview-bulk-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewData(data);
+        setIsPreviewOpen(true);
+      } else {
+        const err = await res.json();
+        alert(`Erro na simulação: ${err.detail || 'Falha ao processar.'}`);
+      }
+    } catch (e: any) {
+      alert(`Falha ao contactar servidor: ${e.message}`);
+    }
+  };
+
+  // Apply Bulk Edit Execution
+  const handleConfirmApply = async () => {
+    if (!currentRequest) return;
+    setIsApplying(true);
+    try {
+      const res = await fetch('/api/products/apply-bulk-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentRequest)
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setNotification({ type: 'success', text: data.message });
+        setIsPreviewOpen(false);
+        setPreviewData(null);
+        setSelectedCodes(new Set());
+        loadProducts();
+      } else {
+        alert(`Erro ao aplicar edição em massa: ${data.detail || data.message || 'Falha na gravação.'}`);
+      }
+    } catch (e: any) {
+      alert(`Falha de comunicação: ${e.message}`);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  // Save DB Config
+  const handleSaveConfig = async (newCfg: DatabaseConfig) => {
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCfg)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDbConfig(data.config);
+        setIsConnected(data.is_connected);
+        setUseMock(data.use_mock);
+        setConnectionMsg(data.message);
+        if (data.is_connected) {
+          setIsConfigOpen(false);
+          fetchAuxData();
+          loadProducts();
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const selectedProductsList = products.filter(p => selectedCodes.has(p.codigo));
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
+      
+      {/* Top Navbar */}
+      <Header
+        isConnected={isConnected}
+        useMock={useMock}
+        connectionMsg={connectionMsg}
+        onOpenConfig={() => setIsConfigOpen(true)}
+        onOpenBackups={() => setIsBackupsOpen(true)}
+        onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
+        onRefresh={() => {
+          fetchAuxData();
+          loadProducts();
+        }}
+      />
+
+      {/* Global Notification Banner */}
+      {notification && (
+        <div className={`px-6 py-3 text-xs font-semibold flex items-center justify-between border-b ${
+          notification.type === 'success' ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800' : 'bg-rose-950/90 text-rose-200 border-rose-800'
+        }`}>
+          <span>{notification.text}</span>
+          <button onClick={() => setNotification(null)} className="underline hover:opacity-80">Fechar</button>
+        </div>
+      )}
+
+      {/* Filter Bar */}
+      <FilterBar
+        filters={filters}
+        families={families}
+        subfamilies={subfamilies}
+        vats={vats}
+        onFilterChange={handleFilterChange}
+        onResetFilters={handleResetFilters}
+        onExportCSV={handleExportCSV}
+        onImportExcel={() => setIsImportOpen(true)}
+        onPrintLabels={handlePrintLabels}
+        totalItems={totalProducts}
+        selectedCount={selectedCodes.size}
+      />
+
+      {/* Main Workspace Body */}
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        
+        {/* Left Interactive Table */}
+        <ProductTable
+          products={products}
+          selectedCodes={selectedCodes}
+          onToggleSelect={handleToggleSelect}
+          onSelectAllPage={handleSelectAllPage}
+          onDeselectAll={handleDeselectAll}
+          onInvertSelection={handleInvertSelection}
+          isLoading={isLoadingProducts}
+          currentPage={filters.page}
+          pageSize={filters.page_size}
+          totalCount={totalProducts}
+          onPageChange={(page) => handleFilterChange({ page })}
+        />
+
+        {/* Right Bulk Edit Form Panel */}
+        <BulkEditPanel
+          selectedProducts={selectedProductsList}
+          families={families}
+          subfamilies={subfamilies}
+          vats={vats}
+          onPreview={handleOpenPreview}
+        />
+
+      </main>
+
+      {/* Modals */}
+      <PreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        onConfirmApply={handleConfirmApply}
+        previewData={previewData}
+        isApplying={isApplying}
+      />
+
+      <BackupsModal
+        isOpen={isBackupsOpen}
+        onClose={() => setIsBackupsOpen(false)}
+        onRestoreSuccess={() => {
+          loadProducts();
+          setNotification({ type: 'success', text: 'Estado dos artigos restaurado com sucesso a partir do backup.' });
+        }}
+      />
+
+      <ConfigModal
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+        config={dbConfig}
+        onSaveConfig={handleSaveConfig}
+        connectionMsg={connectionMsg}
+        isConnected={isConnected}
+        useMock={useMock}
+      />
+
+      <FamilyColorsModal
+        isOpen={isFamilyColorsOpen}
+        onClose={() => setIsFamilyColorsOpen(false)}
+        onSuccess={(msg) => {
+          fetchAuxData();
+          loadProducts();
+          setNotification({ type: 'success', text: msg });
+        }}
+      />
+
+      <ImportExcelModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onSuccess={(msg) => {
+          fetchAuxData();
+          loadProducts();
+          setNotification({ type: 'success', text: msg });
+        }}
+      />
+
+    </div>
+  );
+};
+
+export default App;
