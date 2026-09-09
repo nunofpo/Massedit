@@ -383,6 +383,7 @@ export const App: React.FC = () => {
           subfamilies={subfamilies}
           vats={vats}
           onPreview={handleOpenPreview}
+          onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
         />
 
       </main>
