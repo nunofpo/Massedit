@@ -135,14 +135,32 @@ def update_family_colors(req: BulkFamilyColorUpdateRequest) -> Tuple[bool, str, 
 
 
 
+def format_iva_num(val) -> str:
+    """Formata a taxa de IVA como percentagem numérica pura (ex: 23%, 13%, 6%, 0%)."""
+    if val is None:
+        return ""
+    try:
+        fval = float(val)
+        if fval == int(fval):
+            return f"{int(fval)}%"
+        return f"{fval}%"
+    except Exception:
+        return str(val)
+
+
 def get_vats() -> List[Dict[str, Any]]:
-    """Obtém lista de taxas de IVA diretamente do SQL Server."""
+    """Obtém lista de taxas de IVA diretamente do SQL Server formatadas com números."""
     conn = db_manager.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT codigo, descricao, factor FROM dbo.iva ORDER BY codigo ASC")
+    cursor.execute("SELECT codigo, factor FROM dbo.iva ORDER BY codigo ASC")
     rows = cursor.fetchall()
     conn.close()
-    return [{"codigo": row[0], "descricao": row[1] or "", "factor": float(row[2] or 0)} for row in rows]
+    result = []
+    for row in rows:
+        factor_num = float(row[1] or 0)
+        desc_num = format_iva_num(factor_num)
+        result.append({"codigo": row[0], "descricao": desc_num, "factor": factor_num})
+    return result
 
 
 def get_subfamilies(familia: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -240,7 +258,7 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
             subfamilia=r[5],
             subfamilia_desc=r[6] or "",
             iva=r[7],
-            iva_desc=r[8] or "",
+            iva_desc=format_iva_num(r[7]),
             pvp1=float(r[9] or 0),
             pvp2=float(r[10] or 0),
             pvp3=float(r[11] or 0),
@@ -474,7 +492,7 @@ def get_products_by_codes(codes: List[int]) -> List[ProductItem]:
             subfamilia=r[5],
             subfamilia_desc=r[6] or "",
             iva=r[7],
-            iva_desc=r[8] or "",
+            iva_desc=format_iva_num(r[7]),
             pvp1=float(r[9] or 0),
             pvp2=float(r[10] or 0),
             pvp3=float(r[11] or 0),
@@ -830,8 +848,8 @@ def preview_bulk_edit(req: BulkEditRequest) -> BulkEditPreviewResponse:
         # 5. IVA
         if req.apply_iva and req.new_iva is not None:
             if req.new_iva != p.iva:
-                old_iva = vats_map.get(p.iva, str(p.iva))
-                new_iva = vats_map.get(req.new_iva, str(req.new_iva))
+                old_iva = format_iva_num(p.iva)
+                new_iva = format_iva_num(req.new_iva)
                 diffs.append(FieldDiff(
                     field_name="iva",
                     field_label="Taxa de IVA",

@@ -779,7 +779,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                 >
                   {vats.map((v) => (
                     <option key={v.codigo} value={v.factor}>
-                      {v.descricao} ({v.factor}%)
+                      {v.factor % 1 === 0 ? `${Math.floor(v.factor)}%` : `${v.factor}%`}
                     </option>
                   ))}
                 </select>

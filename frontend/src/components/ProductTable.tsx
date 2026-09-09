@@ -208,8 +208,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </td>
 
                     {/* IVA */}
-                    <td className="p-3 text-slate-300 truncate max-w-[100px]">
-                      {product.iva_desc || `- (${product.iva})`}
+                    <td className="p-3 font-mono font-bold text-xs">
+                      {product.iva !== undefined && product.iva !== null ? (
+                        <span className="px-2 py-0.5 rounded bg-slate-900 text-amber-300 border border-slate-800 font-bold">
+                          {product.iva % 1 === 0 ? `${Math.floor(product.iva)}%` : `${product.iva}%`}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600 italic">-</span>
+                      )}
                     </td>
 
                     {/* Preço PVP 1 com popover para PVP 1..10 */}
