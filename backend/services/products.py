@@ -8,7 +8,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from backend.models import (
     ProductFilter, ProductItem, BulkEditRequest, BulkEditPreviewResponse,
     ProductDiff, FieldDiff, BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
-    ImportRow, ImportPreviewResponse, ImportApplyRequest
+    ImportRow, ImportPreviewResponse, ImportApplyRequest,
+    ProductionCenterItem, PrinterItem
 )
 from backend.db import db_manager, hex_to_int_color, int_color_to_hex
 
@@ -19,6 +20,27 @@ def get_app_dir():
 
 BACKUP_DIR = os.path.join(get_app_dir(), "backups")
 os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def get_production_centers() -> List[ProductionCenterItem]:
+    """Obtém lista de Centros de Produção diretamente do SQL Server."""
+    conn = db_manager.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT codigo, descricao, ISNULL(id, 0) FROM dbo.centrosprod ORDER BY codigo ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [ProductionCenterItem(codigo=row[0], descricao=row[1] or "", id=row[2]) for row in rows]
+
+
+def get_printers() -> List[PrinterItem]:
+    """Obtém lista de Impressoras diretamente do SQL Server."""
+    conn = db_manager.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT codigo, descricao, centro, ISNULL(sync, 0) FROM dbo.impressoras ORDER BY codigo ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [PrinterItem(codigo=row[0], descricao=row[1] or "", centro=row[2], sync=row[3]) for row in rows]
+
 
 
 def check_product_sales_db(cursor, codigo: int) -> bool:
@@ -197,6 +219,12 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
     if filters.iva is not None:
         where_clauses.append("(p.iva = ? OR p.iva IN (SELECT factor FROM dbo.iva WHERE codigo = ?))")
         params.extend([filters.iva, filters.iva])
+    if filters.centro_prod is not None:
+        if filters.centro_prod == 0:
+            where_clauses.append("p.codigo NOT IN (SELECT codigo FROM dbo.produtoscentrosprod)")
+        else:
+            where_clauses.append("p.codigo IN (SELECT codigo FROM dbo.produtoscentrosprod WHERE centro = ?)")
+            params.append(filters.centro_prod)
         
     where_sql = " AND ".join(where_clauses)
     
@@ -229,11 +257,20 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
             ISNULL(p.ordem, 0) as posicaofront,
             ISNULL(p.codigo_alf, 0) as plu,
             ISNULL(p.codbarras, '') as codbarras,
-            ISNULL(p.referencia, '') as referencia
+            ISNULL(p.referencia, '') as referencia,
+            pcp.centro as centro_prod,
+            cp.descricao as centro_prod_desc,
+            ISNULL(pcp.informativo, 0) as centro_prod_info
         FROM dbo.produtos p
         LEFT JOIN dbo.familias f ON p.familia = f.codigo
         LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
         LEFT JOIN dbo.iva i ON p.iva = i.factor
+        LEFT JOIN (
+            SELECT codigo, MAX(centro) as centro, MAX(informativo) as informativo
+            FROM dbo.produtoscentrosprod
+            GROUP BY codigo
+        ) pcp ON p.codigo = pcp.codigo
+        LEFT JOIN dbo.centrosprod cp ON pcp.centro = cp.codigo
         WHERE {where_sql}
         ORDER BY {sort_col} {sort_dir}
         OFFSET {offset} ROWS FETCH NEXT {filters.page_size} ROWS ONLY
@@ -279,6 +316,9 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
             plu=int(r[22] or 0),
             codbarras=r[23] or "",
             referencia=r[24] or "",
+            centro_prod=r[25],
+            centro_prod_desc=r[26] or "",
+            centro_prod_info=int(r[27] or 0),
             cor=0,
             cor_hex="#000000",
             sync=0,
@@ -858,6 +898,20 @@ def preview_bulk_edit(req: BulkEditRequest) -> BulkEditPreviewResponse:
                     blocked=False
                 ))
 
+        # 6. Centro de Produção (Cozinha, Bar, Bebidas, etc.)
+        if req.apply_centro_prod:
+            centers_map = {c.codigo: c.descricao for c in get_production_centers()}
+            old_center = p.centro_prod_desc or "(Sem Centro)"
+            new_center = centers_map.get(req.new_centro_prod, "(Remover / Nenhum)") if (req.new_centro_prod and req.new_centro_prod > 0) else "(Remover / Nenhum)"
+            if req.new_centro_prod != p.centro_prod or req.centro_prod_info != p.centro_prod_info:
+                diffs.append(FieldDiff(
+                    field_name="centro_prod",
+                    field_label="Centro de Produção",
+                    old_value=old_center,
+                    new_value=f"{new_center} ({'Informativo' if req.centro_prod_info else 'Preparação'})" if (req.new_centro_prod and req.new_centro_prod > 0) else new_center,
+                    blocked=False
+                ))
+
         if diffs:
             previews.append(ProductDiff(
                 codigo=p.codigo,
@@ -1053,6 +1107,16 @@ def apply_bulk_edit(req: BulkEditRequest) -> Tuple[bool, str, int]:
             if req.apply_iva and req.new_iva is not None:
                 set_clauses.append("iva = ?")
                 params.append(req.new_iva)
+
+            # 6. Centro de Produção (dbo.produtoscentrosprod)
+            if req.apply_centro_prod:
+                cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (p_item.codigo,))
+                if req.new_centro_prod is not None and req.new_centro_prod > 0:
+                    cursor.execute(
+                        "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, ?)",
+                        (p_item.codigo, req.new_centro_prod, req.centro_prod_info)
+                    )
+                set_clauses.append("sync = 1")
 
             if set_clauses:
                 sql = f"UPDATE dbo.produtos SET {', '.join(set_clauses)} WHERE codigo = ?"

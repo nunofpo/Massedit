@@ -10,7 +10,7 @@ import { FamilyColorsModal } from './components/FamilyColorsModal';
 import { ImportExcelModal } from './components/ImportExcelModal';
 import {
   ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
-  BulkEditPreviewResponse, DatabaseConfig
+  BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem
 } from './types';
 
 export const App: React.FC = () => {
@@ -30,6 +30,7 @@ export const App: React.FC = () => {
   const [families, setFamilies] = useState<Family[]>([]);
   const [subfamilies, setSubfamilies] = useState<Subfamily[]>([]);
   const [vats, setVats] = useState<Vat[]>([]);
+  const [productionCenters, setProductionCenters] = useState<ProductionCenterItem[]>([]);
 
   // Filter & List State
   const [filters, setFilters] = useState<ProductFilter>({
@@ -80,16 +81,18 @@ export const App: React.FC = () => {
 
   const fetchAuxData = async () => {
     try {
-      const [fRes, sfRes, vRes] = await Promise.all([
+      const [fRes, sfRes, vRes, pcRes] = await Promise.all([
         fetch('/api/families'),
         fetch('/api/subfamilies'),
-        fetch('/api/vats')
+        fetch('/api/vats'),
+        fetch('/api/production-centers')
       ]);
       if (fRes.ok) setFamilies(await fRes.json());
       if (sfRes.ok) setSubfamilies(await sfRes.json());
       if (vRes.ok) setVats(await vRes.json());
+      if (pcRes.ok) setProductionCenters(await pcRes.json());
     } catch (e) {
-      console.error('Erro ao obter famílias, subfamílias e IVAs', e);
+      console.error('Erro ao obter famílias, subfamílias, IVAs e centros de produção', e);
     }
   };
 
@@ -343,12 +346,13 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Filter Bar */}
+      {/* Top Filter Bar */}
       <FilterBar
         filters={filters}
         families={families}
         subfamilies={subfamilies}
         vats={vats}
+        productionCenters={productionCenters}
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         onExportCSV={handleExportCSV}
@@ -382,6 +386,7 @@ export const App: React.FC = () => {
           families={families}
           subfamilies={subfamilies}
           vats={vats}
+          productionCenters={productionCenters}
           onPreview={handleOpenPreview}
           onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
         />

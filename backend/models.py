@@ -15,6 +15,7 @@ class ProductFilter(BaseModel):
     familia: Optional[int] = None
     subfamilia: Optional[int] = None
     iva: Optional[int] = None
+    centro_prod: Optional[int] = None  # Código do Centro de Produção (dbo.centrosprod.codigo)
     bloqueado: Optional[int] = None  # 0=Ativo, 1=Bloqueado, None=Todos
     frontoffice: Optional[int] = None  # 1=Visível, 0=Oculto, None=Todos
     has_sales: Optional[bool] = None  # True=Com Vendas, False=Sem Vendas, None=Todos
@@ -33,6 +34,9 @@ class ProductItem(BaseModel):
     subfamilia_desc: Optional[str] = ""
     iva: Optional[int] = None
     iva_desc: Optional[str] = ""
+    centro_prod: Optional[int] = None
+    centro_prod_desc: Optional[str] = ""
+    centro_prod_info: Optional[int] = 0
     pvp1: float = 0.0
     pvp2: float = 0.0
     pvp3: float = 0.0
@@ -115,6 +119,11 @@ class BulkEditRequest(BaseModel):
 
     apply_subfamilia: bool = False
     new_subfamilia: Optional[int] = None
+
+    # Centro de Produção (Cozinha, Bar, Bebidas, etc.)
+    apply_centro_prod: bool = False
+    new_centro_prod: Optional[int] = None  # Código do centrosprod (ou None/0 para remover)
+    centro_prod_info: int = 0  # 0=Preparação, 1=Informativo
     
     # Imposto / IVA
     apply_iva: bool = False
@@ -210,5 +219,16 @@ class ImportPreviewResponse(BaseModel):
 
 class ImportApplyRequest(BaseModel):
     items: List[ImportRow]
+
+class ProductionCenterItem(BaseModel):
+    codigo: int
+    descricao: str
+    id: Optional[int] = None
+
+class PrinterItem(BaseModel):
+    codigo: int
+    descricao: str
+    centro: Optional[int] = None
+    sync: Optional[int] = 0
 
 

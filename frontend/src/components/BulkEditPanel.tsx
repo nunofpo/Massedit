@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
   Palette, DollarSign, FolderTree, Percent, Lock, Eye, Cloud, Play,
-  ShieldAlert, Sparkles, Copy, Barcode, Hash, Tag, CheckCircle2, Layers
+  ShieldAlert, Sparkles, Copy, Barcode, Hash, Tag, CheckCircle2, Layers, Utensils
 } from 'lucide-react';
-import { Family, Subfamily, Vat, BulkEditRequest, ProductItem } from '../types';
+import { Family, Subfamily, Vat, BulkEditRequest, ProductItem, ProductionCenterItem } from '../types';
 
 interface BulkEditPanelProps {
   selectedProducts: ProductItem[];
   families: Family[];
   subfamilies: Subfamily[];
   vats: Vat[];
+  productionCenters?: ProductionCenterItem[];
   onPreview: (request: BulkEditRequest) => void;
   onOpenFamilyColors?: () => void;
 }
 
-type SectorTab = 'names' | 'prices' | 'colors' | 'categories' | 'codes' | 'status';
+type SectorTab = 'names' | 'prices' | 'colors' | 'categories' | 'codes' | 'production' | 'status';
 
 const PRESET_COLORS = [
   { name: 'Branco', hex: '#FFFFFF', textHex: '#000000' },
@@ -42,6 +43,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   families,
   subfamilies,
   vats,
+  productionCenters = [],
   onPreview,
   onOpenFamilyColors
 }) => {
@@ -103,6 +105,11 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [applySubfamilia, setApplySubfamilia] = useState(false);
   const [newSubfamilia, setNewSubfamilia] = useState<number | undefined>(undefined);
 
+  // Form State: Centros de Produção
+  const [applyCentroProd, setApplyCentroProd] = useState(false);
+  const [newCentroProd, setNewCentroProd] = useState<number | null>(null);
+  const [centroProdInfo, setCentroProdInfo] = useState<number>(0);
+
   // Subfamilies belonging to selected newFamilia
   const filteredSubfamilies = newFamilia !== undefined
     ? subfamilies.filter(sf => sf.familia === newFamilia)
@@ -129,9 +136,10 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const colorsCount = (applyFundo ? 1 : 0) + (applyLetra ? 1 : 0) + (applyCor ? 1 : 0);
   const categoriesCount = (applyFamilia ? 1 : 0) + (applySubfamilia ? 1 : 0);
   const codesCount = (applyPlu ? 1 : 0) + (applyCodbarras ? 1 : 0) + (applyReferencia ? 1 : 0);
+  const productionCount = applyCentroProd ? 1 : 0;
   const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0);
 
-  const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + statusCount;
+  const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + productionCount + statusCount;
 
   const handleBuildRequest = (): BulkEditRequest => {
     return {
@@ -172,6 +180,9 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       new_familia: newFamilia,
       apply_subfamilia: applySubfamilia,
       new_subfamilia: newSubfamilia,
+      apply_centro_prod: applyCentroProd,
+      new_centro_prod: newCentroProd,
+      centro_prod_info: centroProdInfo,
       apply_iva: applyIva,
       new_iva: newIva,
       apply_bloqueado: applyBloqueado,
@@ -320,7 +331,28 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           )}
         </button>
 
-        {/* Tab 6: Estado & Sync */}
+        {/* Tab 6: Produção (Cozinha/Bar) */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('production')}
+          className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
+            activeTab === 'production'
+              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
+              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 truncate text-[11px]">
+            <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            Produção
+          </span>
+          {productionCount > 0 && (
+            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+              {productionCount}
+            </span>
+          )}
+        </button>
+
+        {/* Tab 7: Estado & Sync */}
         <button
           type="button"
           onClick={() => setActiveTab('status')}
@@ -1172,7 +1204,93 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           </div>
         )}
 
-        {/* ------------------- SETOR 6: ESTADO & SINCRONIZAÇÃO CLOUD ------------------- */}
+        {/* ------------------- SETOR 6: CENTROS DE PRODUÇÃO ------------------- */}
+        {activeTab === 'production' && (
+          <div className="space-y-4">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
+                <Utensils className="w-4 h-4 text-amber-400" />
+                Encaminhamento para Produção (Cozinha/Bar)
+              </h3>
+
+              {/* Production Center Checkbox & Selector */}
+              <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyCentroProd}
+                  onChange={(e) => setApplyCentroProd(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Alterar Centro de Produção de Destino (`dbo.produtoscentrosprod`)</span>
+              </label>
+
+              {applyCentroProd && (
+                <div className="space-y-3 pt-2 border-t border-slate-900">
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-semibold block mb-1">
+                      Selecionar Centro de Produção:
+                    </label>
+                    <select
+                      value={newCentroProd ?? ''}
+                      onChange={(e) => setNewCentroProd(e.target.value === '' ? null : Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-semibold"
+                    >
+                      <option value="">(Remover / Sem Centro de Produção)</option>
+                      {productionCenters.map((pc) => (
+                        <option key={pc.codigo} value={pc.codigo}>
+                          🍳 {pc.descricao} (#{pc.codigo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {newCentroProd !== null && newCentroProd > 0 && (
+                    <div>
+                      <label className="text-[11px] text-slate-400 font-semibold block mb-1">
+                        Tipo de Pedido no POS:
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setCentroProdInfo(0)}
+                          className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
+                            centroProdInfo === 0
+                              ? 'bg-amber-950 border-amber-600 text-amber-300 font-bold shadow'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                          }`}
+                        >
+                          🔥 Preparação (Imprime Pedido)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCentroProdInfo(1)}
+                          className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
+                            centroProdInfo === 1
+                              ? 'bg-blue-950 border-blue-600 text-blue-300 font-bold shadow'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                          }`}
+                        >
+                          ℹ️ Informativo (Apenas Ecrã)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                    <p className="flex items-center gap-1 font-semibold text-amber-400">
+                      💡 Informação de Sincronização:
+                    </p>
+                    <p className="leading-relaxed">
+                      Ao guardar, a tabela <code className="text-indigo-300">dbo.produtoscentrosprod</code> é atualizada e os artigos são automaticamente marcados com <code className="text-amber-300">sync = 1</code> para atualizar os postos POS na cloud.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ------------------- SETOR 7: ESTADO & SINCRONIZAÇÃO CLOUD ------------------- */}
         {activeTab === 'status' && (
           <div className="space-y-4">
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">

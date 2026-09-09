@@ -21,6 +21,9 @@ export interface ProductItem {
   subfamilia_desc?: string;
   iva?: number;
   iva_desc?: string;
+  centro_prod?: number;
+  centro_prod_desc?: string;
+  centro_prod_info?: number;
   pvp1: number;
   pvp2: number;
   pvp3: number;
@@ -43,6 +46,19 @@ export interface ProductItem {
   sync: number;
   has_sales: boolean;
   can_edit_description: boolean;
+}
+
+export interface ProductionCenterItem {
+  codigo: number;
+  descricao: string;
+  id?: number;
+}
+
+export interface PrinterItem {
+  codigo: number;
+  descricao: string;
+  centro?: number;
+  sync?: number;
 }
 
 export interface Family {
@@ -86,6 +102,7 @@ export interface ProductFilter {
   familia?: number;
   subfamilia?: number;
   iva?: number;
+  centro_prod?: number;
   bloqueado?: number;
   frontoffice?: number;
   has_sales?: boolean;
@@ -137,6 +154,9 @@ export interface BulkEditRequest {
   new_familia?: number;
   apply_subfamilia?: boolean;
   new_subfamilia?: number;
+  apply_centro_prod?: boolean;
+  new_centro_prod?: number | null;
+  centro_prod_info?: number;
   apply_iva: boolean;
   new_iva?: number;
   apply_bloqueado: boolean;

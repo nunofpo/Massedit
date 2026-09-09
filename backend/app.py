@@ -9,13 +9,15 @@ from typing import List, Dict, Any, Optional
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
     ProductItem, BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
-    ImportPreviewResponse, ImportApplyRequest
+    ImportPreviewResponse, ImportApplyRequest,
+    ProductionCenterItem, PrinterItem
 )
 from backend.db import db_manager
 from backend.services.products import (
     search_products, get_families, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
-    get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup
+    get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
+    get_production_centers, get_printers
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -61,6 +63,17 @@ def list_families_endpoint():
 def list_subfamilies_endpoint(familia: Optional[int] = None):
     """Lista subfamílias disponíveis para filtragem e atribuição."""
     return get_subfamilies(familia)
+
+@app.get("/api/production-centers", response_model=List[ProductionCenterItem])
+def list_production_centers_endpoint():
+    """Lista Centros de Produção disponíveis para filtragem e encaminhamento."""
+    return get_production_centers()
+
+@app.get("/api/printers", response_model=List[PrinterItem])
+def list_printers_endpoint():
+    """Lista Impressoras disponíveis."""
+    return get_printers()
+
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
 def list_families_detailed_endpoint():

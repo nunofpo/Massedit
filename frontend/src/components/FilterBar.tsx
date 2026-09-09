@@ -1,12 +1,13 @@
 import React from 'react';
-import { Search, Filter, RotateCcw, Tag, Lock, Eye, ShoppingCart, FileSpreadsheet, Printer, ArrowUpDown, Upload } from 'lucide-react';
-import { Family, Subfamily, Vat, ProductFilter } from '../types';
+import { Search, Filter, RotateCcw, Tag, Lock, Eye, ShoppingCart, FileSpreadsheet, Printer, ArrowUpDown, Upload, Utensils } from 'lucide-react';
+import { Family, Subfamily, Vat, ProductFilter, ProductionCenterItem } from '../types';
 
 interface FilterBarProps {
   filters: ProductFilter;
   families: Family[];
   subfamilies: Subfamily[];
   vats: Vat[];
+  productionCenters?: ProductionCenterItem[];
   onFilterChange: (newFilters: Partial<ProductFilter>) => void;
   onResetFilters: () => void;
   onExportCSV: () => void;
@@ -21,6 +22,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   families,
   subfamilies,
   vats,
+  productionCenters = [],
   onFilterChange,
   onResetFilters,
   onExportCSV,
@@ -116,8 +118,25 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </select>
           </div>
 
+          {/* Production Center Filter */}
+          <div className="relative min-w-[150px]">
+            <select
+              value={filters.centro_prod ?? ''}
+              onChange={(e) => onFilterChange({ centro_prod: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+            >
+              <option value="">Todos os Centros Produção</option>
+              <option value="0">(Sem Centro de Produção)</option>
+              {productionCenters.map((pc) => (
+                <option key={pc.codigo} value={pc.codigo}>
+                  🍳 {pc.descricao} (#{pc.codigo})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* VAT Filter */}
-          <div className="relative min-w-[120px]">
+          <div className="relative min-w-[110px]">
             <select
               value={filters.iva ?? ''}
               onChange={(e) => onFilterChange({ iva: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}

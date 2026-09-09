@@ -199,11 +199,22 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       </div>
                     </td>
 
-                    {/* Família & Subfamília */}
-                    <td className="p-3 text-slate-300 truncate max-w-[140px]">
+                    {/* Família, Subfamília e Centro de Produção */}
+                    <td className="p-3 text-slate-300 truncate max-w-[150px]">
                       <div className="font-semibold text-slate-200">{product.familia_desc || `- (${product.familias})`}</div>
                       {product.subfamilia_desc && (
                         <div className="text-[10px] text-slate-400 truncate">Sub: {product.subfamilia_desc}</div>
+                      )}
+                      {product.centro_prod_desc && (
+                        <div
+                          className="text-[10px] text-amber-300 font-medium truncate flex items-center gap-1 mt-0.5"
+                          title={`Centro de Produção: ${product.centro_prod_desc} (${product.centro_prod_info ? 'Informativo' : 'Preparação'})`}
+                        >
+                          <span className="bg-amber-950/80 text-amber-300 px-1.5 py-0.5 rounded border border-amber-800/60 flex items-center gap-1 font-semibold">
+                            🍳 {product.centro_prod_desc}
+                            {product.centro_prod_info === 1 && <span className="text-[8px] uppercase tracking-wider text-amber-400 font-bold">(Info)</span>}
+                          </span>
+                        </div>
                       )}
                     </td>
 
