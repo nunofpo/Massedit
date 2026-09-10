@@ -89,7 +89,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
   // Form State: Preços & IVA
   const [applyPrice, setApplyPrice] = useState(false);
-  const [targetPvp, setTargetPvp] = useState('pvp2'); // pvp1..pvp10, all, copy_pvp1
+  const [targetPvp, setTargetPvp] = useState('pvp1'); // pvp1..pvp10, all, copy_pvp1
   const [sourcePvp, setSourcePvp] = useState('pvp1'); // pvp1..pvp10
   const [priceMode, setPriceMode] = useState('fixed_add'); // fixed_add, percentage, fixed_set, copy_pvp
   const [priceValue, setPriceValue] = useState<number | string>(0.10);
