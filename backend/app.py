@@ -26,6 +26,7 @@ from backend.services.reports import run_data_quality_report
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
+from backend.services.ementa_digital import discover_ementa_schema
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
@@ -204,6 +205,11 @@ def list_vats_endpoint():
 def get_data_quality_report_endpoint(short_desc_max: int = 20):
     """Executa diagnóstico de qualidade de dados na base de dados SQL Server."""
     return run_data_quality_report(short_desc_max=short_desc_max)
+
+@app.get("/api/ementa-digital/schema")
+def get_ementa_digital_schema_endpoint():
+    """Fase A: Descoberta e inspeção de esquema de tabelas relacionadas com a ementa digital."""
+    return discover_ementa_schema()
 
 @app.post("/api/products/search")
 def search_products_endpoint(filters: ProductFilter):
