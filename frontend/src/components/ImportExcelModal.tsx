@@ -242,7 +242,7 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({
                 </div>
 
                 <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl shadow-xs">
-                  <span className="text-[11px] text-amber-800 block font-semibold">Artigos Protegidos (Com Vendas)</span>
+                  <span className="text-[11px] text-amber-800 block font-semibold">Alterações Bloqueadas</span>
                   <span className="text-xl font-black text-amber-700">{previewData.blocked_descriptions_count}</span>
                 </div>
               </div>
@@ -278,9 +278,15 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({
                       {/* Fields changed */}
                       <div className="flex flex-wrap gap-2 text-[11px]">
                         {item.diffs.map((diff) => (
-                          <span key={diff.field_name} className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-mono">
-                            <strong className="text-indigo-600">{diff.field_label}:</strong> {String(diff.old_value)} ➔ <strong className="text-emerald-700">{String(diff.new_value)}</strong>
-                          </span>
+                          diff.blocked ? (
+                            <span key={diff.field_name} title={diff.reason || ''} className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded border border-amber-300 font-mono">
+                              <strong>{diff.field_label}: não alterado</strong>{diff.reason ? <span className="font-sans"> — {diff.reason}</span> : null}
+                            </span>
+                          ) : (
+                            <span key={diff.field_name} className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-mono">
+                              <strong className="text-indigo-600">{diff.field_label}:</strong> {String(diff.old_value)} ➔ <strong className="text-emerald-700">{String(diff.new_value)}</strong>
+                            </span>
+                          )
                         ))}
                       </div>
                     </div>

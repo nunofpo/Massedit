@@ -165,10 +165,12 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                         {product.has_sales ? (
                           <span
                             className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 shadow-xs"
-                            title="Artigo com vendas registadas. A designação/nome principal não pode ser alterada."
+                            title={product.sales_check_ok === false
+                              ? "Não foi possível verificar as vendas deste artigo. A designação fica protegida por segurança."
+                              : "Artigo com vendas registadas. A designação/nome principal não pode ser alterada."}
                           >
                             <ShieldAlert className="w-3 h-3 text-amber-600" />
-                            Com Vendas
+                            {product.sales_check_ok === false ? 'Vendas ?' : 'Com Vendas'}
                           </span>
                         ) : (
                           <span

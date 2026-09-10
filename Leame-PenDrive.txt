@@ -2,19 +2,50 @@
  MassEdit POS - Instruções para Versão Portátil (Pen Drive / USB)
 ========================================================================
 
-Esta versão é 100% PORTÁTIL e NATIVE PORTABLE para Windows.
-Não necessita de instalação de Python, Node.js ou qualquer software no computador onde for executada.
+A versão portátil não necessita de Python nem de Node.js no computador
+onde for executada. Cada versão só funciona no sistema onde foi compilada:
 
-COMO USAR NA PEN DRIVE:
------------------------
-1. Copie toda a pasta "MassEdit-Portable" (localizada em "dist\MassEdit-Portable") para a sua Pen Drive.
-2. Na Pen Drive, abra a pasta "MassEdit-Portable".
-3. Dê duplo clique no ficheiro "MassEdit-Portable.exe".
-4. O servidor iniciará automaticamente e abrirá o seu navegador web em:
-   http://localhost:8000
+  - Windows : correr "Criar-Versao-PenDrive.bat" num PC Windows
+              -> dist\MassEdit-Portable\MassEdit-Portable.exe
+  - macOS   : correr "Criar-Versao-Mac.sh" num Mac
+              -> dist/MassEdit-Portable/MassEdit-Portable
 
-CARACTERÍSTICAS DA VERSÃO PORTÁTIL:
+(Não é possível gerar a versão Windows a partir do Mac nem o contrário.)
+
+REQUISITO NO COMPUTADOR DE DESTINO:
 -----------------------------------
-- Todos os backups criados pela aplicação ficam salvos diretamente na pasta da Pen Drive.
-- A configuração da ligação ao SQL Server pode ser guardada e reutilizada em qualquer computador.
-- Funciona em qualquer letra de unidade (E:, F:, G:, H:, etc.) atribuída pelo Windows à Pen Drive.
+- Driver ODBC da Microsoft para SQL Server (17 ou 18).
+  Nos PCs com ZoneSoft normalmente já está instalado. No macOS instale
+  o "msodbcsql18" (Homebrew) antes de usar.
+
+COMO USAR NA PEN DRIVE (Windows):
+---------------------------------
+1. Copie toda a pasta "MassEdit-Portable" (em "dist\MassEdit-Portable") para a Pen Drive.
+2. Na Pen Drive, abra a pasta "MassEdit-Portable".
+3. Dê duplo clique em "MassEdit-Portable.exe".
+4. O servidor arranca e abre o navegador em http://127.0.0.1:8000
+   (se a porta 8000 estiver ocupada usa a seguinte livre: 8001, 8002, ...).
+
+CONFIGURAÇÃO DA LIGAÇÃO:
+------------------------
+- A configuração (servidor, porta, base de dados, driver, utilizador) é gravada
+  no ficheiro "config.json" dentro da pasta da aplicação e reutilizada nos
+  arranques seguintes, em qualquer computador.
+- A palavra-passe só é gravada se marcar "Guardar a palavra-passe". Nesse caso
+  fica em texto simples no config.json: não use essa opção se a pen drive
+  puder ser usada por outras pessoas.
+- Instâncias nomeadas (ex.: SERVIDOR\ZONESOFT) com a porta 1433: a porta é
+  ignorada e a ligação usa o SQL Server Browser.
+
+CÓPIAS DE SEGURANÇA:
+--------------------
+- Antes de qualquer gravação (edição em massa, importação, cores de famílias
+  ou restauro) é criada uma cópia em "backups\backup_AAAAMMDD_HHMMSS_*.json"
+  dentro da pasta da aplicação (na própria Pen Drive).
+- Se a cópia não puder ser gravada (ex.: pen drive só de leitura ou cheia),
+  nenhuma alteração é feita na base de dados.
+- Restaurar uma cópia também cria antes uma cópia do estado atual, para poder
+  desfazer o restauro.
+- Designações de artigos com vendas nunca são alteradas, nem no restauro.
+
+Funciona em qualquer letra de unidade (E:, F:, G:, H:, etc.).

@@ -19,8 +19,9 @@ export const App: React.FC = () => {
     server: 'localhost',
     port: 1433,
     database: 'nuno',
-    trusted_connection: true,
-    driver: 'ODBC Driver 17 for SQL Server'
+    trusted_connection: false,
+    driver: 'ODBC Driver 17 for SQL Server',
+    save_password: false
   });
   const [isConnected, setIsConnected] = useState(false);
   const [useMock, setUseMock] = useState(false);

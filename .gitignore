@@ -24,6 +24,7 @@ wheels/
 # Virtual environments
 venv/
 .venv/
+.venv-win/
 ENV/
 
 # Node / Frontend
@@ -31,8 +32,10 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 
-# Backups & Temp files
+# Backups, configuração local & Temp files
 backups/
+config.json
+config.json.tmp
 scratch/
 .idea/
 .vscode/

@@ -6,6 +6,7 @@ export interface DatabaseConfig {
   password?: string;
   trusted_connection: boolean;
   driver: string;
+  save_password?: boolean;
 }
 
 export interface ProductItem {
@@ -45,6 +46,7 @@ export interface ProductItem {
   cor_hex: string;
   sync: number;
   has_sales: boolean;
+  sales_check_ok?: boolean;
   can_edit_description: boolean;
 }
 

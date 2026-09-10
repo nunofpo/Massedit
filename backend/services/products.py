@@ -1,160 +1,97 @@
 import os
-import sys
+import re
+import csv
+import io
+import html
 import json
 import math
 import unicodedata
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set, Iterable
+
 from backend.models import (
     ProductFilter, ProductItem, BulkEditRequest, BulkEditPreviewResponse,
     ProductDiff, FieldDiff, BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
-    ImportRow, ImportPreviewResponse, ImportApplyRequest,
+    ImportRow, ImportPreviewResponse,
     ProductionCenterItem, PrinterItem
 )
-from backend.db import db_manager, hex_to_int_color, int_color_to_hex
-
-def get_app_dir():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+from backend.db import (
+    db_manager, hex_to_int_color, int_color_to_hex, is_valid_hex_color,
+    get_app_dir, TEXT_TYPES, SchemaInfo
+)
 
 BACKUP_DIR = os.path.join(get_app_dir(), "backups")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+BACKUP_FORMAT_VERSION = 2
+BACKUP_NAME_RE = re.compile(r"^backup_[0-9_]+\.json$")
 
-def get_production_centers() -> List[ProductionCenterItem]:
-    """Obtém lista de Centros de Produção diretamente do SQL Server."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT codigo, descricao, ISNULL(id, 0) FROM dbo.centrosprod ORDER BY codigo ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [ProductionCenterItem(codigo=row[0], descricao=row[1] or "", id=row[2]) for row in rows]
+# O SQL Server aceita no máximo 2100 parâmetros por instrução
+MAX_SQL_PARAMS = 2000
+DEFAULT_CHUNK = 500
 
+# Tabelas onde se procura movimento de vendas de um artigo
+SALES_TABLES = ("vendasprod", "consumo_doc", "movimentos")
 
-def get_printers() -> List[PrinterItem]:
-    """Obtém lista de Impressoras diretamente do SQL Server."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT codigo, descricao, centro, ISNULL(sync, 0) FROM dbo.impressoras ORDER BY codigo ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [PrinterItem(codigo=row[0], descricao=row[1] or "", centro=row[2], sync=row[3]) for row in rows]
+# Colunas opcionais de dbo.produtos (só usadas se existirem nesta base de dados)
+INT_TYPES = {"int", "bigint", "smallint", "tinyint", "bit"}
+OPTIONAL_PRODUCT_COLUMNS = ("bloqueado", "frontoffice", "cor")
+
+PRICE_EPSILON = 0.00005
 
 
+# ======================================================================
+# Utilitários gerais
+# ======================================================================
 
-def check_product_sales_db(cursor, codigo: int) -> bool:
-    """Verifica se o produto tem registo de vendas na DB SQL Server."""
-    try:
-        query = """
-            SELECT TOP 1 1 FROM (
-                SELECT codigo FROM dbo.vendasprod WHERE codigo = ?
-                UNION ALL
-                SELECT codigo FROM dbo.consumo_doc WHERE codigo = ?
-                UNION ALL
-                SELECT codigo FROM dbo.movimentos WHERE codigo = ?
-            ) AS sales
-        """
-        cursor.execute(query, (codigo, codigo, codigo))
-        return cursor.fetchone() is not None
-    except Exception:
-        return False
+def _chunks(seq: List[Any], size: int = DEFAULT_CHUNK) -> Iterable[List[Any]]:
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
 
 
-def get_families() -> List[Dict[str, Any]]:
-    """Obtém lista de famílias diretamente do SQL Server."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT codigo, descricao FROM dbo.familias ORDER BY codigo ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"codigo": row[0], "descricao": row[1] or ""} for row in rows]
-
-
-def get_families_detailed() -> List[DetailedFamilyItem]:
-    """Obtém lista detalhada de famílias com cores (fundo/letra) e contagem de artigos."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    query = """
-        SELECT 
-            f.codigo, 
-            f.descricao, 
-            ISNULL(f.fundo, 0) as fundo, 
-            ISNULL(f.letra, 16777215) as letra,
-            ISNULL(f.frontoffice, 1) as frontoffice,
-            ISNULL(f.posicaofront, 0) as posicaofront,
-            (SELECT COUNT(*) FROM dbo.produtos p WHERE p.familia = f.codigo) as products_count
-        FROM dbo.familias f
-        ORDER BY f.codigo ASC
-    """
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    conn.close()
-
-    result = []
-    for r in rows:
-        fundo_int = r[2] if r[2] is not None else 0
-        letra_int = r[3] if r[3] is not None else 16777215
-        result.append(DetailedFamilyItem(
-            codigo=r[0],
-            descricao=r[1] or "",
-            fundo=fundo_int,
-            fundo_hex=int_color_to_hex(fundo_int),
-            letra=letra_int,
-            letra_hex=int_color_to_hex(letra_int),
-            frontoffice=r[4] or 1,
-            posicaofront=r[5] or 0,
-            products_count=r[6] or 0
-        ))
+def _unique_codes(codes: Iterable[Any]) -> List[int]:
+    seen: Set[int] = set()
+    result: List[int] = []
+    for c in codes or []:
+        try:
+            code = int(c)
+        except (TypeError, ValueError):
+            continue
+        if code not in seen:
+            seen.add(code)
+            result.append(code)
     return result
 
 
-def update_family_colors(req: BulkFamilyColorUpdateRequest) -> Tuple[bool, str, int]:
-    """Atualiza as cores das famílias em dbo.familias e opcionalmente em dbo.produtos (com sync=1)."""
-    if not req.updates:
-        return False, "Nenhuma família foi selecionada para atualização.", 0
+def _placeholders(n: int) -> str:
+    return ",".join(["?"] * n)
 
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
 
-    total_affected_products = 0
-    updated_families_count = len(req.updates)
+def _schema(cursor) -> SchemaInfo:
+    return db_manager.get_schema(cursor)
 
-    try:
-        cursor.execute("BEGIN TRANSACTION")
 
-        for up in req.updates:
-            fundo_int = hex_to_int_color(up.fundo_hex)
-            letra_int = hex_to_int_color(up.letra_hex)
+def _prod_cols(schema: SchemaInfo) -> Dict[str, Tuple[str, Optional[int]]]:
+    return schema.get("produtos", {})
 
-            # 1. Atualizar cores da família em dbo.familias
-            cursor.execute(
-                "UPDATE dbo.familias SET fundo = ?, letra = ? WHERE codigo = ?",
-                (fundo_int, letra_int, up.codigo)
-            )
 
-            # 2. Opcionalmente propagar as cores para os produtos dessa família em dbo.produtos
-            if up.apply_to_products:
-                cursor.execute(
-                    "UPDATE dbo.produtos SET fundo = ?, letra = ?, sync = 1 WHERE familia = ?",
-                    (fundo_int, letra_int, up.codigo)
-                )
-                total_affected_products += cursor.rowcount
+def _has_optional_int_col(schema: SchemaInfo, col: str) -> bool:
+    info = _prod_cols(schema).get(col)
+    return bool(info and info[0] in INT_TYPES)
 
-        conn.commit()
-        conn.close()
 
-        msg = f"Cores de {updated_families_count} família(s) atualizadas com sucesso."
-        if total_affected_products > 0:
-            msg += f" {total_affected_products} artigo(s) foram atualizados com as novas cores e sinalizados com sync = 1."
+def _text_limit(schema: SchemaInfo, table: str, col: str) -> Optional[int]:
+    info = schema.get(table, {}).get(col)
+    return info[1] if info else None
 
-        return True, msg, total_affected_products
 
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        return False, f"Erro ao atualizar cores das famílias: {str(e)}", 0
+def _has_table_cols(schema: SchemaInfo, table: str, cols: Iterable[str]) -> bool:
+    table_cols = schema.get(table)
+    return bool(table_cols) and all(c in table_cols for c in cols)
 
+
+def _float_eq(a: Optional[float], b: Optional[float]) -> bool:
+    return abs(float(a or 0) - float(b or 0)) < PRICE_EPSILON
 
 
 def format_iva_num(val) -> str:
@@ -170,214 +107,452 @@ def format_iva_num(val) -> str:
         return str(val)
 
 
+# ======================================================================
+# Verificação de vendas (proteção da designação)
+# ======================================================================
+
+def _sales_tables(schema: SchemaInfo) -> List[Tuple[str, bool]]:
+    """Lista (tabela, codigo_é_texto) das tabelas de vendas existentes nesta base de dados."""
+    result = []
+    for t in SALES_TABLES:
+        info = schema.get(t, {}).get("codigo")
+        if info:
+            result.append((t, info[0] in TEXT_TYPES))
+    return result
+
+
+def get_sales_codes(cursor, codes: List[int]) -> Optional[Set[int]]:
+    """
+    Devolve o conjunto de códigos com movimento de vendas.
+    Devolve None se não for possível verificar (tabelas inexistentes ou erro) — nesse caso
+    os artigos devem ser tratados como TENDO vendas (fail-safe).
+    """
+    codes = _unique_codes(codes)
+    if not codes:
+        return set()
+    try:
+        tables = _sales_tables(_schema(cursor))
+    except Exception:
+        return None
+    if not tables:
+        return None
+
+    found: Set[int] = set()
+    chunk_size = max(1, min(DEFAULT_CHUNK, MAX_SQL_PARAMS // len(tables)))
+    try:
+        for chunk in _chunks(codes, chunk_size):
+            parts = []
+            params: List[Any] = []
+            for table, is_text in tables:
+                parts.append(f"SELECT codigo FROM dbo.{table} WHERE codigo IN ({_placeholders(len(chunk))})")
+                params.extend([str(c) for c in chunk] if is_text else chunk)
+            sql = "SELECT DISTINCT codigo FROM (" + " UNION ALL ".join(parts) + ") AS vendas"
+            cursor.execute(sql, params)
+            for (raw,) in cursor.fetchall():
+                if raw is None:
+                    continue
+                try:
+                    found.add(int(str(raw).strip()))
+                except ValueError:
+                    continue
+    except Exception:
+        return None
+    return found
+
+
+def _sales_exists_sql(schema: SchemaInfo) -> Optional[str]:
+    tables = _sales_tables(schema)
+    if not tables:
+        return None
+    parts = []
+    for table, is_text in tables:
+        ref = "CAST(p.codigo AS VARCHAR(50))" if is_text else "p.codigo"
+        parts.append(f"EXISTS (SELECT 1 FROM dbo.{table} s WHERE s.codigo = {ref})")
+    return "(" + " OR ".join(parts) + ")"
+
+
+# ======================================================================
+# Leitura de artigos
+# ======================================================================
+
+PRODUCT_FROM_SQL = """
+    FROM dbo.produtos p
+    LEFT JOIN dbo.familias f ON p.familia = f.codigo
+    LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
+    LEFT JOIN (
+        SELECT codigo, MAX(centro) AS centro, MAX(CAST(informativo AS INT)) AS informativo
+        FROM dbo.produtoscentrosprod
+        GROUP BY codigo
+    ) pcp ON p.codigo = pcp.codigo
+    LEFT JOIN dbo.centrosprod cp ON pcp.centro = cp.codigo
+"""
+
+
+def _product_select_sql(schema: SchemaInfo) -> str:
+    def opt(col: str, default: int) -> str:
+        return f"ISNULL(p.{col}, {default})" if _has_optional_int_col(schema, col) else str(default)
+
+    return f"""
+        p.codigo, p.descricao, ISNULL(p.descricaocurta, ''), p.familia, f.descricao,
+        p.subfam, sf.descricao, p.iva,
+        ISNULL(p.precovenda, 0), ISNULL(p.pvp2, 0), ISNULL(p.pvp3, 0), ISNULL(p.pvp4, 0), ISNULL(p.pvp5, 0),
+        ISNULL(p.pvp6, 0), ISNULL(p.pvp7, 0), ISNULL(p.pvp8, 0), ISNULL(p.pvp9, 0), ISNULL(p.pvp10, 0),
+        ISNULL(p.fundo, 0), ISNULL(p.letra, 16777215), ISNULL(p.ordem, 0), ISNULL(p.codigo_alf, 0),
+        ISNULL(p.codbarras, ''), ISNULL(p.referencia, ''),
+        pcp.centro, cp.descricao, ISNULL(pcp.informativo, 0),
+        {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)}
+    """
+
+
+def _int_or(value: Any, default: int) -> int:
+    return int(value) if value is not None else default
+
+
+def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
+    code = int(r[0])
+    if sales_codes is None:
+        has_sales, sales_ok = True, False
+    else:
+        has_sales, sales_ok = code in sales_codes, True
+    fundo = _int_or(r[18], 0)
+    letra = _int_or(r[19], 16777215)
+    cor = _int_or(r[29], 0)
+    return ProductItem(
+        codigo=code,
+        descricao=r[1] or "",
+        descricaocurta=r[2] or "",
+        familias=r[3],
+        familia_desc=r[4] or "",
+        subfamilia=r[5],
+        subfamilia_desc=r[6] or "",
+        iva=float(r[7]) if r[7] is not None else None,
+        iva_desc=format_iva_num(r[7]),
+        pvp1=float(r[8] or 0), pvp2=float(r[9] or 0), pvp3=float(r[10] or 0), pvp4=float(r[11] or 0),
+        pvp5=float(r[12] or 0), pvp6=float(r[13] or 0), pvp7=float(r[14] or 0), pvp8=float(r[15] or 0),
+        pvp9=float(r[16] or 0), pvp10=float(r[17] or 0),
+        fundo=fundo,
+        fundo_hex=int_color_to_hex(fundo),
+        letra=letra,
+        letra_hex=int_color_to_hex(letra),
+        posicaofront=_int_or(r[20], 0),
+        plu=_int_or(r[21], 0),
+        codbarras=r[22] or "",
+        referencia=r[23] or "",
+        centro_prod=r[24],
+        centro_prod_desc=r[25] or "",
+        centro_prod_info=_int_or(r[26], 0),
+        bloqueado=_int_or(r[27], 0),
+        frontoffice=_int_or(r[28], 1),
+        cor=cor,
+        cor_hex=int_color_to_hex(cor),
+        sync=_int_or(r[30], 0),
+        has_sales=has_sales,
+        sales_check_ok=sales_ok,
+        can_edit_description=not has_sales,
+    )
+
+
+def _fetch_products_by_codes(cursor, codes: List[int], with_sales: bool = True,
+                             with_centros: bool = True) -> List[ProductItem]:
+    codes = _unique_codes(codes)
+    if not codes:
+        return []
+    schema = _schema(cursor)
+    select_sql = _product_select_sql(schema)
+    rows = []
+    for chunk in _chunks(codes):
+        cursor.execute(
+            f"SELECT {select_sql} {PRODUCT_FROM_SQL} WHERE p.codigo IN ({_placeholders(len(chunk))})",
+            chunk
+        )
+        rows.extend(cursor.fetchall())
+
+    sales = get_sales_codes(cursor, codes) if with_sales else set()
+    items = {int(r[0]): _row_to_product(r, sales) for r in rows}
+
+    if with_centros and items:
+        centros: Dict[int, List[Dict[str, int]]] = {c: [] for c in items}
+        for chunk in _chunks(list(items.keys())):
+            cursor.execute(
+                f"SELECT codigo, centro, ISNULL(CAST(informativo AS INT), 0) FROM dbo.produtoscentrosprod "
+                f"WHERE codigo IN ({_placeholders(len(chunk))}) ORDER BY codigo, centro",
+                chunk
+            )
+            for code, centro, info in cursor.fetchall():
+                if centro is not None:
+                    centros.setdefault(int(code), []).append({"centro": int(centro), "informativo": int(info or 0)})
+        for code, item in items.items():
+            item.centros_prod = centros.get(code, [])
+
+    return [items[c] for c in codes if c in items]
+
+
+def get_products_by_codes(codes: List[int]) -> List[ProductItem]:
+    """Obtém lista detalhada de artigos por código diretamente do SQL Server (suporta milhares de códigos)."""
+    conn = db_manager.get_connection()
+    try:
+        return _fetch_products_by_codes(conn.cursor(), codes)
+    finally:
+        conn.close()
+
+
+def _build_product_where(filters: ProductFilter, schema: SchemaInfo) -> Tuple[str, List[Any]]:
+    where = ["1=1"]
+    params: List[Any] = []
+
+    if filters.search and filters.search.strip():
+        st = f"%{filters.search.strip()}%"
+        where.append(
+            "(p.descricao LIKE ? OR p.descricaocurta LIKE ? OR CAST(p.codigo AS VARCHAR(20)) LIKE ? "
+            "OR CAST(p.codigo_alf AS VARCHAR(20)) LIKE ? OR p.codbarras LIKE ? OR p.referencia LIKE ?)"
+        )
+        params.extend([st] * 6)
+    if filters.familia is not None:
+        where.append("p.familia = ?")
+        params.append(filters.familia)
+    if filters.subfamilia is not None:
+        where.append("p.subfam = ?")
+        params.append(filters.subfamilia)
+    if filters.iva is not None:
+        where.append("ABS(ISNULL(p.iva, -1000) - ?) < 0.001")
+        params.append(float(filters.iva))
+    if filters.centro_prod is not None:
+        if filters.centro_prod == 0:
+            where.append("NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo)")
+        else:
+            where.append("EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo AND x.centro = ?)")
+            params.append(filters.centro_prod)
+
+    if filters.bloqueado is not None:
+        if _has_optional_int_col(schema, "bloqueado"):
+            where.append("ISNULL(CAST(p.bloqueado AS INT), 0) = ?")
+            params.append(int(filters.bloqueado))
+        elif int(filters.bloqueado) != 0:
+            where.append("1=0")  # Sem coluna: nenhum artigo está bloqueado
+
+    if filters.frontoffice is not None:
+        if _has_optional_int_col(schema, "frontoffice"):
+            where.append("ISNULL(CAST(p.frontoffice AS INT), 1) = ?")
+            params.append(int(filters.frontoffice))
+        elif int(filters.frontoffice) != 1:
+            where.append("1=0")  # Sem coluna: todos os artigos estão visíveis
+
+    if filters.has_sales is not None:
+        exists_sql = _sales_exists_sql(schema)
+        if exists_sql is None:
+            # Não é possível verificar: todos são tratados como "com vendas" (fail-safe)
+            if not filters.has_sales:
+                where.append("1=0")
+        else:
+            where.append(exists_sql if filters.has_sales else f"NOT {exists_sql}")
+
+    return " AND ".join(where), params
+
+
+def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
+    """Pesquisa artigos no SQL Server com filtros (incluindo vendas/estado) aplicados antes da paginação."""
+    page = max(1, int(filters.page or 1))
+    page_size = max(1, min(1000, int(filters.page_size or 50)))
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        where_sql, params = _build_product_where(filters, schema)
+
+        cursor.execute(f"SELECT COUNT(*) FROM dbo.produtos p WHERE {where_sql}", params)
+        total_count = cursor.fetchone()[0]
+
+        sort_map = {
+            "codigo": "p.codigo",
+            "plu": "ISNULL(p.codigo_alf, 0)",
+            "descricao": "p.descricao",
+            "precovenda": "ISNULL(p.precovenda, 0)",
+            "posicaofront": "ISNULL(p.ordem, 0)",
+            "familia": "f.descricao",
+            "subfamilia": "sf.descricao",
+            "codbarras": "p.codbarras",
+        }
+        sort_col = sort_map.get(filters.sort_by or "codigo", "p.codigo")
+        sort_dir = "DESC" if filters.sort_order == "desc" else "ASC"
+        order_sql = f"{sort_col} {sort_dir}" + (", p.codigo ASC" if sort_col != "p.codigo" else "")
+        offset = (page - 1) * page_size
+
+        cursor.execute(
+            f"SELECT {_product_select_sql(schema)} {PRODUCT_FROM_SQL} WHERE {where_sql} "
+            f"ORDER BY {order_sql} OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY",
+            params
+        )
+        rows = cursor.fetchall()
+        sales = get_sales_codes(cursor, [int(r[0]) for r in rows])
+        items = [_row_to_product(r, sales) for r in rows]
+        return items, total_count
+    finally:
+        conn.close()
+
+
+# ======================================================================
+# Tabelas auxiliares
+# ======================================================================
+
+def get_production_centers() -> List[ProductionCenterItem]:
+    """Obtém lista de Centros de Produção diretamente do SQL Server."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, descricao, ISNULL(id, 0) FROM dbo.centrosprod ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return [ProductionCenterItem(codigo=row[0], descricao=row[1] or "", id=row[2]) for row in rows]
+
+
+def get_printers() -> List[PrinterItem]:
+    """Obtém lista de Impressoras diretamente do SQL Server."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, descricao, centro, ISNULL(sync, 0) FROM dbo.impressoras ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return [PrinterItem(codigo=row[0], descricao=row[1] or "", centro=row[2], sync=row[3]) for row in rows]
+
+
+def get_families() -> List[Dict[str, Any]]:
+    """Obtém lista de famílias diretamente do SQL Server."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, descricao FROM dbo.familias ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return [{"codigo": row[0], "descricao": row[1] or ""} for row in rows]
+
+
+def get_families_detailed() -> List[DetailedFamilyItem]:
+    """Obtém lista detalhada de famílias com cores (fundo/letra) e contagem de artigos."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                f.codigo,
+                f.descricao,
+                ISNULL(f.fundo, 0) AS fundo,
+                ISNULL(f.letra, 16777215) AS letra,
+                ISNULL(f.frontoffice, 1) AS frontoffice,
+                ISNULL(f.posicaofront, 0) AS posicaofront,
+                (SELECT COUNT(*) FROM dbo.produtos p WHERE p.familia = f.codigo) AS products_count
+            FROM dbo.familias f
+            ORDER BY f.codigo ASC
+        """)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    result = []
+    for r in rows:
+        fundo_int = _int_or(r[2], 0)
+        letra_int = _int_or(r[3], 16777215)
+        result.append(DetailedFamilyItem(
+            codigo=r[0],
+            descricao=r[1] or "",
+            fundo=fundo_int,
+            fundo_hex=int_color_to_hex(fundo_int),
+            letra=letra_int,
+            letra_hex=int_color_to_hex(letra_int),
+            frontoffice=_int_or(r[4], 1),
+            posicaofront=_int_or(r[5], 0),
+            products_count=r[6] or 0
+        ))
+    return result
+
+
 def get_vats() -> List[Dict[str, Any]]:
     """Obtém lista de taxas de IVA diretamente do SQL Server formatadas com números."""
     conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT codigo, factor FROM dbo.iva ORDER BY codigo ASC")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, factor FROM dbo.iva ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     result = []
     for row in rows:
         factor_num = float(row[1] or 0)
-        desc_num = format_iva_num(factor_num)
-        result.append({"codigo": row[0], "descricao": desc_num, "factor": factor_num})
+        result.append({"codigo": row[0], "descricao": format_iva_num(factor_num), "factor": factor_num})
     return result
 
 
 def get_subfamilies(familia: Optional[int] = None) -> List[Dict[str, Any]]:
     """Obtém lista de subfamílias diretamente do SQL Server."""
     conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    if familia is not None:
-        cursor.execute("SELECT codigo, descricao, familia FROM dbo.subfamilias WHERE familia = ? ORDER BY codigo ASC", (familia,))
-    else:
-        cursor.execute("SELECT codigo, descricao, familia FROM dbo.subfamilias ORDER BY codigo ASC")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        if familia is not None:
+            cursor.execute("SELECT codigo, descricao, familia FROM dbo.subfamilias WHERE familia = ? ORDER BY codigo ASC", (familia,))
+        else:
+            cursor.execute("SELECT codigo, descricao, familia FROM dbo.subfamilias ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     return [{"codigo": row[0], "descricao": row[1] or "", "familia": row[2]} for row in rows]
 
 
-def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
-    """Pesquisa artigos no SQL Server com suporte a filtros avançados, ordenação e subfamílias."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    
-    where_clauses = ["1=1"]
-    params = []
-    
-    if filters.search and filters.search.strip():
-        st = f"%{filters.search.strip()}%"
-        where_clauses.append("(p.descricao LIKE ? OR p.descricaocurta LIKE ? OR CAST(p.codigo AS VARCHAR) LIKE ? OR CAST(p.codigo_alf AS VARCHAR) LIKE ? OR p.codbarras LIKE ? OR p.referencia LIKE ?)")
-        params.extend([st, st, st, st, st, st])
-    if filters.familia is not None:
-        where_clauses.append("p.familia = ?")
-        params.append(filters.familia)
-    if filters.subfamilia is not None:
-        where_clauses.append("p.subfam = ?")
-        params.append(filters.subfamilia)
-    if filters.iva is not None:
-        where_clauses.append("(p.iva = ? OR p.iva IN (SELECT factor FROM dbo.iva WHERE codigo = ?))")
-        params.extend([filters.iva, filters.iva])
-    if filters.centro_prod is not None:
-        if filters.centro_prod == 0:
-            where_clauses.append("p.codigo NOT IN (SELECT codigo FROM dbo.produtoscentrosprod)")
-        else:
-            where_clauses.append("p.codigo IN (SELECT codigo FROM dbo.produtoscentrosprod WHERE centro = ?)")
-            params.append(filters.centro_prod)
-        
-    where_sql = " AND ".join(where_clauses)
-    
-    count_sql = f"SELECT COUNT(*) FROM dbo.produtos p WHERE {where_sql}"
-    cursor.execute(count_sql, params)
-    total_count = cursor.fetchone()[0]
-    
-    # Mapeamento de Ordenação
-    sort_map = {
-        "codigo": "p.codigo",
-        "plu": "ISNULL(p.codigo_alf, 0)",
-        "descricao": "p.descricao",
-        "precovenda": "p.precovenda",
-        "posicaofront": "ISNULL(p.ordem, 0)",
-        "familia": "f.descricao",
-        "subfamilia": "sf.descricao",
-        "codbarras": "p.codbarras"
-    }
-    sort_col = sort_map.get(filters.sort_by, "p.codigo")
-    sort_dir = "DESC" if filters.sort_order == "desc" else "ASC"
+class _Lookups:
+    """Tabelas auxiliares carregadas uma vez por operação (validação e descrições)."""
 
-    offset = (filters.page - 1) * filters.page_size
-    sql = f"""
-        SELECT 
-            p.codigo, p.descricao, ISNULL(p.descricaocurta, '') as descricaocurta, p.familia, f.descricao as familia_desc,
-            p.subfam, sf.descricao as subfamilia_desc, p.iva, i.descricao as iva_desc,
-            ISNULL(p.precovenda, 0) as pvp1, ISNULL(p.pvp2, 0) as pvp2, ISNULL(p.pvp3, 0) as pvp3, ISNULL(p.pvp4, 0) as pvp4, ISNULL(p.pvp5, 0) as pvp5,
-            ISNULL(p.pvp6, 0) as pvp6, ISNULL(p.pvp7, 0) as pvp7, ISNULL(p.pvp8, 0) as pvp8, ISNULL(p.pvp9, 0) as pvp9, ISNULL(p.pvp10, 0) as pvp10,
-            ISNULL(p.fundo, 0) as fundo, ISNULL(p.letra, 16777215) as letra,
-            ISNULL(p.ordem, 0) as posicaofront,
-            ISNULL(p.codigo_alf, 0) as plu,
-            ISNULL(p.codbarras, '') as codbarras,
-            ISNULL(p.referencia, '') as referencia,
-            pcp.centro as centro_prod,
-            cp.descricao as centro_prod_desc,
-            ISNULL(pcp.informativo, 0) as centro_prod_info
-        FROM dbo.produtos p
-        LEFT JOIN dbo.familias f ON p.familia = f.codigo
-        LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
-        LEFT JOIN dbo.iva i ON p.iva = i.factor
-        LEFT JOIN (
-            SELECT codigo, MAX(centro) as centro, MAX(informativo) as informativo
-            FROM dbo.produtoscentrosprod
-            GROUP BY codigo
-        ) pcp ON p.codigo = pcp.codigo
-        LEFT JOIN dbo.centrosprod cp ON pcp.centro = cp.codigo
-        WHERE {where_sql}
-        ORDER BY {sort_col} {sort_dir}
-        OFFSET {offset} ROWS FETCH NEXT {filters.page_size} ROWS ONLY
-    """
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    
-    items = []
-    for r in rows:
-        cod = r[0]
-        has_sales = check_product_sales_db(cursor, cod)
-        
-        if filters.has_sales is not None and has_sales != filters.has_sales:
-            continue
+    def __init__(self, cursor):
+        cursor.execute("SELECT codigo, descricao FROM dbo.familias")
+        self.families: Dict[int, str] = {int(r[0]): (r[1] or "") for r in cursor.fetchall()}
+        cursor.execute("SELECT codigo, descricao, familia FROM dbo.subfamilias")
+        self.subfamilies: Dict[int, Tuple[str, Optional[int]]] = {
+            int(r[0]): (r[1] or "", r[2]) for r in cursor.fetchall()
+        }
+        cursor.execute("SELECT factor FROM dbo.iva")
+        self.vat_factors: List[float] = [float(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        cursor.execute("SELECT codigo, descricao FROM dbo.centrosprod")
+        self.centers: Dict[int, str] = {int(r[0]): (r[1] or "") for r in cursor.fetchall()}
 
-        items.append(ProductItem(
-            codigo=r[0],
-            descricao=r[1] or "",
-            descricaocurta=r[2] or "",
-            familias=r[3],
-            familia_desc=r[4] or "",
-            subfamilia=r[5],
-            subfamilia_desc=r[6] or "",
-            iva=r[7],
-            iva_desc=format_iva_num(r[7]),
-            pvp1=float(r[9] or 0),
-            pvp2=float(r[10] or 0),
-            pvp3=float(r[11] or 0),
-            pvp4=float(r[12] or 0),
-            pvp5=float(r[13] or 0),
-            pvp6=float(r[14] or 0),
-            pvp7=float(r[15] or 0),
-            pvp8=float(r[16] or 0),
-            pvp9=float(r[17] or 0),
-            pvp10=float(r[18] or 0),
-            fundo=int(r[19] or 0),
-            fundo_hex=int_color_to_hex(r[19]),
-            letra=int(r[20] or 16777215),
-            letra_hex=int_color_to_hex(r[20]),
-            bloqueado=0,
-            frontoffice=1,
-            posicaofront=int(r[21] or 0),
-            plu=int(r[22] or 0),
-            codbarras=r[23] or "",
-            referencia=r[24] or "",
-            centro_prod=r[25],
-            centro_prod_desc=r[26] or "",
-            centro_prod_info=int(r[27] or 0),
-            cor=0,
-            cor_hex="#000000",
-            sync=0,
-            has_sales=has_sales,
-            can_edit_description=not has_sales
-        ))
-    
-    conn.close()
-    return items, total_count
+    def vat_exists(self, factor: float) -> bool:
+        return any(abs(f - float(factor)) < 0.001 for f in self.vat_factors)
 
+    def family_label(self, code: Optional[int]) -> str:
+        if code is None:
+            return "(Sem Família)"
+        return f"{self.families.get(int(code), '?')} (#{code})"
+
+    def subfamily_label(self, code: Optional[int]) -> str:
+        if not code:
+            return "(Sem Subfamília)"
+        return f"{self.subfamilies.get(int(code), ('?', None))[0]} (#{code})"
+
+
+# ======================================================================
+# Exportação CSV e etiquetas
+# ======================================================================
 
 def generate_csv_export(filters: ProductFilter, selected_codes: Optional[List[int]] = None) -> str:
     """Gera ficheiro CSV formatado para Excel com artigos e preços."""
     conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    
-    where_clauses = ["1=1"]
-    params = []
-    
-    if selected_codes:
-        placeholders = ",".join(["?"] * len(selected_codes))
-        where_clauses.append(f"p.codigo IN ({placeholders})")
-        params.extend(selected_codes)
-    else:
-        if filters.search and filters.search.strip():
-            st = f"%{filters.search.strip()}%"
-            where_clauses.append("(p.descricao LIKE ? OR CAST(p.codigo AS VARCHAR) LIKE ?)")
-            params.extend([st, st])
-        if filters.familia is not None:
-            where_clauses.append("p.familia = ?")
-            params.append(filters.familia)
-        if filters.subfamilia is not None:
-            where_clauses.append("p.subfam = ?")
-            params.append(filters.subfamilia)
-        if filters.iva is not None:
-            where_clauses.append("p.iva = ?")
-            params.append(filters.iva)
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if selected_codes:
+            products = _fetch_products_by_codes(cursor, selected_codes, with_sales=False, with_centros=False)
+            products.sort(key=lambda p: p.codigo)
+        else:
+            where_sql, params = _build_product_where(filters, schema)
+            cursor.execute(
+                f"SELECT {_product_select_sql(schema)} {PRODUCT_FROM_SQL} WHERE {where_sql} ORDER BY p.codigo ASC",
+                params
+            )
+            products = [_row_to_product(r, set()) for r in cursor.fetchall()]
+    finally:
+        conn.close()
 
-    where_sql = " AND ".join(where_clauses)
-    
-    sql = f"""
-        SELECT 
-            p.codigo, ISNULL(p.codigo_alf, 0) as plu, ISNULL(p.codbarras, '') as codbarras, ISNULL(p.referencia, '') as referencia, p.descricao, ISNULL(p.descricaocurta, '') as descricaocurta,
-            f.descricao as familia, sf.descricao as subfamilia, i.descricao as iva,
-            ISNULL(p.precovenda, 0) as pvp1, ISNULL(p.pvp2, 0) as pvp2, ISNULL(p.pvp3, 0) as pvp3, ISNULL(p.pvp4, 0) as pvp4, ISNULL(p.pvp5, 0) as pvp5,
-            ISNULL(p.pvp6, 0) as pvp6, ISNULL(p.pvp7, 0) as pvp7, ISNULL(p.pvp8, 0) as pvp8, ISNULL(p.pvp9, 0) as pvp9, ISNULL(p.pvp10, 0) as pvp10,
-            ISNULL(p.ordem, 0) as posicaofront
-        FROM dbo.produtos p
-        LEFT JOIN dbo.familias f ON p.familia = f.codigo
-        LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
-        LEFT JOIN dbo.iva i ON p.iva = i.factor
-        WHERE {where_sql}
-        ORDER BY p.codigo ASC
-    """
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    import io, csv
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
     writer.writerow([
@@ -386,21 +561,26 @@ def generate_csv_export(filters: ProductFilter, selected_codes: Optional[List[in
         "PVP 6", "PVP 7", "PVP 8", "PVP 9", "PVP 10",
         "Posicao POS"
     ])
-    for r in rows:
+    for p in products:
         writer.writerow([
-            r[0], r[1] if r[1] else "", r[2] or "", r[3] or "", r[4] or "", r[5] or "", r[6] or "", r[7] or "", r[8] or "",
-            f"{r[9]:.2f}", f"{r[10]:.2f}", f"{r[11]:.2f}", f"{r[12]:.2f}", f"{r[13]:.2f}",
-            f"{r[14]:.2f}", f"{r[15]:.2f}", f"{r[16]:.2f}", f"{r[17]:.2f}", f"{r[18]:.2f}",
-            r[19]
+            p.codigo, p.plu if p.plu else "", p.codbarras or "", p.referencia or "", p.descricao or "",
+            p.descricaocurta or "", p.familia_desc or "", p.subfamilia_desc or "", p.iva_desc or "",
+            *[f"{getattr(p, f'pvp{i}'):.2f}" for i in range(1, 11)],
+            p.posicaofront or 0
         ])
     return output.getvalue()
 
 
 def generate_shelf_labels_html(product_codes: List[int]) -> str:
     """Gera página HTML otimizada para impressão de etiquetas de prateleira."""
-    products = get_products_by_codes(product_codes)
+    conn = db_manager.get_connection()
+    try:
+        products = _fetch_products_by_codes(conn.cursor(), product_codes, with_sales=False, with_centros=False)
+    finally:
+        conn.close()
     date_str = datetime.now().strftime("%d/%m/%Y")
-    
+    esc = html.escape
+
     cards_html = ""
     for p in products:
         fam = (p.familia_desc or "ARTIGO").upper()
@@ -408,22 +588,22 @@ def generate_shelf_labels_html(product_codes: List[int]) -> str:
         <div class="label-card">
             <div class="card-header">
                 <span>COD: #{p.codigo}</span>
-                <span>{fam}</span>
+                <span>{esc(fam)}</span>
             </div>
-            <div class="card-title">{p.descricao}</div>
+            <div class="card-title">{esc(p.descricao or "")}</div>
             <div class="card-footer">
                 <div class="price-box">
                     <span class="price-val">{p.pvp1:.2f} €</span>
                 </div>
                 <div class="meta-box">
-                    <span class="vat-tag">C/ IVA {p.iva_desc or ""}</span>
+                    <span class="vat-tag">C/ IVA {esc(p.iva_desc or "")}</span>
                     <div class="date-tag">{date_str}</div>
                 </div>
             </div>
         </div>
         """
 
-    html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="utf-8">
@@ -435,10 +615,10 @@ def generate_shelf_labels_html(product_codes: List[int]) -> str:
         .btn-print {{ background: #2563eb; color: #fff; border: none; padding: 10px 20px; font-size: 13px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: background 0.2s; }}
         .btn-print:hover {{ background: #1d4ed8; }}
         .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; padding: 6mm; max-width: 210mm; margin: 0 auto; }}
-        .label-card {{ background: #fff; border: 2px solid #0f172a; border-radius: 8px; padding: 10px; height: 42mm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .label-card {{ background: #fff; border: 2px solid #0f172a; border-radius: 8px; padding: 10px; height: 42mm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
         .card-header {{ border-bottom: 1.5px solid #cbd5e1; padding-bottom: 3px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; color: #475569; letter-spacing: 0.5px; }}
         .card-title {{ font-size: 13px; font-weight: 700; color: #0f172a; margin: 4px 0; max-height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; }}
-        .card-footer {{ display: flex; align-items: flex-end; justify-content: space-between; border-top: 1.5px dashed #94a3b8; pt: 4px; margin-top: auto; }}
+        .card-footer {{ display: flex; align-items: flex-end; justify-content: space-between; border-top: 1.5px dashed #94a3b8; padding-top: 4px; margin-top: auto; }}
         .price-val {{ font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }}
         .meta-box {{ text-align: right; }}
         .vat-tag {{ font-size: 9px; font-weight: 700; background: #e2e8f0; color: #1e293b; padding: 2px 6px; border-radius: 4px; display: inline-block; }}
@@ -464,8 +644,11 @@ def generate_shelf_labels_html(product_codes: List[int]) -> str:
 </body>
 </html>
     """
-    return html
 
+
+# ======================================================================
+# Transformações de texto e preços
+# ======================================================================
 
 def calculate_new_price(old_price: float, mode: str, value: float, rounding: Optional[str]) -> float:
     """Calcula o novo preço com modos (fixed_add, percentage, fixed_set, multiply) e arredondamentos."""
@@ -479,7 +662,7 @@ def calculate_new_price(old_price: float, mode: str, value: float, rounding: Opt
         new_p = old_price * value
     else:
         new_p = old_price
-        
+
     if new_p < 0:
         new_p = 0.0
 
@@ -491,84 +674,15 @@ def calculate_new_price(old_price: float, mode: str, value: float, rounding: Opt
         new_p = round(new_p)
     elif rounding == "2_decimals":
         new_p = round(new_p, 2)
-        
+
     return round(new_p, 4)
 
-
-def get_products_by_codes(codes: List[int]) -> List[ProductItem]:
-    """Obtém lista detalhada de artigos por código diretamente do SQL Server."""
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
-    placeholders = ",".join(["?"] * len(codes))
-    sql = f"""
-        SELECT 
-            p.codigo, p.descricao, ISNULL(p.descricaocurta, '') as descricaocurta, p.familia, f.descricao as familia_desc,
-            p.subfam, sf.descricao as subfamilia_desc, p.iva, i.descricao as iva_desc,
-            ISNULL(p.precovenda, 0) as pvp1, ISNULL(p.pvp2, 0) as pvp2, ISNULL(p.pvp3, 0) as pvp3, ISNULL(p.pvp4, 0) as pvp4, ISNULL(p.pvp5, 0) as pvp5,
-            ISNULL(p.pvp6, 0) as pvp6, ISNULL(p.pvp7, 0) as pvp7, ISNULL(p.pvp8, 0) as pvp8, ISNULL(p.pvp9, 0) as pvp9, ISNULL(p.pvp10, 0) as pvp10,
-            ISNULL(p.fundo, 0) as fundo, ISNULL(p.letra, 16777215) as letra,
-            ISNULL(p.ordem, 0) as posicaofront,
-            ISNULL(p.codigo_alf, 0) as plu,
-            ISNULL(p.codbarras, '') as codbarras,
-            ISNULL(p.referencia, '') as referencia
-        FROM dbo.produtos p
-        LEFT JOIN dbo.familias f ON p.familia = f.codigo
-        LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
-        LEFT JOIN dbo.iva i ON p.iva = i.factor
-        WHERE p.codigo IN ({placeholders})
-    """
-    cursor.execute(sql, codes)
-    rows = cursor.fetchall()
-    items = []
-    for r in rows:
-        cod = r[0]
-        has_sales = check_product_sales_db(cursor, cod)
-        items.append(ProductItem(
-            codigo=r[0],
-            descricao=r[1] or "",
-            descricaocurta=r[2] or "",
-            familias=r[3],
-            familia_desc=r[4] or "",
-            subfamilia=r[5],
-            subfamilia_desc=r[6] or "",
-            iva=r[7],
-            iva_desc=format_iva_num(r[7]),
-            pvp1=float(r[9] or 0),
-            pvp2=float(r[10] or 0),
-            pvp3=float(r[11] or 0),
-            pvp4=float(r[12] or 0),
-            pvp5=float(r[13] or 0),
-            pvp6=float(r[14] or 0),
-            pvp7=float(r[15] or 0),
-            pvp8=float(r[16] or 0),
-            pvp9=float(r[17] or 0),
-            pvp10=float(r[18] or 0),
-            fundo=int(r[19] or 0),
-            fundo_hex=int_color_to_hex(r[19]),
-            letra=int(r[20] or 16777215),
-            letra_hex=int_color_to_hex(r[20]),
-            bloqueado=0,
-            frontoffice=1,
-            posicaofront=int(r[21] or 0),
-            plu=int(r[22] or 0),
-            codbarras=r[23] or "",
-            referencia=r[24] or "",
-            cor=0,
-            cor_hex="#000000",
-            sync=0,
-            has_sales=has_sales,
-            can_edit_description=not has_sales
-        ))
-    conn.close()
-    return items
-
-
-import re
 
 PT_LOWERCASE_WORDS = {
     "de", "do", "da", "dos", "das", "e", "c/", "s/", "com", "sem", "para", "por", "em",
     "a", "o", "as", "os", "um", "uma", "uns", "umas", "kg", "g", "gr", "mg", "ml", "cl", "dl", "l", "lt"
 }
+
 
 def correct_pt_orthography(text: str) -> str:
     """Corrige pontuação, espaçamento e preposições em português para nomes de artigos."""
@@ -584,7 +698,7 @@ def correct_pt_orthography(text: str) -> str:
     # 3. Corrige espaços em pontuações
     text = re.sub(r'\s+([,.!?:;])', r'\1', text)
     text = re.sub(r'([,.!?:;])(?=[^\s\d,.!?:;])', r'\1 ', text)
-    
+
     # 4. Capitaliza palavras mantendo preposições e unidades em minúsculas
     words = text.split(" ")
     formatted_words = []
@@ -606,6 +720,7 @@ def remove_accents(text: str) -> str:
         return ""
     nfd = unicodedata.normalize('NFD', text)
     return "".join(c for c in nfd if unicodedata.category(c) != 'Mn')
+
 
 def remove_accents_uppercase(text: str) -> str:
     """Remove acentos e converte para MAIÚSCULAS."""
@@ -637,319 +752,508 @@ def transform_text_case(original_text: str, mode: str, fallback_new: Optional[st
     return original_text or ""
 
 
+TEXT_MODE_SUFFIX = {
+    "titlecase": " (Primeira Letra De Cada Palavra)",
+    "capitalize": " (Primeira Letra Da Frase)",
+    "orthography": " (Ortografia Correta - Português)",
+    "unaccented_uppercase": " (MAIÚSCULAS SEM ACENTOS)",
+    "unaccented": " (Sem Acentos)",
+}
+
+
+def _text_mode_suffix(mode: str, short: bool) -> str:
+    if mode == "uppercase":
+        return " (Maiúsculas)" if short else " (Tudo em Maiúsculas)"
+    if mode == "lowercase":
+        return " (Minúsculas)" if short else " (Tudo em Minúsculas)"
+    return TEXT_MODE_SUFFIX.get(mode, "")
+
+
+# ======================================================================
+# Motor de alterações (usado igualmente na simulação e na gravação)
+# ======================================================================
+
+class Change:
+    """Uma alteração a um campo de um artigo. A simulação mostra-a; a gravação executa-a."""
+
+    def __init__(self, field_name: str, label: str, old: Any, new: Any,
+                 column: Optional[str] = None, value: Any = None,
+                 blocked: bool = False, reason: Optional[str] = None,
+                 centros: Optional[List[Tuple[int, int]]] = None,
+                 price_idx: Optional[int] = None):
+        self.field_name = field_name
+        self.label = label
+        self.old = old
+        self.new = new
+        self.column = column
+        self.value = value
+        self.blocked = blocked
+        self.reason = reason
+        self.centros = centros
+        self.price_idx = price_idx
+
+    def to_diff(self) -> FieldDiff:
+        return FieldDiff(
+            field_name=self.field_name,
+            field_label=self.label,
+            old_value=self.old,
+            new_value=self.new,
+            blocked=self.blocked,
+            reason=self.reason,
+        )
+
+
+def _blocked(field_name: str, label: str, old: Any, new: Any, reason: str) -> Change:
+    return Change(field_name, label, old, new, blocked=True, reason=reason)
+
+
+def _sales_block_reason(p: ProductItem) -> str:
+    if not p.sales_check_ok:
+        return "Não foi possível verificar se o artigo tem vendas — a designação fica protegida por segurança."
+    return "Não é possível alterar a designação de artigos com vendas efetuadas."
+
+
+def _text_change(schema: SchemaInfo, field_name: str, column: str, label: str,
+                 old: str, new: str) -> Optional[Change]:
+    old = old or ""
+    new = new if new is not None else ""
+    if new == old:
+        return None
+    limit = _text_limit(schema, "produtos", column)
+    if limit is not None and len(new) > limit:
+        return _blocked(field_name, label, old or "(Vazio)", new,
+                        f"O texto tem {len(new)} caracteres e a coluna '{column}' só aceita {limit}.")
+    return Change(field_name, label, old or "(Vazio)", new or "(Vazio)", column=column, value=new)
+
+
+def _descricao_change(schema: SchemaInfo, p: ProductItem, new_val: Optional[str], label: str) -> Optional[Change]:
+    if new_val is None or new_val == p.descricao:
+        return None
+    if p.has_sales:
+        return _blocked("descricao", label, p.descricao, new_val, _sales_block_reason(p))
+    if not new_val.strip():
+        return _blocked("descricao", label, p.descricao, "(Vazio)", "A designação não pode ficar vazia.")
+    return _text_change(schema, "descricao", "descricao", label, p.descricao, new_val)
+
+
+def _color_change(field_name: str, column: str, label: str, schema: SchemaInfo,
+                  old_int: int, old_hex: str, new_hex: Optional[str], optional_column: bool = False) -> Optional[Change]:
+    if not new_hex:
+        return None
+    if not is_valid_hex_color(new_hex):
+        return _blocked(field_name, label, old_hex, new_hex, "Cor inválida (use o formato #RRGGBB).")
+    new_int = hex_to_int_color(new_hex)
+    if new_int == old_int:
+        return None
+    new_disp = "#" + new_hex.strip().lstrip('#').upper()
+    if optional_column and not _has_optional_int_col(schema, column):
+        return _blocked(field_name, label, old_hex, new_disp,
+                        f"A coluna '{column}' não existe na tabela produtos desta base de dados.")
+    return Change(field_name, label, f"{old_hex} (int: {old_int})", f"{new_disp} (int: {new_int})",
+                  column=column, value=new_int)
+
+
+def _price_change(idx: int, label: str, old_val: float, new_val: float) -> Optional[Change]:
+    if _float_eq(old_val, new_val):
+        return None
+    col = "precovenda" if idx == 1 else f"pvp{idx}"
+    return Change(f"pvp{idx}", label, f"{old_val:.2f} €", f"{new_val:.2f} €",
+                  column=col, value=new_val, price_idx=idx)
+
+
+def _pvp_index(field: Optional[str]) -> Optional[int]:
+    if field and field.startswith("pvp") and field[3:].isdigit():
+        idx = int(field[3:])
+        if 1 <= idx <= 10:
+            return idx
+    return None
+
+
+def _familia_change(lookups: _Lookups, p: ProductItem, new_fam: Optional[int]) -> Optional[Change]:
+    if new_fam is None or new_fam == p.familias:
+        return None
+    label = "Família do Produto"
+    if int(new_fam) not in lookups.families:
+        return _blocked("familia", label, lookups.family_label(p.familias), f"#{new_fam}",
+                        f"A família {new_fam} não existe na tabela de famílias.")
+    return Change("familia", label, lookups.family_label(p.familias), lookups.family_label(new_fam),
+                  column="familia", value=int(new_fam))
+
+
+def _subfamilia_change(lookups: _Lookups, p: ProductItem, new_sub: Optional[int],
+                       target_family: Optional[int]) -> Optional[Change]:
+    new_code = int(new_sub or 0)
+    old_code = int(p.subfamilia or 0)
+    if new_code == old_code:
+        return None
+    label = "Subfamília"
+    old_disp = lookups.subfamily_label(old_code)
+    if new_code:
+        sub = lookups.subfamilies.get(new_code)
+        if sub is None:
+            return _blocked("subfam", label, old_disp, f"#{new_code}",
+                            f"A subfamília {new_code} não existe na tabela de subfamílias.")
+        sub_family = sub[1]
+        if sub_family is not None and target_family is not None and int(sub_family) != int(target_family):
+            return _blocked("subfam", label, old_disp, lookups.subfamily_label(new_code),
+                            f"A subfamília pertence à família {lookups.family_label(sub_family)}, "
+                            f"não à família do artigo {lookups.family_label(target_family)}.")
+    return Change("subfam", label, old_disp, lookups.subfamily_label(new_code), column="subfam", value=new_code)
+
+
+def _iva_change(lookups: _Lookups, p: ProductItem, new_iva: Optional[float]) -> Optional[Change]:
+    if new_iva is None:
+        return None
+    if p.iva is not None and abs(float(p.iva) - float(new_iva)) < 0.001:
+        return None
+    label = "Taxa de IVA"
+    if not lookups.vat_exists(new_iva):
+        return _blocked("iva", label, format_iva_num(p.iva), format_iva_num(new_iva),
+                        f"A taxa {format_iva_num(new_iva)} não existe na tabela de IVA (dbo.iva).")
+    return Change("iva", label, format_iva_num(p.iva), format_iva_num(new_iva), column="iva", value=float(new_iva))
+
+
+def _optional_state_change(schema: SchemaInfo, p: ProductItem, field: str, label: str,
+                           new_val: Optional[int], names: Dict[int, str]) -> Optional[Change]:
+    if new_val is None:
+        return None
+    new_val = int(new_val)
+    old_val = int(getattr(p, field))
+    if new_val == old_val:
+        return None
+    if not _has_optional_int_col(schema, field):
+        return _blocked(field, label, names.get(old_val, str(old_val)), names.get(new_val, str(new_val)),
+                        f"A coluna '{field}' não existe na tabela produtos desta base de dados.")
+    return Change(field, label, names.get(old_val, str(old_val)), names.get(new_val, str(new_val)),
+                  column=field, value=new_val)
+
+
+def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaInfo,
+                          lookups: _Lookups, seq_index: Dict[int, int]) -> List[Change]:
+    changes: List[Optional[Change]] = []
+
+    # 1. Designação (bloqueada se tiver vendas ou se não for possível verificar)
+    if req.apply_descricao:
+        new_val = transform_text_case(p.descricao, req.descricao_mode, req.new_descricao)
+        changes.append(_descricao_change(schema, p, new_val,
+                                         "Designação / Nome" + _text_mode_suffix(req.descricao_mode, short=False)))
+
+    # 1.2 Descrição curta
+    if req.apply_descricaocurta:
+        new_val = transform_text_case(p.descricaocurta or "", req.descricaocurta_mode, req.new_descricaocurta)
+        changes.append(_text_change(schema, "descricaocurta", "descricaocurta",
+                                    "Descrição Curta (POS)" + _text_mode_suffix(req.descricaocurta_mode, short=True),
+                                    p.descricaocurta or "", new_val))
+
+    # 1.4 PLU (codigo_alf)
+    if req.apply_plu:
+        new_plu: Optional[int] = None
+        label = "PLU (Teclado/Balança)"
+        if req.plu_mode == "direct" and req.new_plu is not None:
+            new_plu = int(req.new_plu)
+        elif req.plu_mode == "sequence":
+            new_plu = int(req.plu_seq_start or 1) + seq_index.get(p.codigo, 0)
+            label = "PLU (Sequencial)"
+        elif req.plu_mode == "copy_codigo":
+            new_plu = p.codigo
+            label = "PLU (Cópia do Código)"
+        elif req.plu_mode == "clear":
+            new_plu = 0
+        if new_plu is not None and new_plu != (p.plu or 0):
+            if new_plu < 0:
+                changes.append(_blocked("plu", label, str(p.plu), str(new_plu), "O PLU não pode ser negativo."))
+            else:
+                changes.append(Change("plu", label, str(p.plu or 0), str(new_plu), column="codigo_alf", value=new_plu))
+
+    # 1.5 Código de barras e referência
+    if req.apply_codbarras:
+        new_cb: Optional[str] = None
+        label = "Código de Barras"
+        if req.codbarras_mode == "direct" and req.new_codbarras is not None:
+            new_cb = req.new_codbarras.strip()
+        elif req.codbarras_mode == "sequence":
+            new_cb = str(int(req.codbarras_seq_start or 1001) + seq_index.get(p.codigo, 0))
+            label = "Código de Barras (Sequencial)"
+        elif req.codbarras_mode == "clear":
+            new_cb = ""
+        if new_cb is not None:
+            changes.append(_text_change(schema, "codbarras", "codbarras", label, p.codbarras or "", new_cb))
+
+    if req.apply_referencia and req.new_referencia is not None:
+        changes.append(_text_change(schema, "referencia", "referencia", "Referência do Artigo",
+                                    p.referencia or "", req.new_referencia.strip()))
+
+    # 2. Cores
+    if req.colors.apply_fundo:
+        changes.append(_color_change("fundo", "fundo", "Cor de Fundo do Botão (POS)", schema,
+                                     p.fundo or 0, p.fundo_hex, req.colors.fundo_hex))
+    if req.colors.apply_letra:
+        changes.append(_color_change("letra", "letra", "Cor do Texto do Botão (POS)", schema,
+                                     p.letra if p.letra is not None else 16777215, p.letra_hex, req.colors.letra_hex))
+    if req.colors.apply_cor:
+        changes.append(_color_change("cor", "cor", "Cor Adicional (cor)", schema,
+                                     p.cor or 0, p.cor_hex, req.colors.cor_hex, optional_column=True))
+
+    # 3. Preços PVP 1 a 10
+    if req.prices.apply_price:
+        mode = req.prices.mode
+        target = req.prices.target_pvp or "pvp1"
+        is_copy = (mode == "copy_pvp" or target.startswith("copy_"))
+        if is_copy:
+            src_idx = _pvp_index(req.prices.source_pvp) or 1
+            src_price = float(getattr(p, f"pvp{src_idx}", 0.0))
+            if target in ("all", "copy_pvp1"):
+                indices = [i for i in range(1, 11) if i != src_idx]
+            else:
+                indices = [_pvp_index(target) or 2]
+            for idx in indices:
+                if idx == src_idx:
+                    continue
+                changes.append(_price_change(idx, f"Preço PVP {idx} (Cópia de PVP {src_idx})",
+                                             float(getattr(p, f"pvp{idx}", 0.0)), src_price))
+        else:
+            if target == "all":
+                indices = list(range(1, 11))
+            else:
+                idx = _pvp_index(target)
+                indices = [idx] if idx else []
+            for idx in indices:
+                old_val = float(getattr(p, f"pvp{idx}", 0.0))
+                new_val = calculate_new_price(old_val, mode, float(req.prices.value or 0), req.prices.rounding)
+                changes.append(_price_change(idx, f"Preço PVP {idx}", old_val, new_val))
+
+    # 4. Família e subfamília
+    target_family = p.familias
+    if req.apply_familia and req.new_familia is not None:
+        fam_change = _familia_change(lookups, p, req.new_familia)
+        changes.append(fam_change)
+        if fam_change is not None and not fam_change.blocked:
+            target_family = req.new_familia
+    if req.apply_subfamilia:
+        changes.append(_subfamilia_change(lookups, p, req.new_subfamilia, target_family))
+
+    # 5. IVA
+    if req.apply_iva:
+        changes.append(_iva_change(lookups, p, req.new_iva))
+
+    # 6. Centro de produção
+    if req.apply_centro_prod:
+        new_center = req.new_centro_prod if (req.new_centro_prod and req.new_centro_prod > 0) else None
+        new_rows = [(int(new_center), int(req.centro_prod_info or 0))] if new_center else []
+        old_rows = sorted((c["centro"], c["informativo"]) for c in (p.centros_prod or []))
+        if sorted(new_rows) != old_rows:
+            old_disp = p.centro_prod_desc or "(Sem Centro)"
+            if len(old_rows) > 1:
+                old_disp += f" (+{len(old_rows) - 1})"
+            label = "Centro de Produção"
+            if new_center and new_center not in lookups.centers:
+                changes.append(_blocked("centro_prod", label, old_disp, f"#{new_center}",
+                                        f"O centro de produção {new_center} não existe."))
+            else:
+                new_disp = (f"{lookups.centers[new_center]} ({'Informativo' if req.centro_prod_info else 'Preparação'})"
+                            if new_center else "(Remover / Nenhum)")
+                changes.append(Change("centro_prod", label, old_disp, new_disp, centros=new_rows))
+
+    # 7. Estado, visibilidade e posição
+    if req.apply_bloqueado:
+        changes.append(_optional_state_change(schema, p, "bloqueado", "Estado de Bloqueio", req.new_bloqueado,
+                                              {0: "Ativo", 1: "Bloqueado"}))
+    if req.apply_frontoffice:
+        changes.append(_optional_state_change(schema, p, "frontoffice", "Visibilidade FrontOffice", req.new_frontoffice,
+                                              {1: "Visível no POS", 0: "Oculto no POS"}))
+    if req.apply_posicaofront and req.new_posicaofront is not None:
+        new_pos = int(req.new_posicaofront)
+        if new_pos != (p.posicaofront or 0):
+            if new_pos < 0:
+                changes.append(_blocked("posicaofront", "Posição POS", str(p.posicaofront or 0), str(new_pos),
+                                        "A posição não pode ser negativa."))
+            else:
+                changes.append(Change("posicaofront", "Posição POS", str(p.posicaofront or 0), str(new_pos),
+                                      column="ordem", value=new_pos))
+
+    return [c for c in changes if c is not None]
+
+
+def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change], mark_sync: bool) -> bool:
+    """Executa as alterações (não bloqueadas) de um artigo dentro da transação em curso."""
+    sets: List[str] = []
+    params: List[Any] = []
+    touched = False
+    history_ok = _has_table_cols(schema, "historico_precos", ("datahora", "codigo", "pvp", "siva", "preco"))
+
+    for ch in changes:
+        if ch.blocked:
+            continue
+        if ch.centros is not None:
+            cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (codigo,))
+            for centro, info in ch.centros:
+                cursor.execute(
+                    "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, ?)",
+                    (codigo, centro, info)
+                )
+            touched = True
+        elif ch.column:
+            sets.append(f"{ch.column} = ?")
+            params.append(ch.value)
+            touched = True
+            if ch.price_idx and history_ok:
+                cursor.execute(
+                    "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)",
+                    (codigo, ch.price_idx, ch.value)
+                )
+
+    if not touched:
+        return False
+    if mark_sync and "sync" in _prod_cols(schema):
+        sets.append("sync = 1")
+    if sets:
+        cursor.execute(f"UPDATE dbo.produtos SET {', '.join(sets)} WHERE codigo = ?", params + [codigo])
+    return True
+
+
+def _has_applicable(changes: List[Change]) -> bool:
+    return any(not c.blocked for c in changes)
+
+
+# ======================================================================
+# Edição em massa
+# ======================================================================
+
 def preview_bulk_edit(req: BulkEditRequest) -> BulkEditPreviewResponse:
     """Gera a simulação (dry-run) das alterações sem alterar a DB."""
-    products = get_products_by_codes(req.product_codes)
+    codes = _unique_codes(req.product_codes)
+    seq_index = {c: i for i, c in enumerate(codes)}
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        lookups = _Lookups(cursor)
+        products = _fetch_products_by_codes(cursor, codes)
+    finally:
+        conn.close()
+
     previews: List[ProductDiff] = []
     blocked_count = 0
-
-    families_map = {f["codigo"]: f["descricao"] for f in get_families()}
-    vats_map = {v["codigo"]: v["descricao"] for v in get_vats()}
-
+    affected = 0
     for p in products:
-        diffs: List[FieldDiff] = []
-        
-        # 1. Designação / Nome (Com validação estrita de vendas)
-        if req.apply_descricao:
-            if p.has_sales:
-                blocked_count += 1
-                diffs.append(FieldDiff(
-                    field_name="descricao",
-                    field_label="Designação / Nome",
-                    old_value=p.descricao,
-                    new_value=p.descricao,
-                    blocked=True,
-                    reason="Não é possível alterar a designação de artigos com vendas efetuadas."
-                ))
-            else:
-                new_val = transform_text_case(p.descricao, req.descricao_mode, req.new_descricao)
-                if new_val != p.descricao:
-                    label_suffix = ""
-                    if req.descricao_mode == "uppercase":
-                        label_suffix = " (Tudo em Maiúsculas)"
-                    elif req.descricao_mode == "lowercase":
-                        label_suffix = " (Tudo em Minúsculas)"
-                    elif req.descricao_mode == "titlecase":
-                        label_suffix = " (Primeira Letra De Cada Palavra)"
-                    elif req.descricao_mode == "capitalize":
-                        label_suffix = " (Primeira Letra Da Frase)"
-                    elif req.descricao_mode == "orthography":
-                        label_suffix = " (Ortografia Correta - Português)"
-                    elif req.descricao_mode == "unaccented_uppercase":
-                        label_suffix = " (MAIÚSCULAS SEM ACENTOS)"
-                    elif req.descricao_mode == "unaccented":
-                        label_suffix = " (Sem Acentos)"
-
-                    diffs.append(FieldDiff(
-                        field_name="descricao",
-                        field_label=f"Designação / Nome{label_suffix}",
-                        old_value=p.descricao or "(Vazio)",
-                        new_value=new_val or "(Vazio)",
-                        blocked=False
-                    ))
-
-        # 1.2 Descrição Curta (POS)
-        if req.apply_descricaocurta:
-            new_val = transform_text_case(p.descricaocurta or "", req.descricaocurta_mode, req.new_descricaocurta)
-            if new_val != (p.descricaocurta or ""):
-                label_suffix = ""
-                if req.descricaocurta_mode == "uppercase":
-                    label_suffix = " (Maiúsculas)"
-                elif req.descricaocurta_mode == "lowercase":
-                    label_suffix = " (Minúsculas)"
-                elif req.descricaocurta_mode == "titlecase":
-                    label_suffix = " (Primeira Letra De Cada Palavra)"
-                elif req.descricaocurta_mode == "capitalize":
-                    label_suffix = " (Primeira Letra Da Frase)"
-                elif req.descricaocurta_mode == "orthography":
-                    label_suffix = " (Ortografia Correta - Português)"
-                elif req.descricaocurta_mode == "unaccented_uppercase":
-                    label_suffix = " (MAIÚSCULAS SEM ACENTOS)"
-                elif req.descricaocurta_mode == "unaccented":
-                    label_suffix = " (Sem Acentos)"
-
-                diffs.append(FieldDiff(
-                    field_name="descricaocurta",
-                    field_label=f"Descrição Curta (POS){label_suffix}",
-                    old_value=p.descricaocurta or "(Vazio)",
-                    new_value=new_val or "(Vazio)",
-                    blocked=False
-                ))
-
-        # 1.4 PLU (Balança / Teclado)
-        if req.apply_plu:
-            if req.plu_mode == "direct" and req.new_plu is not None:
-                if req.new_plu != p.plu:
-                    diffs.append(FieldDiff(
-                        field_name="plu",
-                        field_label="PLU (Teclado/Balança)",
-                        old_value=str(p.plu),
-                        new_value=str(req.new_plu),
-                        blocked=False
-                    ))
-            elif req.plu_mode == "sequence":
-                seq_val = (req.plu_seq_start or 1) + (req.product_codes.index(p.codigo))
-                if seq_val != p.plu:
-                    diffs.append(FieldDiff(
-                        field_name="plu",
-                        field_label="PLU (Sequencial)",
-                        old_value=str(p.plu),
-                        new_value=str(seq_val),
-                        blocked=False
-                    ))
-            elif req.plu_mode == "copy_codigo":
-                if p.codigo != p.plu:
-                    diffs.append(FieldDiff(
-                        field_name="plu",
-                        field_label="PLU (Cópia do Código)",
-                        old_value=str(p.plu),
-                        new_value=str(p.codigo),
-                        blocked=False
-                    ))
-            elif req.plu_mode == "clear":
-                if p.plu != 0:
-                    diffs.append(FieldDiff(
-                        field_name="plu",
-                        field_label="PLU (Teclado/Balança)",
-                        old_value=str(p.plu),
-                        new_value="0",
-                        blocked=False
-                    ))
-
-        # 1.5 Código de Barras & Referência (Sem alterar código interno)
-        if req.apply_codbarras:
-            if req.codbarras_mode == "direct" and req.new_codbarras is not None:
-                if req.new_codbarras != p.codbarras:
-                    diffs.append(FieldDiff(
-                        field_name="codbarras",
-                        field_label="Código de Barras",
-                        old_value=p.codbarras or "(Vazio)",
-                        new_value=req.new_codbarras or "(Vazio)",
-                        blocked=False
-                    ))
-            elif req.codbarras_mode == "sequence":
-                seq_val = str((req.codbarras_seq_start or 1001) + (req.product_codes.index(p.codigo)))
-                if seq_val != p.codbarras:
-                    diffs.append(FieldDiff(
-                        field_name="codbarras",
-                        field_label="Código de Barras (Sequencial)",
-                        old_value=p.codbarras or "(Vazio)",
-                        new_value=seq_val,
-                        blocked=False
-                    ))
-            elif req.codbarras_mode == "clear":
-                if p.codbarras:
-                    diffs.append(FieldDiff(
-                        field_name="codbarras",
-                        field_label="Código de Barras",
-                        old_value=p.codbarras,
-                        new_value="(Removido)",
-                        blocked=False
-                    ))
-
-        if req.apply_referencia and req.new_referencia is not None:
-            if req.new_referencia != p.referencia:
-                diffs.append(FieldDiff(
-                    field_name="referencia",
-                    field_label="Referência do Artigo",
-                    old_value=p.referencia or "(Vazio)",
-                    new_value=req.new_referencia or "(Vazio)",
-                    blocked=False
-                ))
-
-        # 2. Cores
-        if req.colors.apply_fundo and req.colors.fundo_hex:
-            new_fundo = hex_to_int_color(req.colors.fundo_hex)
-            if new_fundo != p.fundo:
-                diffs.append(FieldDiff(
-                    field_name="fundo",
-                    field_label="Cor de Fundo do Botão (POS)",
-                    old_value=f"{p.fundo_hex} (int: {p.fundo})",
-                    new_value=f"{req.colors.fundo_hex.upper()} (int: {new_fundo})",
-                    blocked=False
-                ))
-                
-        if req.colors.apply_letra and req.colors.letra_hex:
-            new_letra = hex_to_int_color(req.colors.letra_hex)
-            if new_letra != p.letra:
-                diffs.append(FieldDiff(
-                    field_name="letra",
-                    field_label="Cor do Texto do Botão (POS)",
-                    old_value=f"{p.letra_hex} (int: {p.letra})",
-                    new_value=f"{req.colors.letra_hex.upper()} (int: {new_letra})",
-                    blocked=False
-                ))
-
-        # 3. Preços PVP 1 a PVP 10 (Suporte a alteração e cópia entre PVPs)
-        if req.prices.apply_price:
-            mode = req.prices.mode
-            target = req.prices.target_pvp
-            source_field = req.prices.source_pvp or "pvp1"
-            
-            is_copy = (mode == "copy_pvp" or target == "copy_pvp1" or target.startswith("copy_"))
-
-            if is_copy:
-                src_price = getattr(p, source_field, 0.0)
-                src_num = source_field[3:] if (source_field.startswith("pvp") and source_field[3:].isdigit()) else "1"
-                
-                if target in ("all", "copy_pvp1"):
-                    pvp_indices = [i for i in range(1, 11) if f"pvp{i}" != source_field]
-                elif target.startswith("pvp") and target[3:].isdigit():
-                    pvp_indices = [int(target[3:])]
-                else:
-                    pvp_indices = [2]
-
-                for idx in pvp_indices:
-                    field_key = f"pvp{idx}"
-                    old_val = getattr(p, field_key, 0.0)
-                    new_val = src_price
-                    if new_val != old_val:
-                        diffs.append(FieldDiff(
-                            field_name=field_key,
-                            field_label=f"Preço PVP {idx} (Cópia de PVP {src_num})",
-                            old_value=f"{old_val:.2f} €",
-                            new_value=f"{new_val:.2f} €",
-                            blocked=False
-                        ))
-            else:
-                pvp_indices = []
-                if target == "all":
-                    pvp_indices = list(range(1, 11))
-                elif target.startswith("pvp") and target[3:].isdigit():
-                    pvp_indices = [int(target[3:])]
-
-                for idx in pvp_indices:
-                    field_key = f"pvp{idx}"
-                    old_val = getattr(p, field_key, 0.0)
-                    new_val = calculate_new_price(old_val, mode, req.prices.value, req.prices.rounding)
-                    
-                    if new_val != old_val:
-                        diffs.append(FieldDiff(
-                            field_name=field_key,
-                            field_label=f"Preço PVP {idx}",
-                            old_value=f"{old_val:.2f} €",
-                            new_value=f"{new_val:.2f} €",
-                            blocked=False
-                        ))
-
-        # 4. Família
-        if req.apply_familia and req.new_familia is not None:
-            if req.new_familia != p.familias:
-                old_fam = families_map.get(p.familias, str(p.familias))
-                new_fam = families_map.get(req.new_familia, str(req.new_familia))
-                diffs.append(FieldDiff(
-                    field_name="familia",
-                    field_label="Família do Produto",
-                    old_value=old_fam,
-                    new_value=new_fam,
-                    blocked=False
-                ))
-
-        # 5. IVA
-        if req.apply_iva and req.new_iva is not None:
-            if req.new_iva != p.iva:
-                old_iva = format_iva_num(p.iva)
-                new_iva = format_iva_num(req.new_iva)
-                diffs.append(FieldDiff(
-                    field_name="iva",
-                    field_label="Taxa de IVA",
-                    old_value=old_iva,
-                    new_value=new_iva,
-                    blocked=False
-                ))
-
-        # 6. Centro de Produção (Cozinha, Bar, Bebidas, etc.)
-        if req.apply_centro_prod:
-            centers_map = {c.codigo: c.descricao for c in get_production_centers()}
-            old_center = p.centro_prod_desc or "(Sem Centro)"
-            new_center = centers_map.get(req.new_centro_prod, "(Remover / Nenhum)") if (req.new_centro_prod and req.new_centro_prod > 0) else "(Remover / Nenhum)"
-            if req.new_centro_prod != p.centro_prod or req.centro_prod_info != p.centro_prod_info:
-                diffs.append(FieldDiff(
-                    field_name="centro_prod",
-                    field_label="Centro de Produção",
-                    old_value=old_center,
-                    new_value=f"{new_center} ({'Informativo' if req.centro_prod_info else 'Preparação'})" if (req.new_centro_prod and req.new_centro_prod > 0) else new_center,
-                    blocked=False
-                ))
-
-        if diffs:
-            previews.append(ProductDiff(
-                codigo=p.codigo,
-                descricao=p.descricao,
-                has_sales=p.has_sales,
-                diffs=diffs
-            ))
+        changes = _compute_bulk_changes(p, req, schema, lookups, seq_index)
+        if not changes:
+            continue
+        blocked_count += sum(1 for c in changes if c.blocked)
+        if _has_applicable(changes):
+            affected += 1
+        previews.append(ProductDiff(codigo=p.codigo, descricao=p.descricao, has_sales=p.has_sales,
+                                    diffs=[c.to_diff() for c in changes]))
 
     return BulkEditPreviewResponse(
-        total_selected=len(req.product_codes),
-        total_affected=len(previews),
+        total_selected=len(codes),
+        total_affected=affected,
         blocked_descriptions_count=blocked_count,
         previews=previews
     )
 
 
-def create_backup_snapshot(products: List[ProductItem], description: str) -> str:
-    """Cria um ficheiro JSON de backup com o estado anterior dos produtos."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"backup_{ts}.json"
+def apply_bulk_edit(req: BulkEditRequest) -> Tuple[bool, str, int]:
+    """Aplica as alterações em massa na base de dados SQL Server dentro de uma transação atómica."""
+    codes = _unique_codes(req.product_codes)
+    seq_index = {c: i for i, c in enumerate(codes)}
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        lookups = _Lookups(cursor)
+        products = _fetch_products_by_codes(cursor, codes)
+        if not products:
+            return False, "Nenhum artigo encontrado para os códigos especificados.", 0
+
+        plan = []
+        blocked_total = 0
+        for p in products:
+            changes = _compute_bulk_changes(p, req, schema, lookups, seq_index)
+            blocked_total += sum(1 for c in changes if c.blocked)
+            if _has_applicable(changes):
+                plan.append((p, changes))
+
+        if not plan:
+            return True, "Nenhuma alteração a aplicar (os artigos já têm estes valores ou as alterações estão bloqueadas).", 0
+
+        # 1. Cópia de segurança obrigatória antes de gravar
+        try:
+            backup_name = create_backup_snapshot([p for p, _ in plan], f"Edição em massa de {len(plan)} artigos")
+        except Exception as e:
+            return False, f"Não foi possível criar a cópia de segurança ({e}). Nenhuma alteração foi gravada.", 0
+
+        # 2. Transação atómica
+        try:
+            affected = 0
+            for p, changes in plan:
+                if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync):
+                    affected += 1
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return False, f"Erro ao aplicar alterações na base de dados (Transação revertida): {str(e)}", 0
+
+        msg = f"Atualização de {affected} artigos concluída com sucesso na base de dados! (Backup: {backup_name})"
+        if blocked_total:
+            msg += f" {blocked_total} alteração(ões) bloqueada(s) não foram aplicadas."
+        return True, msg, affected
+    finally:
+        conn.close()
+
+
+# ======================================================================
+# Cópias de segurança
+# ======================================================================
+
+def _read_family_colors(cursor, codes: List[int]) -> List[Dict[str, Any]]:
+    result = []
+    for chunk in _chunks(_unique_codes(codes)):
+        cursor.execute(
+            f"SELECT codigo, descricao, ISNULL(fundo, 0), ISNULL(letra, 16777215) FROM dbo.familias "
+            f"WHERE codigo IN ({_placeholders(len(chunk))})",
+            chunk
+        )
+        for r in cursor.fetchall():
+            result.append({"codigo": int(r[0]), "descricao": r[1] or "", "fundo": int(r[2]), "letra": int(r[3])})
+    return result
+
+
+def create_backup_snapshot(products: List[ProductItem], description: str,
+                           families: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Cria um ficheiro JSON de backup com o estado anterior dos produtos (e famílias). Lança exceção se falhar."""
+    now = datetime.now()
+    filename = f"backup_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}.json"
     filepath = os.path.join(BACKUP_DIR, filename)
 
+    schema = db_manager.cached_schema()
     snapshot_data = {
-        "timestamp": datetime.now().isoformat(),
+        "format_version": BACKUP_FORMAT_VERSION,
+        "timestamp": now.isoformat(),
         "description": description,
-        "items_count": len(products),
-        "products": [p.dict() for p in products]
+        "items_count": len(products) + len(families or []),
+        "database": db_manager.config.database,
+        "optional_columns": [c for c in OPTIONAL_PRODUCT_COLUMNS if _has_optional_int_col(schema, c)],
+        "products": [p.model_dump() for p in products],
+        "families": families or [],
     }
 
-    with open(filepath, "w", encoding="utf-8") as f:
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    tmp_path = filepath + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(snapshot_data, f, indent=2, ensure_ascii=False)
-
+    os.replace(tmp_path, filepath)
     return filename
 
 
 def list_backups() -> List[BackupItem]:
     """Lista os ficheiros de cópia de segurança existentes."""
-    files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".json")]
+    try:
+        files = [f for f in os.listdir(BACKUP_DIR) if BACKUP_NAME_RE.match(f)]
+    except FileNotFoundError:
+        return []
     files.sort(reverse=True)
     backups = []
 
@@ -958,230 +1262,281 @@ def list_backups() -> List[BackupItem]:
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                backups.append(BackupItem(
-                    filename=fname,
-                    created_at=data.get("timestamp", ""),
-                    items_count=data.get("items_count", 0),
-                    description=data.get("description", "Cópia de Segurança")
-                ))
+            backups.append(BackupItem(
+                filename=fname,
+                created_at=data.get("timestamp", ""),
+                items_count=data.get("items_count", 0),
+                description=data.get("description", "Cópia de Segurança")
+            ))
         except Exception:
             continue
 
     return backups
 
 
-def apply_bulk_edit(req: BulkEditRequest) -> Tuple[bool, str, int]:
-    """Aplica as alterações em massa na base de dados SQL Server dentro de uma transação atómica."""
-    products = get_products_by_codes(req.product_codes)
-    if not products:
-        return False, "Nenhum artigo encontrado para os códigos especificados.", 0
+def _resolve_backup_path(filename: str) -> Optional[str]:
+    """Valida o nome do ficheiro (sem caminhos) e garante que fica dentro da pasta de backups."""
+    if not isinstance(filename, str):
+        return None
+    name = os.path.basename(filename)
+    if name != filename or not BACKUP_NAME_RE.match(name):
+        return None
+    backup_root = os.path.realpath(BACKUP_DIR)
+    path = os.path.realpath(os.path.join(backup_root, name))
+    if os.path.dirname(path) != backup_root:
+        return None
+    return path
 
-    # 1. Guardar Backup de Segurança
-    backup_name = create_backup_snapshot(products, f"Edição em massa de {len(products)} artigos")
 
-    affected_count = 0
+# Campos repostos no restauro: (chave no backup, coluna SQL, tipo)
+RESTORE_FIELDS = [
+    ("plu", "codigo_alf", "int"),
+    ("descricao", "descricao", "text"),
+    ("descricaocurta", "descricaocurta", "text"),
+    ("familias", "familia", "int"),
+    ("subfamilia", "subfam", "int"),
+    ("iva", "iva", "float"),
+    ("pvp1", "precovenda", "float"),
+    ("pvp2", "pvp2", "float"),
+    ("pvp3", "pvp3", "float"),
+    ("pvp4", "pvp4", "float"),
+    ("pvp5", "pvp5", "float"),
+    ("pvp6", "pvp6", "float"),
+    ("pvp7", "pvp7", "float"),
+    ("pvp8", "pvp8", "float"),
+    ("pvp9", "pvp9", "float"),
+    ("pvp10", "pvp10", "float"),
+    ("fundo", "fundo", "int"),
+    ("letra", "letra", "int"),
+    ("posicaofront", "ordem", "int"),
+    ("codbarras", "codbarras", "text"),
+    ("referencia", "referencia", "text"),
+]
 
-    # Execução na DB SQL Server real com BEGIN TRANSACTION
-    try:
-        conn = db_manager.get_connection()
-        conn.autocommit = False  # Transação explícita
-        cursor = conn.cursor()
 
-        for p_item in products:
-            set_clauses = []
-            params = []
-
-            # 1. Designação (com bloqueio estrito se tiver vendas)
-            if req.apply_descricao and not p_item.has_sales:
-                new_val = transform_text_case(p_item.descricao, req.descricao_mode, req.new_descricao)
-                if new_val != p_item.descricao:
-                    set_clauses.append("descricao = ?")
-                    params.append(new_val)
-
-            # 1.2 Descrição Curta (POS)
-            if req.apply_descricaocurta:
-                new_val = transform_text_case(p_item.descricaocurta or "", req.descricaocurta_mode, req.new_descricaocurta)
-                if new_val != (p_item.descricaocurta or ""):
-                    set_clauses.append("descricaocurta = ?")
-                    params.append(new_val)
-
-            # 1.4 PLU (dbo.produtos.codigo_alf)
-            if req.apply_plu:
-                if req.plu_mode == "direct" and req.new_plu is not None:
-                    set_clauses.append("codigo_alf = ?")
-                    params.append(req.new_plu)
-                elif req.plu_mode == "sequence":
-                    seq_val = (req.plu_seq_start or 1) + (req.product_codes.index(p_item.codigo))
-                    set_clauses.append("codigo_alf = ?")
-                    params.append(seq_val)
-                elif req.plu_mode == "copy_codigo":
-                    set_clauses.append("codigo_alf = ?")
-                    params.append(p_item.codigo)
-                elif req.plu_mode == "clear":
-                    set_clauses.append("codigo_alf = ?")
-                    params.append(0)
-
-            # 1.5 Código de Barras & Referência (Sem alterar código interno)
-            if req.apply_codbarras:
-                if req.codbarras_mode == "direct" and req.new_codbarras is not None:
-                    set_clauses.append("codbarras = ?")
-                    params.append(req.new_codbarras)
-                elif req.codbarras_mode == "sequence":
-                    seq_val = str((req.codbarras_seq_start or 1001) + (req.product_codes.index(p_item.codigo)))
-                    set_clauses.append("codbarras = ?")
-                    params.append(seq_val)
-                elif req.codbarras_mode == "clear":
-                    set_clauses.append("codbarras = ?")
-                    params.append("")
-
-            if req.apply_referencia and req.new_referencia is not None:
-                set_clauses.append("referencia = ?")
-                params.append(req.new_referencia)
-
-            # 2. Cores
-            if req.colors.apply_fundo and req.colors.fundo_hex:
-                set_clauses.append("fundo = ?")
-                params.append(hex_to_int_color(req.colors.fundo_hex))
-            if req.colors.apply_letra and req.colors.letra_hex:
-                set_clauses.append("letra = ?")
-                params.append(hex_to_int_color(req.colors.letra_hex))
-
-            # 3. Preços PVP 1 a PVP 10 (precovenda = PVP1, pvp2..pvp10 = PVP2..10)
-            if req.prices.apply_price:
-                mode = req.prices.mode
-                target = req.prices.target_pvp
-                source_field = req.prices.source_pvp or "pvp1"
-                
-                is_copy = (mode == "copy_pvp" or target == "copy_pvp1" or target.startswith("copy_"))
-
-                if is_copy:
-                    src_price = getattr(p_item, source_field, 0.0)
-                    
-                    if target in ("all", "copy_pvp1"):
-                        pvp_indices = [i for i in range(1, 11) if f"pvp{i}" != source_field]
-                    elif target.startswith("pvp") and target[3:].isdigit():
-                        pvp_indices = [int(target[3:])]
-                    else:
-                        pvp_indices = [2]
-
-                    for idx in pvp_indices:
-                        col_name = "precovenda" if idx == 1 else f"pvp{idx}"
-                        old_price = getattr(p_item, f"pvp{idx}", 0.0)
-                        new_price = src_price
-                        
-                        if new_price != old_price:
-                            set_clauses.append(f"{col_name} = ?")
-                            params.append(new_price)
-                            try:
-                                hist_sql = "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)"
-                                cursor.execute(hist_sql, (p_item.codigo, idx, new_price))
-                            except Exception:
-                                pass
-                else:
-                    pvp_indices = []
-                    if target == "all":
-                        pvp_indices = list(range(1, 11))
-                    elif target.startswith("pvp") and target[3:].isdigit():
-                        pvp_indices = [int(target[3:])]
-
-                    for idx in pvp_indices:
-                        col_name = "precovenda" if idx == 1 else f"pvp{idx}"
-                        old_price = getattr(p_item, f"pvp{idx}", 0.0)
-                        new_price = calculate_new_price(old_price, mode, req.prices.value, req.prices.rounding)
-                        
-                        if new_price != old_price:
-                            set_clauses.append(f"{col_name} = ?")
-                            params.append(new_price)
-                            try:
-                                hist_sql = "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)"
-                                cursor.execute(hist_sql, (p_item.codigo, idx, new_price))
-                            except Exception:
-                                pass
-
-            # 4. Família
-            if req.apply_familia and req.new_familia is not None:
-                set_clauses.append("familia = ?")
-                params.append(req.new_familia)
-
-            # 5. IVA
-            if req.apply_iva and req.new_iva is not None:
-                set_clauses.append("iva = ?")
-                params.append(req.new_iva)
-
-            # 6. Centro de Produção (dbo.produtoscentrosprod)
-            if req.apply_centro_prod:
-                cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (p_item.codigo,))
-                if req.new_centro_prod is not None and req.new_centro_prod > 0:
-                    cursor.execute(
-                        "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, ?)",
-                        (p_item.codigo, req.new_centro_prod, req.centro_prod_info)
-                    )
-                set_clauses.append("sync = 1")
-
-            if set_clauses:
-                sql = f"UPDATE dbo.produtos SET {', '.join(set_clauses)} WHERE codigo = ?"
-                params.append(p_item.codigo)
-                cursor.execute(sql, params)
-                affected_count += 1
-
-        conn.commit()  # Confirma a transação
-        conn.close()
-        return True, f"Atualização de {affected_count} artigos concluída com sucesso na base de dados! (Backup: {backup_name})", affected_count
-    except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()  # Reverte em caso de falha
-            conn.close()
-        return False, f"Erro ao aplicar alterações na base de dados (Transação revertida): {str(e)}", 0
+def _values_equal(kind: str, a: Any, b: Any) -> bool:
+    if kind == "float":
+        if a is None or b is None:
+            return a is None and b is None
+        return _float_eq(a, b)
+    if kind == "text":
+        return (a or "") == (b or "")
+    return a == b
 
 
 def restore_backup(filename: str) -> Tuple[bool, str]:
-    """Restaura o estado dos produtos a partir de um ficheiro de backup JSON diretamente no SQL Server."""
-    filepath = os.path.join(BACKUP_DIR, filename)
+    """Restaura o estado dos artigos (e famílias) a partir de um ficheiro de backup JSON."""
+    filepath = _resolve_backup_path(filename)
+    if filepath is None:
+        return False, "Nome de ficheiro de backup inválido."
     if not os.path.exists(filepath):
         return False, f"Ficheiro de backup {filename} não encontrado."
 
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-
-        products_data = data.get("products", [])
-        if not products_data:
-            return False, "Nenhum registo encontrado dentro do ficheiro de backup."
-
-        conn = db_manager.get_connection()
-        conn.autocommit = False
-        cursor = conn.cursor()
-
-        restored_count = 0
-        for bp in products_data:
-            sql = """
-                UPDATE dbo.produtos 
-                SET codigo_alf = ?, descricao = ?, descricaocurta = ?, familia = ?, iva = ?, precovenda = ?, pvp2 = ?, pvp3 = ?, pvp4 = ?, pvp5 = ?,
-                    pvp6 = ?, pvp7 = ?, pvp8 = ?, pvp9 = ?, pvp10 = ?, fundo = ?, letra = ?
-                WHERE codigo = ?
-            """
-            cursor.execute(sql, (
-                bp.get("plu", 0), bp.get("descricao"), bp.get("descricaocurta", ""), bp.get("familias"), bp.get("iva"),
-                bp.get("pvp1"), bp.get("pvp2"), bp.get("pvp3"), bp.get("pvp4"), bp.get("pvp5"),
-                bp.get("pvp6"), bp.get("pvp7"), bp.get("pvp8"), bp.get("pvp9"), bp.get("pvp10"),
-                bp.get("fundo"), bp.get("letra"),
-                bp.get("codigo")
-            ))
-            restored_count += 1
-
-        conn.commit()
-        conn.close()
-        return True, f"Reversão concluída com sucesso! {restored_count} artigos foram restaurados ao estado original."
     except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
-        return False, f"Falha ao restaurar cópia de segurança no SQL Server: {str(e)}"
+        return False, f"Não foi possível ler o ficheiro de backup: {e}"
 
+    version = int(data.get("format_version", 1) or 1)
+    products_data = [bp for bp in data.get("products", []) if isinstance(bp, dict) and bp.get("codigo") is not None]
+    families_data = [fd for fd in (data.get("families") or []) if isinstance(fd, dict) and fd.get("codigo") is not None]
+    if not products_data and not families_data:
+        return False, "Nenhum registo encontrado dentro do ficheiro de backup."
+
+    backup_optional = set(data.get("optional_columns", [])) if version >= 2 else set()
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        prod_cols = _prod_cols(schema)
+        codes = _unique_codes(bp["codigo"] for bp in products_data)
+        current = {p.codigo: p for p in _fetch_products_by_codes(cursor, codes)}
+        current_families = _read_family_colors(cursor, [fd["codigo"] for fd in families_data])
+
+        fields = [f for f in RESTORE_FIELDS if f[1] in prod_cols]
+        for col in OPTIONAL_PRODUCT_COLUMNS:
+            if col in backup_optional and _has_optional_int_col(schema, col):
+                fields.append((col, col, "int"))
+
+        # Planeamento: só repõe o que difere do estado atual
+        plan = []
+        protected = 0
+        missing = 0
+        for bp in products_data:
+            code = int(bp["codigo"])
+            cur = current.get(code)
+            if cur is None:
+                missing += 1
+                continue
+            sets: List[str] = []
+            params: List[Any] = []
+            for key, col, kind in fields:
+                if key not in bp:
+                    continue
+                val = bp[key]
+                cur_val = getattr(cur, key)
+                if _values_equal(kind, val, cur_val):
+                    continue
+                if version < 2 and key == "letra" and val == 16777215:
+                    # Backups antigos gravavam letra=0 (preto) como 16777215: valor ambíguo, não repor
+                    continue
+                if key == "descricao":
+                    if not val or not str(val).strip():
+                        continue
+                    if cur.has_sales:
+                        protected += 1
+                        continue
+                sets.append(f"{col} = ?")
+                params.append(val)
+
+            centros = None
+            if version >= 2 and isinstance(bp.get("centros_prod"), list):
+                wanted = sorted((int(c["centro"]), int(c.get("informativo", 0))) for c in bp["centros_prod"]
+                                if isinstance(c, dict) and c.get("centro") is not None)
+                existing = sorted((c["centro"], c["informativo"]) for c in (cur.centros_prod or []))
+                if wanted != existing:
+                    centros = wanted
+
+            if sets or centros is not None:
+                plan.append((cur, sets, params, centros))
+
+        cur_fam_map = {f["codigo"]: f for f in current_families}
+        fam_plan = []
+        for fd in families_data:
+            cf = cur_fam_map.get(int(fd["codigo"]))
+            if cf is None:
+                continue
+            if int(fd.get("fundo", 0)) != cf["fundo"] or int(fd.get("letra", 16777215)) != cf["letra"]:
+                fam_plan.append((int(fd["codigo"]), int(fd.get("fundo", 0)), int(fd.get("letra", 16777215))))
+
+        if not plan and not fam_plan:
+            msg = "Nada a restaurar: os artigos já estão no estado desta cópia de segurança."
+            if protected:
+                msg += f" ({protected} designação(ões) de artigos com vendas não foram repostas.)"
+            return True, msg
+
+        # Cópia de segurança do estado atual (para poder desfazer o restauro)
+        try:
+            safety_name = create_backup_snapshot(
+                [cur for cur, _, _, _ in plan],
+                f"Estado antes do restauro de {filename}",
+                families=[cur_fam_map[c] for c, _, _ in fam_plan]
+            )
+        except Exception as e:
+            return False, f"Não foi possível criar a cópia de segurança do estado atual ({e}). Nada foi alterado."
+
+        try:
+            has_sync = "sync" in prod_cols
+            for cur, sets, params, centros in plan:
+                if centros is not None:
+                    cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (cur.codigo,))
+                    for centro, info in centros:
+                        cursor.execute(
+                            "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, ?)",
+                            (cur.codigo, centro, info)
+                        )
+                final_sets = list(sets)
+                if has_sync:
+                    final_sets.append("sync = 1")
+                if final_sets:
+                    cursor.execute(f"UPDATE dbo.produtos SET {', '.join(final_sets)} WHERE codigo = ?",
+                                   params + [cur.codigo])
+
+            fam_sync = "sync" in schema.get("familias", {})
+            for code, fundo, letra in fam_plan:
+                cursor.execute(
+                    f"UPDATE dbo.familias SET fundo = ?, letra = ?{', sync = 1' if fam_sync else ''} WHERE codigo = ?",
+                    (fundo, letra, code)
+                )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return False, f"Falha ao restaurar cópia de segurança no SQL Server (transação revertida): {str(e)}"
+
+        parts = [f"Reversão concluída! {len(plan)} artigo(s) restaurado(s)"]
+        if fam_plan:
+            parts.append(f"e {len(fam_plan)} família(s)")
+        msg = " ".join(parts) + f". Estado anterior guardado em {safety_name}."
+        if protected:
+            msg += f" {protected} designação(ões) não foram repostas porque os artigos já têm vendas."
+        if missing:
+            msg += f" {missing} artigo(s) do backup já não existem na base de dados."
+        if version < 2:
+            msg += " (Backup antigo: centros de produção não incluídos.)"
+        return True, msg
+    finally:
+        conn.close()
+
+
+# ======================================================================
+# Cores das famílias
+# ======================================================================
+
+def update_family_colors(req: BulkFamilyColorUpdateRequest) -> Tuple[bool, str, int]:
+    """Atualiza as cores das famílias em dbo.familias e opcionalmente em dbo.produtos (com sync=1)."""
+    if not req.updates:
+        return False, "Nenhuma família foi selecionada para atualização.", 0
+
+    for up in req.updates:
+        if not is_valid_hex_color(up.fundo_hex) or not is_valid_hex_color(up.letra_hex):
+            return False, f"Cor inválida na família {up.codigo} (use o formato #RRGGBB).", 0
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+
+        # Estado anterior (famílias e artigos afetados) para a cópia de segurança
+        families_before = _read_family_colors(cursor, [u.codigo for u in req.updates])
+        propagate = _unique_codes(u.codigo for u in req.updates if u.apply_to_products)
+        product_codes: List[int] = []
+        for chunk in _chunks(propagate):
+            cursor.execute(f"SELECT codigo FROM dbo.produtos WHERE familia IN ({_placeholders(len(chunk))})", chunk)
+            product_codes.extend(int(r[0]) for r in cursor.fetchall())
+        products_before = _fetch_products_by_codes(cursor, product_codes, with_sales=False) if product_codes else []
+
+        try:
+            backup_name = create_backup_snapshot(
+                products_before, f"Cores de {len(req.updates)} família(s)", families=families_before
+            )
+        except Exception as e:
+            return False, f"Não foi possível criar a cópia de segurança ({e}). Nenhuma alteração foi gravada.", 0
+
+        fam_sync = ", sync = 1" if "sync" in schema.get("familias", {}) else ""
+        prod_sync = ", sync = 1" if "sync" in _prod_cols(schema) else ""
+        total_affected_products = 0
+        try:
+            for up in req.updates:
+                fundo_int = hex_to_int_color(up.fundo_hex)
+                letra_int = hex_to_int_color(up.letra_hex)
+                cursor.execute(f"UPDATE dbo.familias SET fundo = ?, letra = ?{fam_sync} WHERE codigo = ?",
+                               (fundo_int, letra_int, up.codigo))
+                if up.apply_to_products:
+                    cursor.execute(f"UPDATE dbo.produtos SET fundo = ?, letra = ?{prod_sync} WHERE familia = ?",
+                                   (fundo_int, letra_int, up.codigo))
+                    total_affected_products += max(cursor.rowcount, 0)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return False, f"Erro ao atualizar cores das famílias (transação revertida): {str(e)}", 0
+    finally:
+        conn.close()
+
+    msg = f"Cores de {len(req.updates)} família(s) atualizadas com sucesso (Backup: {backup_name})."
+    if total_affected_products > 0:
+        msg += f" {total_affected_products} artigo(s) foram atualizados com as novas cores e sinalizados com sync = 1."
+    return True, msg, total_affected_products
+
+
+# ======================================================================
+# Importação CSV / Excel
+# ======================================================================
 
 def parse_import_csv(csv_text: str) -> List[ImportRow]:
     """Parse de ficheiro CSV (separador ; ou ,) para lista de ImportRow com suporte a formato europeu."""
-    import csv, io
+    csv_text = (csv_text or "").lstrip("\ufeff")
     lines = csv_text.strip().splitlines()
     if not lines:
         return []
@@ -1189,11 +1544,11 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
     # Detetar delimitador ; ou ,
     first_line = lines[0]
     delimiter = ';' if ';' in first_line else ','
-    
+
     reader = csv.reader(io.StringIO(csv_text), delimiter=delimiter)
     header = [h.strip().lower().replace(" ", "").replace("_", "") for h in next(reader, [])]
-    
-    col_map = {}
+
+    col_map: Dict[str, int] = {}
     for idx, col_name in enumerate(header):
         if col_name in ("codigo", "cod", "code", "id"):
             col_map["codigo"] = idx
@@ -1201,9 +1556,9 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             col_map["descricao"] = idx
         elif col_name in ("descricaocurta", "desccurta", "nomecurto", "shortdesc", "desccut", "descricaocut"):
             col_map["descricaocurta"] = idx
-        elif col_name in ("plu", "plucode", "plu_code", "codigoalf", "codigo_alf"):
+        elif col_name in ("plu", "plucode", "codigoalf"):
             col_map["plu"] = idx
-        elif col_name in ("codbarras", "barras", "ean", "barcode", "codigobarras", "plucodbarras", "plu_codbarras"):
+        elif col_name in ("codbarras", "barras", "ean", "barcode", "codigobarras", "plucodbarras"):
             col_map["codbarras"] = idx
         elif col_name in ("referencia", "ref"):
             col_map["referencia"] = idx
@@ -1237,43 +1592,47 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             continue
 
         codigo = int(raw_cod)
-        
-        def parse_float_val(idx_key):
-            if idx_key in col_map and len(row) > col_map[idx_key]:
-                raw = row[col_map[idx_key]].strip().replace("€", "").replace(" ", "").replace(",", ".")
-                try:
-                    return float(raw)
-                except ValueError:
-                    return None
+
+        def cell(key: str) -> Optional[str]:
+            if key in col_map and len(row) > col_map[key]:
+                return row[col_map[key]].strip()
             return None
 
-        def parse_int_val(idx_key):
-            if idx_key in col_map and len(row) > col_map[idx_key]:
-                raw = row[col_map[idx_key]].strip()
-                try:
-                    return int(raw)
-                except ValueError:
-                    return None
-            return None
+        def parse_float_val(key: str) -> Optional[float]:
+            raw = cell(key)
+            if raw is None or raw == "":
+                return None
+            raw = raw.replace("€", "").replace("%", "").replace(" ", "")
+            if "," in raw and "." in raw:
+                raw = raw.replace(".", "")  # 1.234,50 -> 1234,50
+            raw = raw.replace(",", ".")
+            try:
+                return float(raw)
+            except ValueError:
+                return None
 
-        desc = row[col_map["descricao"]].strip() if ("descricao" in col_map and len(row) > col_map["descricao"]) else None
-        descricaocurta = row[col_map["descricaocurta"]].strip() if ("descricaocurta" in col_map and len(row) > col_map["descricaocurta"]) else None
-        plu_val = parse_int_val("plu")
-        codbarras = row[col_map["codbarras"]].strip() if ("codbarras" in col_map and len(row) > col_map["codbarras"]) else None
-        referencia = row[col_map["referencia"]].strip() if ("referencia" in col_map and len(row) > col_map["referencia"]) else None
-        fundo = row[col_map["fundo_hex"]].strip() if ("fundo_hex" in col_map and len(row) > col_map["fundo_hex"]) else None
-        letra = row[col_map["letra_hex"]].strip() if ("letra_hex" in col_map and len(row) > col_map["letra_hex"]) else None
+        def parse_int_val(key: str) -> Optional[int]:
+            raw = cell(key)
+            if raw is None or raw == "":
+                return None
+            try:
+                return int(float(raw.replace(",", ".")))
+            except ValueError:
+                return None
+
+        fundo = cell("fundo_hex")
+        letra = cell("letra_hex")
 
         rows.append(ImportRow(
             codigo=codigo,
-            descricao=desc,
-            descricaocurta=descricaocurta,
-            plu=plu_val,
-            codbarras=codbarras,
-            referencia=referencia,
+            descricao=cell("descricao"),
+            descricaocurta=cell("descricaocurta"),
+            plu=parse_int_val("plu"),
+            codbarras=cell("codbarras"),
+            referencia=cell("referencia"),
             familia=parse_int_val("familia"),
             subfam=parse_int_val("subfam"),
-            iva=parse_int_val("iva"),
+            iva=parse_float_val("iva"),
             pvp1=parse_float_val("pvp1"),
             pvp2=parse_float_val("pvp2"),
             pvp3=parse_float_val("pvp3"),
@@ -1291,156 +1650,90 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
     return rows
 
 
+def _compute_import_changes(p: ProductItem, imp: ImportRow, schema: SchemaInfo, lookups: _Lookups) -> List[Change]:
+    changes: List[Optional[Change]] = []
+
+    if imp.descricao:
+        changes.append(_descricao_change(schema, p, imp.descricao, "Designação / Nome"))
+    if imp.descricaocurta is not None:
+        changes.append(_text_change(schema, "descricaocurta", "descricaocurta", "Descrição Curta (POS)",
+                                    p.descricaocurta or "", imp.descricaocurta))
+    if imp.plu is not None and imp.plu != (p.plu or 0):
+        if imp.plu < 0:
+            changes.append(_blocked("plu", "PLU (Teclado/Balança)", str(p.plu), str(imp.plu), "O PLU não pode ser negativo."))
+        else:
+            changes.append(Change("plu", "PLU (Teclado/Balança)", str(p.plu or 0), str(imp.plu),
+                                  column="codigo_alf", value=imp.plu))
+    if imp.codbarras is not None:
+        changes.append(_text_change(schema, "codbarras", "codbarras", "Código de Barras", p.codbarras or "", imp.codbarras))
+    if imp.referencia is not None:
+        changes.append(_text_change(schema, "referencia", "referencia", "Referência do Artigo", p.referencia or "", imp.referencia))
+
+    for idx in range(1, 11):
+        imp_val = getattr(imp, f"pvp{idx}", None)
+        if imp_val is not None:
+            if imp_val < 0:
+                changes.append(_blocked(f"pvp{idx}", f"Preço PVP {idx}", f"{getattr(p, f'pvp{idx}'):.2f} €",
+                                        f"{imp_val:.2f} €", "O preço não pode ser negativo."))
+            else:
+                changes.append(_price_change(idx, f"Preço PVP {idx}", float(getattr(p, f"pvp{idx}", 0.0)), float(imp_val)))
+
+    target_family = p.familias
+    if imp.familia is not None:
+        fam_change = _familia_change(lookups, p, imp.familia)
+        changes.append(fam_change)
+        if fam_change is not None and not fam_change.blocked:
+            target_family = imp.familia
+    if imp.subfam is not None:
+        changes.append(_subfamilia_change(lookups, p, imp.subfam, target_family))
+    if imp.iva is not None:
+        changes.append(_iva_change(lookups, p, imp.iva))
+
+    if imp.fundo_hex:
+        changes.append(_color_change("fundo", "fundo", "Cor de Fundo", schema, p.fundo or 0, p.fundo_hex, imp.fundo_hex))
+    if imp.letra_hex:
+        changes.append(_color_change("letra", "letra", "Cor do Texto", schema,
+                                     p.letra if p.letra is not None else 16777215, p.letra_hex, imp.letra_hex))
+
+    return [c for c in changes if c is not None]
+
+
+def _dedupe_import_items(items: List[ImportRow]) -> List[ImportRow]:
+    """Se o mesmo código aparecer várias vezes, prevalece a última linha do ficheiro."""
+    by_code: Dict[int, ImportRow] = {}
+    for item in items:
+        by_code[item.codigo] = item
+    return list(by_code.values())
+
+
 def preview_import(items: List[ImportRow]) -> ImportPreviewResponse:
     """Gera o mapa de diferenças (dry-run) para os artigos a importar do ficheiro Excel/CSV."""
-    codes = [item.codigo for item in items]
-    existing_products = get_products_by_codes(codes)
-    prod_map = {p.codigo: p for p in existing_products}
+    unique_items = _dedupe_import_items(items)
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        lookups = _Lookups(cursor)
+        prod_map = {p.codigo: p for p in _fetch_products_by_codes(cursor, [i.codigo for i in unique_items])}
+    finally:
+        conn.close()
 
     previews: List[ProductDiff] = []
     blocked_count = 0
-
-    for imp in items:
+    for imp in unique_items:
         p = prod_map.get(imp.codigo)
         if not p:
             continue
-
-        diffs: List[FieldDiff] = []
-
-        # 1. Designação / Nome
-        if imp.descricao and imp.descricao != p.descricao:
-            if p.has_sales:
-                blocked_count += 1
-                diffs.append(FieldDiff(
-                    field_name="descricao",
-                    field_label="Designação / Nome",
-                    old_value=p.descricao,
-                    new_value=p.descricao,
-                    blocked=True,
-                    reason="Artigo com vendas efetuadas: a designação é protegida contra edições por regras fiscais."
-                ))
-            else:
-                diffs.append(FieldDiff(
-                    field_name="descricao",
-                    field_label="Designação / Nome",
-                    old_value=p.descricao,
-                    new_value=imp.descricao,
-                    blocked=False
-                ))
-
-        # 1.2 Descrição Curta (POS)
-        if imp.descricaocurta is not None and imp.descricaocurta != p.descricaocurta:
-            diffs.append(FieldDiff(
-                field_name="descricaocurta",
-                field_label="Descrição Curta (POS)",
-                old_value=p.descricaocurta or "(Vazio)",
-                new_value=imp.descricaocurta or "(Vazio)",
-                blocked=False
-            ))
-
-        # 1.4 PLU (Balança / Teclado)
-        if imp.plu is not None and imp.plu != p.plu:
-            diffs.append(FieldDiff(
-                field_name="plu",
-                field_label="PLU (Teclado/Balança)",
-                old_value=str(p.plu),
-                new_value=str(imp.plu),
-                blocked=False
-            ))
-
-        # 1.5 Código de Barras & Referência
-        if imp.codbarras is not None and imp.codbarras != p.codbarras:
-            diffs.append(FieldDiff(
-                field_name="codbarras",
-                field_label="Código de Barras",
-                old_value=p.codbarras or "(Vazio)",
-                new_value=imp.codbarras or "(Vazio)",
-                blocked=False
-            ))
-
-        if imp.referencia is not None and imp.referencia != p.referencia:
-            diffs.append(FieldDiff(
-                field_name="referencia",
-                field_label="Referência do Artigo",
-                old_value=p.referencia or "(Vazio)",
-                new_value=imp.referencia or "(Vazio)",
-                blocked=False
-            ))
-
-        # 2. PVPs 1 a 10
-        for idx in range(1, 11):
-            imp_val = getattr(imp, f"pvp{idx}", None)
-            if imp_val is not None:
-                old_val = getattr(p, f"pvp{idx}", 0.0)
-                if abs(imp_val - old_val) > 0.001:
-                    diffs.append(FieldDiff(
-                        field_name=f"pvp{idx}",
-                        field_label=f"Preço PVP {idx}",
-                        old_value=f"{old_val:.2f} €",
-                        new_value=f"{imp_val:.2f} €",
-                        blocked=False
-                    ))
-
-        # 3. Família
-        if imp.familia is not None and imp.familia != p.familias:
-            diffs.append(FieldDiff(
-                field_name="familia",
-                field_label="Código de Família",
-                old_value=str(p.familias),
-                new_value=str(imp.familia),
-                blocked=False
-            ))
-
-        # 4. Subfamília
-        if imp.subfam is not None and imp.subfam != p.subfamilia:
-            diffs.append(FieldDiff(
-                field_name="subfam",
-                field_label="Código de Subfamília",
-                old_value=str(p.subfamilia),
-                new_value=str(imp.subfam),
-                blocked=False
-            ))
-
-        # 5. IVA
-        if imp.iva is not None and imp.iva != p.iva:
-            diffs.append(FieldDiff(
-                field_name="iva",
-                field_label="Taxa de IVA",
-                old_value=str(p.iva),
-                new_value=str(imp.iva),
-                blocked=False
-            ))
-
-        # 6. Cores
-        if imp.fundo_hex and imp.fundo_hex.upper() != p.fundo_hex.upper():
-            diffs.append(FieldDiff(
-                field_name="fundo",
-                field_label="Cor de Fundo",
-                old_value=p.fundo_hex,
-                new_value=imp.fundo_hex.upper(),
-                blocked=False
-            ))
-
-        if imp.letra_hex and imp.letra_hex.upper() != p.letra_hex.upper():
-            diffs.append(FieldDiff(
-                field_name="letra",
-                field_label="Cor do Texto",
-                old_value=p.letra_hex,
-                new_value=imp.letra_hex.upper(),
-                blocked=False
-            ))
-
-        if diffs:
-            previews.append(ProductDiff(
-                codigo=p.codigo,
-                descricao=p.descricao,
-                has_sales=p.has_sales,
-                diffs=diffs
-            ))
+        changes = _compute_import_changes(p, imp, schema, lookups)
+        if not changes:
+            continue
+        blocked_count += sum(1 for c in changes if c.blocked)
+        previews.append(ProductDiff(codigo=p.codigo, descricao=p.descricao, has_sales=p.has_sales,
+                                    diffs=[c.to_diff() for c in changes]))
 
     return ImportPreviewResponse(
         total_file_rows=len(items),
-        matched_products_count=len(existing_products),
+        matched_products_count=len(prod_map),
         blocked_descriptions_count=blocked_count,
         previews=previews
     )
@@ -1448,107 +1741,49 @@ def preview_import(items: List[ImportRow]) -> ImportPreviewResponse:
 
 def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
     """Aplica as alterações importadas do ficheiro Excel diretamente no SQL Server com transação atómica."""
-    codes = [item.codigo for item in items]
-    existing_products = get_products_by_codes(codes)
-    if not existing_products:
-        return False, "Nenhum artigo do ficheiro de importação foi encontrado na base de dados.", 0
-
-    prod_map = {p.codigo: p for p in existing_products}
-
-    # Guardar snapshot de backup
-    create_backup_snapshot(existing_products, f"Importação de ficheiro Excel ({len(items)} artigos)")
-
+    unique_items = _dedupe_import_items(items)
     conn = db_manager.get_connection()
-    conn.autocommit = False
-    cursor = conn.cursor()
-
-    affected_count = 0
     try:
-        for imp in items:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        lookups = _Lookups(cursor)
+        prod_map = {p.codigo: p for p in _fetch_products_by_codes(cursor, [i.codigo for i in unique_items])}
+        if not prod_map:
+            return False, "Nenhum artigo do ficheiro de importação foi encontrado na base de dados.", 0
+
+        plan = []
+        blocked_total = 0
+        for imp in unique_items:
             p = prod_map.get(imp.codigo)
             if not p:
                 continue
+            changes = _compute_import_changes(p, imp, schema, lookups)
+            blocked_total += sum(1 for c in changes if c.blocked)
+            if _has_applicable(changes):
+                plan.append((p, changes))
 
-            set_clauses = ["sync = 1"]  # Sincronização cloud automática
-            params = []
+        if not plan:
+            return True, "Nenhuma alteração a aplicar a partir do ficheiro.", 0
 
-            # 1. Designação (Apenas se não tiver vendas)
-            if imp.descricao and imp.descricao != p.descricao and not p.has_sales:
-                set_clauses.append("descricao = ?")
-                params.append(imp.descricao)
+        try:
+            backup_name = create_backup_snapshot([p for p, _ in plan],
+                                                 f"Importação de ficheiro Excel ({len(plan)} artigos)")
+        except Exception as e:
+            return False, f"Não foi possível criar a cópia de segurança ({e}). Nenhuma alteração foi gravada.", 0
 
-            # 1.2 Descrição Curta (POS)
-            if imp.descricaocurta is not None and imp.descricaocurta != p.descricaocurta:
-                set_clauses.append("descricaocurta = ?")
-                params.append(imp.descricaocurta)
+        try:
+            affected = 0
+            for p, changes in plan:
+                if _apply_changes(cursor, schema, p.codigo, changes, mark_sync=True):
+                    affected += 1
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return False, f"Falha ao aplicar importação no SQL Server (transação revertida): {str(e)}", 0
 
-            # 1.4 PLU
-            if imp.plu is not None and imp.plu != p.plu:
-                set_clauses.append("codigo_alf = ?")
-                params.append(imp.plu)
-
-            # 1.5 Código de Barras & Referência
-            if imp.codbarras is not None and imp.codbarras != p.codbarras:
-                set_clauses.append("codbarras = ?")
-                params.append(imp.codbarras)
-
-            if imp.referencia is not None and imp.referencia != p.referencia:
-                set_clauses.append("referencia = ?")
-                params.append(imp.referencia)
-
-            # 2. PVPs
-            for idx in range(1, 11):
-                imp_val = getattr(imp, f"pvp{idx}", None)
-                if imp_val is not None:
-                    old_val = getattr(p, f"pvp{idx}", 0.0)
-                    if abs(imp_val - old_val) > 0.001:
-                        col_name = "precovenda" if idx == 1 else f"pvp{idx}"
-                        set_clauses.append(f"{col_name} = ?")
-                        params.append(imp_val)
-                        try:
-                            hist_sql = "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)"
-                            cursor.execute(hist_sql, (p.codigo, idx, imp_val))
-                        except Exception:
-                            pass
-
-            # 3. Família / Subfamília / IVA
-            if imp.familia is not None and imp.familia != p.familias:
-                set_clauses.append("familia = ?")
-                params.append(imp.familia)
-
-            if imp.subfam is not None and imp.subfam != p.subfamilia:
-                set_clauses.append("subfam = ?")
-                params.append(imp.subfam)
-
-            if imp.iva is not None and imp.iva != p.iva:
-                set_clauses.append("iva = ?")
-                params.append(imp.iva)
-
-            # 4. Cores
-            if imp.fundo_hex:
-                f_int = hex_to_int_color(imp.fundo_hex)
-                if f_int != p.fundo:
-                    set_clauses.append("fundo = ?")
-                    params.append(f_int)
-
-            if imp.letra_hex:
-                l_int = hex_to_int_color(imp.letra_hex)
-                if l_int != p.letra:
-                    set_clauses.append("letra = ?")
-                    params.append(l_int)
-
-            if len(set_clauses) > 1:  # Mais do que apenas sync = 1
-                sql = f"UPDATE dbo.produtos SET {', '.join(set_clauses)} WHERE codigo = ?"
-                params.append(p.codigo)
-                cursor.execute(sql, params)
-                affected_count += 1
-
-        conn.commit()
+        msg = f"Importação concluída com sucesso! {affected} artigo(s) foram atualizados na base de dados. (Backup: {backup_name})"
+        if blocked_total:
+            msg += f" {blocked_total} alteração(ões) bloqueada(s) não foram aplicadas."
+        return True, msg, affected
+    finally:
         conn.close()
-        return True, f"Importação concluída com sucesso! {affected_count} artigo(s) foram atualizados na base de dados.", affected_count
-
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        return False, f"Falha ao aplicar importação no SQL Server: {str(e)}", 0
-

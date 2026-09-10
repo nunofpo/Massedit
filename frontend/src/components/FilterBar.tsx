@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Filter, RotateCcw, Tag, Lock, Eye, ShoppingCart, FileSpreadsheet, Printer, ArrowUpDown, Upload, Utensils } from 'lucide-react';
+import { Search, RotateCcw, FileSpreadsheet, Printer, ArrowUpDown, Upload } from 'lucide-react';
 import { Family, Subfamily, Vat, ProductFilter, ProductionCenterItem } from '../types';
 
 interface FilterBarProps {
@@ -148,6 +148,48 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   {v.factor % 1 === 0 ? `${Math.floor(v.factor)}%` : `${v.factor}%`}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Sales Filter (aplicado no SQL antes da paginação) */}
+          <div className="relative min-w-[120px]">
+            <select
+              value={filters.has_sales === undefined || filters.has_sales === null ? '' : String(filters.has_sales)}
+              onChange={(e) => onFilterChange({ has_sales: e.target.value === '' ? undefined : e.target.value === 'true', page: 1 })}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
+              title="Filtrar por artigos com ou sem vendas"
+            >
+              <option value="">Vendas: Todos</option>
+              <option value="true">Com Vendas</option>
+              <option value="false">Sem Vendas</option>
+            </select>
+          </div>
+
+          {/* Blocked Filter */}
+          <div className="relative min-w-[110px]">
+            <select
+              value={filters.bloqueado ?? ''}
+              onChange={(e) => onFilterChange({ bloqueado: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
+              title="Filtrar por estado de bloqueio"
+            >
+              <option value="">Estado: Todos</option>
+              <option value="0">Ativos</option>
+              <option value="1">Bloqueados</option>
+            </select>
+          </div>
+
+          {/* FrontOffice Filter */}
+          <div className="relative min-w-[110px]">
+            <select
+              value={filters.frontoffice ?? ''}
+              onChange={(e) => onFilterChange({ frontoffice: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
+              title="Filtrar por visibilidade no POS"
+            >
+              <option value="">POS: Todos</option>
+              <option value="1">Visíveis no POS</option>
+              <option value="0">Ocultos no POS</option>
             </select>
           </div>
 

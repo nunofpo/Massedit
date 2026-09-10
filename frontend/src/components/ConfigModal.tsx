@@ -23,10 +23,27 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 }) => {
   const [formConfig, setFormConfig] = useState<DatabaseConfig>(config);
   const [isTesting, setIsTesting] = useState(false);
+  const [drivers, setDrivers] = useState<string[]>([]);
 
   useEffect(() => {
     setFormConfig(config);
   }, [config, isOpen]);
+
+  // Drivers ODBC instalados neste computador
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/drivers')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list: string[]) => setDrivers(Array.isArray(list) ? list : []))
+      .catch(() => setDrivers([]));
+  }, [isOpen]);
+
+  const driverOptions = Array.from(new Set([
+    ...drivers,
+    formConfig.driver,
+    'ODBC Driver 18 for SQL Server',
+    'ODBC Driver 17 for SQL Server'
+  ].filter(Boolean)));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +69,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               Configuração de Conexão à Base de Dados SQL Server
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Insira o servidor, porta, utilizador e palavra-passe da base de dados <code className="text-indigo-600 font-bold font-mono">nuno</code>.
+              Insira o servidor, porta, base de dados e credenciais. A configuração fica guardada no ficheiro <code className="text-indigo-600 font-bold font-mono">config.json</code> ao lado da aplicação.
             </p>
           </div>
 
@@ -98,6 +115,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 placeholder="localhost, 127.0.0.1 ou SERVIDOR\SQLEXPRESS"
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
               />
+              <p className="text-[10px] text-slate-500 mt-1">Instância nomeada (SERVIDOR\INSTANCIA) com porta 1433: a porta é ignorada e usa-se o SQL Browser.</p>
             </div>
             <div>
               <label className="text-slate-700 font-bold block mb-1">
@@ -130,7 +148,45 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             />
           </div>
 
+          {/* Driver ODBC */}
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">Driver ODBC:</label>
+            <select
+              value={formConfig.driver}
+              onChange={(e) => setFormConfig({ ...formConfig, driver: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 font-mono font-semibold"
+            >
+              {driverOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d}{drivers.length > 0 && !drivers.includes(d) ? ' (não instalado)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tipo de autenticação */}
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">Autenticação:</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setFormConfig({ ...formConfig, trusted_connection: false })}
+                className={`px-3 py-2 rounded-lg border font-bold transition ${!formConfig.trusted_connection ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'}`}
+              >
+                Utilizador SQL (sa)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormConfig({ ...formConfig, trusted_connection: true })}
+                className={`px-3 py-2 rounded-lg border font-bold transition ${formConfig.trusted_connection ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'}`}
+              >
+                Autenticação Windows
+              </button>
+            </div>
+          </div>
+
           {/* Utilizador & Senha */}
+          {!formConfig.trusted_connection && (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-slate-700 font-bold block mb-1 flex items-center gap-1">
@@ -156,7 +212,19 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
               />
             </div>
+            <label className="col-span-2 flex items-start gap-2 text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!formConfig.save_password}
+                onChange={(e) => setFormConfig({ ...formConfig, save_password: e.target.checked })}
+                className="mt-0.5 rounded border-slate-300 text-indigo-600"
+              />
+              <span>
+                <strong>Guardar a palavra-passe</strong> no config.json (em texto simples). Deixe desligado se a pen drive puder ser usada por outras pessoas.
+              </span>
+            </label>
           </div>
+          )}
 
           {/* Footer Actions */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between">

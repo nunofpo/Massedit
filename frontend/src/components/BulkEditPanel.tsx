@@ -96,7 +96,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [priceRounding, setPriceRounding] = useState('none');
 
   const [applyIva, setApplyIva] = useState(false);
-  const [newIva, setNewIva] = useState<number | undefined>(vats[0]?.codigo);
+  const [newIva, setNewIva] = useState<number | undefined>(vats[0]?.factor);
 
   // Form State: Estrutura (Família & Subfamília)
   const [applyFamilia, setApplyFamilia] = useState(false);
@@ -122,12 +122,15 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [applyFrontoffice, setApplyFrontoffice] = useState(false);
   const [newFrontoffice, setNewFrontoffice] = useState<number>(1);
 
+  const [applyPosicaofront, setApplyPosicaofront] = useState(false);
+  const [newPosicaofront, setNewPosicaofront] = useState<number>(0);
+
   const [markCloudSync, setMarkCloudSync] = useState(true);
 
   // Reset form defaults when aux data loads
   useEffect(() => {
     if (families.length > 0 && !newFamilia) setNewFamilia(families[0].codigo);
-    if (vats.length > 0 && !newIva) setNewIva(vats[0].codigo);
+    if (vats.length > 0 && newIva === undefined) setNewIva(vats[0].factor);
   }, [families, vats]);
 
   // Compute Active Change Badges per Sector
@@ -137,7 +140,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const categoriesCount = (applyFamilia ? 1 : 0) + (applySubfamilia ? 1 : 0);
   const codesCount = (applyPlu ? 1 : 0) + (applyCodbarras ? 1 : 0) + (applyReferencia ? 1 : 0);
   const productionCount = applyCentroProd ? 1 : 0;
-  const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0);
+  const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0) + (applyPosicaofront ? 1 : 0);
 
   const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + productionCount + statusCount;
 
@@ -189,6 +192,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       new_bloqueado: newBloqueado,
       apply_frontoffice: applyFrontoffice,
       new_frontoffice: newFrontoffice,
+      apply_posicaofront: applyPosicaofront,
+      new_posicaofront: newPosicaofront,
       mark_cloud_sync: markCloudSync
     };
   };
@@ -1379,6 +1384,32 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   </select>
                 )}
               </label>
+
+              {/* Posição POS (dbo.produtos.ordem) */}
+              <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold pt-3 border-t border-slate-100">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={applyPosicaofront}
+                    onChange={(e) => setApplyPosicaofront(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600"
+                  />
+                  <span>Posição do Botão no POS (ordem)</span>
+                </span>
+                {applyPosicaofront && (
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={newPosicaofront}
+                    onChange={(e) => setNewPosicaofront(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                    className="w-24 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold font-mono focus:bg-white focus:border-indigo-600"
+                  />
+                )}
+              </label>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Se a base de dados não tiver as colunas <code>bloqueado</code>/<code>frontoffice</code>, a simulação indica-o e essas alterações não são gravadas.
+              </p>
 
               {/* Cloud Sync Flag */}
               <div className="pt-3 border-t border-slate-100 space-y-1.5">

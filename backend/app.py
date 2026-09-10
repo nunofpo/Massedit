@@ -3,12 +3,12 @@ import sys
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from typing import List, Dict, Any, Optional
+from fastapi.responses import FileResponse
+from typing import List, Optional
 
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
-    ProductItem, BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
+    BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
     ImportPreviewResponse, ImportApplyRequest,
     ProductionCenterItem, PrinterItem
 )
@@ -23,12 +23,13 @@ from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
 
+# A interface é servida pelo próprio servidor (mesma origem). CORS só para o servidor de desenvolvimento Vite.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 @app.get("/api/config")
@@ -36,7 +37,7 @@ def get_db_config():
     """Obtém a configuração de ligação e o estado atual da conexão ao SQL Server."""
     online, message = db_manager.test_connection()
     return {
-        "config": db_manager.config.dict(),
+        "config": db_manager.config.model_dump(),
         "is_connected": online,
         "use_mock": db_manager.use_mock,
         "message": message
@@ -44,15 +45,26 @@ def get_db_config():
 
 @app.post("/api/config")
 def update_db_config(cfg: DatabaseConfig):
-    """Atualiza a configuração da base de dados e testa a conexão."""
-    db_manager.config = cfg
+    """Atualiza a configuração da base de dados, grava-a em config.json e testa a conexão."""
+    save_error = db_manager.set_config(cfg)
     online, message = db_manager.test_connection()
+    if save_error:
+        message = f"{message} Aviso: {save_error}"
     return {
-        "config": db_manager.config.dict(),
+        "config": db_manager.config.model_dump(),
         "is_connected": online,
         "use_mock": db_manager.use_mock,
         "message": message
     }
+
+@app.get("/api/drivers")
+def list_odbc_drivers():
+    """Lista os drivers ODBC instalados neste computador."""
+    try:
+        import pyodbc
+        return [d for d in pyodbc.drivers() if "SQL Server" in d]
+    except Exception:
+        return []
 
 @app.get("/api/families")
 def list_families_endpoint():
@@ -117,7 +129,7 @@ def parse_import_endpoint(content: str = Body(..., embed=True)):
     rows = parse_import_csv(content)
     if not rows:
         raise HTTPException(status_code=400, detail="Não foi possível identificar registos válidos com a coluna 'Codigo' no ficheiro.")
-    return [r.dict() for r in rows]
+    return [r.model_dump() for r in rows]
 
 @app.post("/api/products/preview-import", response_model=ImportPreviewResponse)
 def preview_import_endpoint(req: ImportApplyRequest):
@@ -153,7 +165,7 @@ def search_products_endpoint(filters: ProductFilter):
     """Pesquisa artigos na base de dados com suporte a filtros e paginação."""
     items, total = search_products(filters)
     return {
-        "items": [item.dict() for item in items],
+        "items": [item.model_dump() for item in items],
         "total": total,
         "page": filters.page,
         "page_size": filters.page_size,

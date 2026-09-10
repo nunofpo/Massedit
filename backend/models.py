@@ -7,14 +7,15 @@ class DatabaseConfig(BaseModel):
     database: str = "nuno"
     username: Optional[str] = ""
     password: Optional[str] = ""
-    trusted_connection: bool = True
+    trusted_connection: bool = False
     driver: str = "ODBC Driver 17 for SQL Server"
+    save_password: bool = False  # Se falso, a password não é gravada no config.json
 
 class ProductFilter(BaseModel):
     search: Optional[str] = None
     familia: Optional[int] = None
     subfamilia: Optional[int] = None
-    iva: Optional[int] = None
+    iva: Optional[float] = None  # Taxa (factor) de IVA, p.ex. 23
     centro_prod: Optional[int] = None  # Código do Centro de Produção (dbo.centrosprod.codigo)
     bloqueado: Optional[int] = None  # 0=Ativo, 1=Bloqueado, None=Todos
     frontoffice: Optional[int] = None  # 1=Visível, 0=Oculto, None=Todos
@@ -32,7 +33,7 @@ class ProductItem(BaseModel):
     familia_desc: Optional[str] = ""
     subfamilia: Optional[int] = None
     subfamilia_desc: Optional[str] = ""
-    iva: Optional[int] = None
+    iva: Optional[float] = None
     iva_desc: Optional[str] = ""
     centro_prod: Optional[int] = None
     centro_prod_desc: Optional[str] = ""
@@ -61,7 +62,9 @@ class ProductItem(BaseModel):
     referencia: Optional[str] = ""
     sync: int = 0
     has_sales: bool = False
+    sales_check_ok: bool = True  # False = não foi possível verificar vendas (designação protegida por segurança)
     can_edit_description: bool = True
+    centros_prod: Optional[List[Dict[str, int]]] = None  # Todas as linhas de dbo.produtoscentrosprod (para backups)
 
 class ColorUpdate(BaseModel):
     apply_fundo: bool = False
@@ -127,7 +130,7 @@ class BulkEditRequest(BaseModel):
     
     # Imposto / IVA
     apply_iva: bool = False
-    new_iva: Optional[int] = None
+    new_iva: Optional[float] = None  # Taxa (factor) de IVA existente em dbo.iva
     
     # Estado / Visibilidade / Posição Frontoffice
     apply_bloqueado: bool = False
@@ -197,7 +200,7 @@ class ImportRow(BaseModel):
     referencia: Optional[str] = None
     familia: Optional[int] = None
     subfam: Optional[int] = None
-    iva: Optional[int] = None
+    iva: Optional[float] = None
     pvp1: Optional[float] = None
     pvp2: Optional[float] = None
     pvp3: Optional[float] = None
