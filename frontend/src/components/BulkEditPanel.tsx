@@ -500,6 +500,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       disabled={allHaveSales || selectedCount === 0}
                       placeholder="Nova designação para artigos sem vendas..."
                       value={newDescricao}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewDescricao(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     />
@@ -610,6 +611,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       type="text"
                       placeholder="Nova descrição curta (ex: 'Comp. Fruta')..."
                       value={newDescricaocurta}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewDescricaocurta(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     />
@@ -744,26 +746,31 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         type="text"
                         inputMode="decimal"
                         value={priceValue}
+                        onFocus={(e) => e.target.select()}
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
                         onChange={(e) => {
-                          const val = e.target.value.replace(',', '.');
+                          let raw = e.target.value;
+                          // Convert comma from Portuguese numpad or keyboard to dot
+                          let val = raw.replace(',', '.');
+                          
+                          // Handle typing dot when a dot already exists in string
+                          const parts = val.split('.');
+                          if (parts.length > 2) {
+                            val = parts[0] + '.' + parts.slice(1).join('');
+                          }
+
+                          // Allow empty, minus, dot, minus-dot, or any valid partial numeric string
                           if (val === '' || val === '-' || val === '.' || val === '-.' || !isNaN(Number(val))) {
                             setPriceValue(val);
                           }
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === ',') {
-                            e.preventDefault();
-                            const target = e.target as HTMLInputElement;
-                            const start = target.selectionStart || 0;
-                            const end = target.selectionEnd || 0;
-                            const current = String(priceValue);
-                            if (!current.includes('.')) {
-                              const next = current.slice(0, start) + '.' + current.slice(end);
-                              setPriceValue(next);
-                            }
+                        onBlur={() => {
+                          const num = parseFloat(String(priceValue).replace(',', '.'));
+                          if (!isNaN(num)) {
+                            setPriceValue(num);
                           }
                         }}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-bold"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-bold shadow-xs"
                       />
                     </div>
                   )}
