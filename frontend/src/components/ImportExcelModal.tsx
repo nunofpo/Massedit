@@ -127,48 +127,48 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh] text-slate-900">
         
         {/* Header */}
-        <div className="bg-slate-800/90 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+        <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-emerald-500/20 p-2.5 rounded-xl border border-emerald-500/30 text-emerald-400">
+            <div className="bg-emerald-100 p-2.5 rounded-xl border border-emerald-200 text-emerald-700">
               <FileSpreadsheet className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 Importar Preços & Artigos do Excel (.csv / .xlsx)
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Atualize preços PVP1..10, cores, famílias e taxas de IVA diretamente a partir de um ficheiro Excel.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700 transition"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
           
           {/* File Upload Area */}
           {!fileContent ? (
-            <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-8 text-center bg-slate-950/50 transition group">
-              <Upload className="w-12 h-12 text-slate-500 group-hover:text-emerald-400 mx-auto mb-3 transition" />
-              <h3 className="text-sm font-bold text-slate-200 mb-1">
+            <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-8 text-center bg-white transition group shadow-xs">
+              <Upload className="w-12 h-12 text-slate-400 group-hover:text-emerald-600 mx-auto mb-3 transition" />
+              <h3 className="text-sm font-bold text-slate-900 mb-1">
                 Selecione ou Arraste o Ficheiro Excel / CSV para Importar
               </h3>
-              <p className="text-xs text-slate-400 mb-4 max-w-md mx-auto">
-                O ficheiro deve conter a coluna <strong className="text-emerald-400">Codigo</strong> e as colunas que pretende atualizar (ex: <strong className="text-slate-300">PVP1, PVP2, Designacao, Familia, IVA</strong>).
+              <p className="text-xs text-slate-500 mb-4 max-w-md mx-auto leading-relaxed">
+                O ficheiro deve conter a coluna <strong className="text-emerald-700">Codigo</strong> e as colunas que pretende atualizar (ex: <strong className="text-slate-800">PVP1, PVP2, Designacao, Familia, IVA</strong>).
               </p>
               
               <div className="flex items-center justify-center gap-3">
-                <label className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-600/20 transition flex items-center gap-2">
+                <label className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-md shadow-emerald-600/10 transition flex items-center gap-2">
                   <Upload className="w-4 h-4" />
                   Escolher Ficheiro Excel / CSV
                   <input
@@ -182,158 +182,145 @@ export const ImportExcelModal: React.FC<ImportExcelModalProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadSample}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+                  className="bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-300 transition flex items-center gap-1.5 shadow-xs"
                 >
-                  <Download className="w-4 h-4 text-emerald-400" />
+                  <Download className="w-4 h-4 text-emerald-600" />
                   Baixar Modelo Excel (.csv)
                 </button>
               </div>
             </div>
           ) : (
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-xs">
               <div className="flex items-center gap-3">
-                <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+                <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
                 <div>
-                  <span className="text-xs font-bold text-white block">{fileName}</span>
-                  <span className="text-[11px] text-slate-400 font-mono">
+                  <span className="text-xs font-bold text-slate-900 block">{fileName}</span>
+                  <span className="text-[11px] text-slate-500 font-mono font-semibold">
                     {parsedRows.length} registos identificados
                   </span>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={handleReset}
-                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition"
+                className="text-xs text-slate-600 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 border border-slate-200 px-3 py-1.5 rounded-lg transition font-semibold"
               >
-                Carregar Outro Ficheiro
+                Trocar Ficheiro
               </button>
             </div>
           )}
 
-          {/* Loading Indicator */}
+          {/* Loading State */}
           {isLoading && (
-            <div className="py-12 text-center text-slate-400 text-sm">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-emerald-400" />
-              A analisar ficheiro e a comparar alterações com o SQL Server...
+            <div className="py-12 text-center text-slate-600 text-sm font-semibold">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-emerald-600" />
+              A analisar ficheiro e a gerar simulação dry-run...
             </div>
           )}
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="p-4 bg-rose-950/90 border border-rose-800 rounded-xl text-xs text-rose-200 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* Dry-Run Preview Table */}
+          {/* Preview Dry-Run Metrics & Diff Table */}
           {previewData && !isLoading && (
             <div className="space-y-4">
-              {/* Stats Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Linhas no Ficheiro</span>
-                  <strong className="text-base text-slate-100">{previewData.total_file_rows}</strong>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-xs">
+                  <span className="text-[11px] text-slate-500 block font-semibold">Total de Registos no Ficheiro</span>
+                  <span className="text-xl font-black text-slate-900">{previewData.total_file_rows}</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Artigos que Sofrerão Alteração</span>
-                  <strong className="text-base text-emerald-400">{previewData.previews.length}</strong>
+
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl shadow-xs">
+                  <span className="text-[11px] text-emerald-800 block font-semibold">Artigos Válidos a Atualizar</span>
+                  <span className="text-xl font-black text-emerald-700">{previewData.matched_products_count}</span>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Nomes Protegidos por Vendas</span>
-                  <strong className="text-base text-amber-400">{previewData.blocked_descriptions_count}</strong>
+
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl shadow-xs">
+                  <span className="text-[11px] text-amber-800 block font-semibold">Artigos Protegidos (Com Vendas)</span>
+                  <span className="text-xl font-black text-amber-700">{previewData.blocked_descriptions_count}</span>
                 </div>
               </div>
 
-              {previewData.previews.length === 0 ? (
-                <div className="py-8 bg-slate-950 rounded-xl border border-slate-800 text-center text-slate-400 text-xs">
-                  Nenhum dos artigos do ficheiro apresenta alterações em relação ao estado atual na base de dados.
+              {/* Table of Differences */}
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                <div className="p-3 bg-slate-100 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
+                  <span>Pré-visualização das Alterações a Aplicar</span>
+                  <span className="text-[11px] text-slate-500 font-normal font-mono">
+                    Mostrando até {previewData.previews.length} registos
+                  </span>
                 </div>
-              ) : (
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
-                  <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 font-bold text-xs text-slate-200">
-                    Pré-visualização das Alterações a Gravar no SQL Server:
-                  </div>
 
-                  <div className="max-h-[350px] overflow-y-auto divide-y divide-slate-800/60 text-xs">
-                    {previewData.previews.map(p => (
-                      <div key={p.codigo} className="p-3 hover:bg-slate-900/50 transition space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold bg-slate-900 text-slate-400 px-2 py-0.5 rounded border border-slate-800 text-[10px]">
-                              #{p.codigo}
-                            </span>
-                            <span className="font-bold text-slate-100">{p.descricao}</span>
-                          </div>
-
-                          {p.has_sales && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800">
-                              <ShieldAlert className="w-3 h-3 text-amber-400" />
-                              Nome Mantido (Com Vendas)
-                            </span>
-                          )}
+                <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-100 text-xs">
+                  {previewData.previews.map((item) => (
+                    <div key={item.codigo} className="p-3 hover:bg-slate-50 transition space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 text-[10px]">
+                            #{item.codigo}
+                          </span>
+                          <span className="font-bold text-slate-900">{item.descricao}</span>
                         </div>
 
-                        {/* Diffs List */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-4 border-l-2 border-indigo-600/40">
-                          {p.diffs.map((d, idx) => (
-                            <div key={idx} className="bg-slate-900/70 p-2 rounded border border-slate-800 text-[11px] flex items-center justify-between">
-                              <span className="text-slate-400 font-medium">{d.field_label}:</span>
-                              <div className="flex items-center gap-1.5 font-mono">
-                                <span className="line-through text-slate-500">{String(d.old_value)}</span>
-                                <ArrowRight className="w-3 h-3 text-emerald-400 shrink-0" />
-                                <strong className={d.blocked ? "text-amber-400" : "text-emerald-400"}>
-                                  {String(d.new_value)}
-                                </strong>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        {item.has_sales && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                            <ShieldAlert className="w-3 h-3 text-amber-600" />
+                            Nome Protegido (Vendas)
+                          </span>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
+                      {/* Fields changed */}
+                      <div className="flex flex-wrap gap-2 text-[11px]">
+                        {item.diffs.map((diff) => (
+                          <span key={diff.field_name} className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-mono">
+                            <strong className="text-indigo-600">{diff.field_label}:</strong> {String(diff.old_value)} ➔ <strong className="text-emerald-700">{String(diff.new_value)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
         </div>
 
         {/* Footer Actions */}
-        <div className="bg-slate-800/90 border-t border-slate-700 px-6 py-4 flex items-center justify-between">
-          <div className="text-xs text-slate-400">
-            {previewData && (
-              <span>Artigos a atualizar: <strong className="text-emerald-400">{previewData.previews.length}</strong></span>
-            )}
-          </div>
+        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            disabled={isApplying}
+            className="px-4 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl transition shadow-xs"
+          >
+            Cancelar
+          </button>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              disabled={isApplying}
-              className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-xl transition"
-            >
-              Cancelar
-            </button>
+          {previewData && (
             <button
               onClick={handleConfirmImport}
-              disabled={isApplying || !previewData || previewData.previews.length === 0}
-              className="px-5 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-40 rounded-xl shadow-lg shadow-emerald-400/20 transition flex items-center gap-2"
+              disabled={isApplying || previewData.matched_products_count === 0}
+              className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-md shadow-emerald-600/10 transition flex items-center gap-2"
             >
               {isApplying ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  A aplicar no SQL Server...
+                  A Importar e Gravar no SQL Server...
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  Confirmar e Gravar Importação na BD
+                  Confirmar & Aplicar Importação ({previewData.matched_products_count} Artigos)
                 </>
               )}
             </button>
-          </div>
+          )}
         </div>
 
       </div>

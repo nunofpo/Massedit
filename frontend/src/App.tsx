@@ -320,7 +320,7 @@ export const App: React.FC = () => {
   const selectedProductsList = products.filter(p => selectedCodes.has(p.codigo));
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-100 text-slate-900 font-sans">
       
       {/* Top Navbar */}
       <Header
@@ -338,11 +338,14 @@ export const App: React.FC = () => {
 
       {/* Global Notification Banner */}
       {notification && (
-        <div className={`px-6 py-3 text-xs font-semibold flex items-center justify-between border-b ${
-          notification.type === 'success' ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800' : 'bg-rose-950/90 text-rose-200 border-rose-800'
+        <div className={`px-6 py-2.5 text-xs font-semibold flex items-center justify-between border-b shadow-sm ${
+          notification.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
         }`}>
-          <span>{notification.text}</span>
-          <button onClick={() => setNotification(null)} className="underline hover:opacity-80">Fechar</button>
+          <span className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            {notification.text}
+          </span>
+          <button onClick={() => setNotification(null)} className="text-xs font-bold underline hover:opacity-80">Fechar</button>
         </div>
       )}
 

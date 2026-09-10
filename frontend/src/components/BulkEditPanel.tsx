@@ -199,49 +199,49 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   };
 
   return (
-    <aside className="w-full lg:w-[450px] bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-hidden">
+    <aside className="w-full lg:w-[460px] bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden shadow-lg">
       
       {/* Header Panel */}
-      <div className="p-4 bg-slate-900 border-b border-slate-800">
+      <div className="p-4 bg-white border-b border-slate-200">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
             Edição em Massa por Setores
           </h2>
           {totalActiveEdits > 0 && (
-            <span className="bg-indigo-900/80 text-indigo-200 border border-indigo-700/80 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               {totalActiveEdits} setor(es) configurados
             </span>
           )}
         </div>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-slate-500 mt-1">
           {selectedCount > 0 ? (
-            <span className="text-indigo-300 font-semibold">{selectedCount} artigo(s) selecionados para alterar</span>
+            <span className="text-indigo-600 font-semibold">{selectedCount} artigo(s) selecionados para alterar</span>
           ) : (
-            <span className="text-amber-400 font-medium">Selecione artigos na tabela para ativar a edição</span>
+            <span className="text-amber-600 font-medium">Selecione artigos na tabela para ativar a edição</span>
           )}
         </p>
       </div>
 
       {/* Sector Tabs Navigation Bar */}
-      <div className="bg-slate-950 p-2 border-b border-slate-800 grid grid-cols-3 gap-1 text-xs">
+      <div className="bg-slate-100 p-2 border-b border-slate-200 grid grid-cols-4 gap-1 text-xs">
         {/* Tab 1: Nomes */}
         <button
           type="button"
           onClick={() => setActiveTab('names')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'names'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             Nomes
           </span>
           {namesCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {namesCount}
             </span>
           )}
@@ -253,16 +253,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           onClick={() => setActiveTab('prices')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'prices'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <DollarSign className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             Preços/IVA
           </span>
           {pricesCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {pricesCount}
             </span>
           )}
@@ -274,16 +274,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           onClick={() => setActiveTab('colors')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'colors'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <Palette className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <Palette className="w-3.5 h-3.5 text-pink-500 shrink-0" />
             Cores POS
           </span>
           {colorsCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {colorsCount}
             </span>
           )}
@@ -295,16 +295,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           onClick={() => setActiveTab('categories')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'categories'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <FolderTree className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <FolderTree className="w-3.5 h-3.5 text-sky-500 shrink-0" />
             Famílias
           </span>
           {categoriesCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {categoriesCount}
             </span>
           )}
@@ -316,16 +316,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           onClick={() => setActiveTab('codes')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'codes'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <Barcode className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-            PLU / EAN
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <Barcode className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            PLU/EAN
           </span>
           {codesCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {codesCount}
             </span>
           )}
@@ -337,16 +337,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
           onClick={() => setActiveTab('production')}
           className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'production'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
-          <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="flex items-center gap-1 truncate text-[11px]">
+            <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
             Produção
           </span>
           {productionCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {productionCount}
             </span>
           )}
@@ -356,18 +356,18 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('status')}
-          className={`py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
+          className={`col-span-2 py-2 px-2 rounded-lg font-semibold flex items-center justify-between border transition ${
             activeTab === 'status'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md font-bold'
-              : 'bg-slate-900 text-slate-400 border-slate-800/80 hover:bg-slate-800 hover:text-slate-200'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 font-semibold shadow-xs'
           }`}
         >
           <span className="flex items-center gap-1.5 truncate text-[11px]">
-            <Cloud className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-            Estado
+            <Cloud className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            Estado & Nuvem
           </span>
           {statusCount > 0 && (
-            <span className="bg-emerald-500 text-slate-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
+            <span className="bg-emerald-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0">
               {statusCount}
             </span>
           )}
@@ -375,17 +375,17 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       </div>
 
       {/* Main Tab Content Workspace Body */}
-      <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+      <div className="p-4 space-y-4 flex-1 overflow-y-auto bg-slate-50/50">
         
         {/* Warning Badge for Items with Sales (Always visible if applicable) */}
         {hasSalesCount > 0 && (
-          <div className="bg-amber-950/60 border border-amber-800/80 rounded-xl p-3 text-xs text-amber-200 flex items-start gap-2.5 shadow-inner">
-            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-amber-300">
+              <p className="font-bold text-amber-900">
                 {hasSalesCount} dos artigos selecionados têm vendas registadas.
               </p>
-              <p className="mt-0.5 text-[11px] text-amber-200/80 leading-relaxed">
+              <p className="mt-0.5 text-[11px] text-amber-800 leading-relaxed">
                 A designação fiscal será mantida intacta. Todos os outros campos (preços, cores, famílias, IVA) podem ser alterados normalmente.
               </p>
             </div>
@@ -395,19 +395,19 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 1: NOMES & ORTOGRAFIA ------------------- */}
         {activeTab === 'names' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                <Sparkles className="w-4 h-4 text-amber-500" />
                 Designação Principal (`descricao`)
               </h3>
 
-              <label className="flex items-center gap-2 font-semibold text-xs text-slate-200 cursor-pointer">
+              <label className="flex items-center gap-2 font-semibold text-xs text-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
                   disabled={allHaveSales || selectedCount === 0}
                   checked={applyDescricao}
                   onChange={(e) => setApplyDescricao(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                  className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                 />
                 <span>Ativar Alteração da Designação Principal</span>
               </label>
@@ -420,8 +420,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('direct')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'direct'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Novo Texto Fixo
@@ -431,8 +431,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('unaccented_uppercase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'unaccented_uppercase'
-                          ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                          : 'bg-slate-900 text-amber-300 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                          : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-semibold'
                       }`}
                     >
                       🔤 MAIÚSCULAS SEM ACENTOS
@@ -442,8 +442,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('orthography')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'orthography'
-                          ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow'
-                          : 'bg-slate-900 text-emerald-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 font-semibold'
                       }`}
                     >
                       ✨ Ortografia (PT)
@@ -453,8 +453,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('uppercase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'uppercase'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       TUDO MAIÚSCULAS
@@ -464,8 +464,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('titlecase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'titlecase'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Primeiras Maiúsculas
@@ -475,8 +475,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('unaccented')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'unaccented'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Sem Acentos
@@ -486,8 +486,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaoMode('lowercase')}
                       className={`col-span-2 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaoMode === 'lowercase'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       tudo minúsculas
@@ -501,10 +501,10 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       placeholder="Nova designação para artigos sem vendas..."
                       value={newDescricao}
                       onChange={(e) => setNewDescricao(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     />
                   ) : (
-                    <p className="text-[10px] text-indigo-300 bg-indigo-950/40 p-2 rounded border border-indigo-800/60 font-mono">
+                    <p className="text-[10px] text-indigo-900 bg-indigo-50 p-2.5 rounded-lg border border-indigo-100 font-medium leading-relaxed">
                       {descricaoMode === 'unaccented_uppercase' && '🔤 Remove acentos e converte para MAIÚSCULAS (ex: "Bolo de Ananás" ➔ "BOLO DE ANANAS", "MAÇÃ" ➔ "MACA").'}
                       {descricaoMode === 'unaccented' && '💡 Remove todos os acentos mantendo as maiúsculas/minúsculas.'}
                       {descricaoMode === 'orthography' && '✨ Corrige ortografia, espaçamentos duplos, pontuação e preposições em minúsculas.'}
@@ -518,18 +518,18 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
             </div>
 
             {/* Descrição Curta (POS / Cozinha) */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                <Tag className="w-4 h-4 text-sky-400" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                <Tag className="w-4 h-4 text-sky-600" />
                 Descrição Curta (`descricaocurta` - Botões POS)
               </h3>
 
-              <label className="flex items-center gap-2 font-semibold text-xs text-slate-300 cursor-pointer">
+              <label className="flex items-center gap-2 font-semibold text-xs text-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyDescricaocurta}
                   onChange={(e) => setApplyDescricaocurta(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                  className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
                 />
                 <span>Alterar Descrição Curta</span>
               </label>
@@ -542,8 +542,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('direct')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'direct'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Texto Fixo
@@ -553,8 +553,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('unaccented_uppercase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'unaccented_uppercase'
-                          ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                          : 'bg-slate-900 text-amber-300 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                          : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-semibold'
                       }`}
                     >
                       🔤 MAIÚSCULAS SEM ACENTOS
@@ -564,8 +564,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('orthography')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'orthography'
-                          ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow'
-                          : 'bg-slate-900 text-emerald-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 font-semibold'
                       }`}
                     >
                       ✨ Ortografia (PT)
@@ -575,8 +575,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('uppercase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'uppercase'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       MAIÚSCULAS
@@ -586,8 +586,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('titlecase')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'titlecase'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Primeiras Maiúsculas
@@ -597,8 +597,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setDescricaocurtaMode('unaccented')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         descricaocurtaMode === 'unaccented'
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Sem Acentos
@@ -611,7 +611,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       placeholder="Nova descrição curta (ex: 'Comp. Fruta')..."
                       value={newDescricaocurta}
                       onChange={(e) => setNewDescricaocurta(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     />
                   )}
                 </div>
@@ -623,16 +623,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 2: PREÇOS & IVA ------------------- */}
         {activeTab === 'prices' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applyPrice}
                     onChange={(e) => setApplyPrice(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
                   />
-                  <DollarSign className="w-4 h-4 text-emerald-400" />
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
                   <span>Alteração de Preços em Lote</span>
                 </label>
               </div>
@@ -641,11 +641,11 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                 <div className="space-y-4 pt-1">
                   {/* Target PVP */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-semibold block">Preço a Alterar (Destino):</label>
+                    <label className="text-xs text-slate-700 font-semibold block">Preço a Alterar (Destino):</label>
                     <select
                       value={targetPvp}
                       onChange={(e) => setTargetPvp(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     >
                       <option value="pvp1">PVP 1 (Preço Principal de Venda)</option>
                       <option value="pvp2">PVP 2 (Preço 2 / Esplanada / Cartão)</option>
@@ -663,15 +663,15 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
                   {/* Price Mode */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-300 font-semibold block">Modo de Atualização:</label>
+                    <label className="text-xs text-slate-700 font-semibold block">Modo de Atualização:</label>
                     <div className="grid grid-cols-2 gap-1.5 text-xs">
                       <button
                         type="button"
                         onClick={() => setPriceMode('fixed_add')}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                           priceMode === 'fixed_add'
-                            ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow'
-                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                         }`}
                       >
                         Ajuste Fixo (+/- €)
@@ -681,8 +681,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         onClick={() => setPriceMode('percentage')}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                           priceMode === 'percentage'
-                            ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow'
-                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                         }`}
                       >
                         Margem (+/- %)
@@ -692,8 +692,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         onClick={() => setPriceMode('fixed_set')}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                           priceMode === 'fixed_set'
-                            ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow'
-                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                         }`}
                       >
                         Definir Preço Fixo
@@ -703,8 +703,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         onClick={() => setPriceMode('copy_pvp')}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                           priceMode === 'copy_pvp'
-                            ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                            : 'bg-slate-900 text-amber-300 border-slate-800 hover:bg-slate-800'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                            : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-semibold'
                         }`}
                       >
                         Copiar de Outro PVP
@@ -714,15 +714,15 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
                   {/* Copy Source PVP selector */}
                   {priceMode === 'copy_pvp' ? (
-                    <div className="space-y-1.5 bg-amber-950/30 p-3 rounded-lg border border-amber-800/60">
-                      <label className="text-xs text-amber-200 font-semibold flex items-center gap-1.5">
-                        <Copy className="w-3.5 h-3.5 text-amber-400" />
+                    <div className="space-y-1.5 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                      <label className="text-xs text-amber-900 font-bold flex items-center gap-1.5">
+                        <Copy className="w-3.5 h-3.5 text-amber-600" />
                         Copiar Valor Origem de:
                       </label>
                       <select
                         value={sourcePvp}
                         onChange={(e) => setSourcePvp(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100"
+                        className="w-full bg-white border border-amber-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-amber-200 font-semibold"
                       >
                         <option value="pvp1">Copiar do PVP 1</option>
                         <option value="pvp2">Copiar do PVP 2</option>
@@ -731,13 +731,13 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         <option value="pvp5">Copiar do PVP 5</option>
                         <option value="pvp6">Copiar do PVP 6</option>
                       </select>
-                      <p className="text-[10px] text-amber-300">
-                        O valor do <span className="font-bold uppercase text-white">{sourcePvp}</span> será copiado diretamente para o <span className="font-bold uppercase text-white">{targetPvp}</span>.
+                      <p className="text-[10px] text-amber-800 font-medium">
+                        O valor do <span className="font-bold uppercase text-amber-950">{sourcePvp}</span> será copiado diretamente para o <span className="font-bold uppercase text-amber-950">{targetPvp}</span>.
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      <label className="text-xs text-slate-300 font-semibold block">
+                      <label className="text-xs text-slate-700 font-semibold block">
                         {priceMode === 'percentage' ? 'Percentagem (%):' : 'Valor (€):'}
                       </label>
                       <input
@@ -745,7 +745,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         step="0.01"
                         value={priceValue}
                         onChange={(e) => setPriceValue(Number(e.target.value))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                       />
                     </div>
                   )}
@@ -753,7 +753,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   {/* Quick Presets */}
                   {priceMode !== 'copy_pvp' && (
                     <div className="space-y-1.5">
-                      <span className="text-[10px] text-slate-400 font-medium block">Atalhos Rápidos:</span>
+                      <span className="text-[10px] text-slate-500 font-medium block">Atalhos Rápidos:</span>
                       <div className="flex flex-wrap gap-1">
                         {PRICE_QUICK_PRESETS.map((p, idx) => (
                           <button
@@ -763,7 +763,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                               setPriceMode(p.mode);
                               setPriceValue(p.val);
                             }}
-                            className="py-1 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded text-[10px] font-mono"
+                            className="py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded text-[10px] font-mono font-semibold"
                           >
                             {p.label}
                           </button>
@@ -773,12 +773,12 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   )}
 
                   {/* Rounding Options */}
-                  <div className="space-y-1.5 pt-2 border-t border-slate-900">
-                    <label className="text-xs text-slate-300 font-semibold block">Regra de Arredondamento:</label>
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <label className="text-xs text-slate-700 font-semibold block">Regra de Arredondamento:</label>
                     <select
                       value={priceRounding}
                       onChange={(e) => setPriceRounding(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     >
                       <option value="none">Sem arredondamento (Exato)</option>
                       <option value="90_cents">Terminar em .90 € (ex: 1.90€)</option>
@@ -792,22 +792,22 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
             </div>
 
             {/* IVA */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-              <label className="flex items-center gap-2 text-xs text-slate-300 font-semibold cursor-pointer">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+              <label className="flex items-center gap-2 text-xs text-slate-800 font-bold cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyIva}
                   onChange={(e) => setApplyIva(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                  className="rounded border-slate-300 bg-white text-indigo-600"
                 />
-                <Percent className="w-4 h-4 text-amber-400" />
-                <span>Alterar Taxa de IVA</span>
+                <Percent className="w-4 h-4 text-amber-600" />
+                <span>Alterar Taxa de IVA (numérico: 23%, 13%, 6%, 0%)</span>
               </label>
               {applyIva && (
                 <select
                   value={newIva ?? ''}
                   onChange={(e) => setNewIva(Number(e.target.value))}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-semibold"
                 >
                   {vats.map((v) => (
                     <option key={v.codigo} value={v.factor}>
@@ -823,17 +823,17 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 3: CORES & BOTÕES POS ------------------- */}
         {activeTab === 'colors' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                  <Palette className="w-4 h-4 text-pink-400" />
+                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                  <Palette className="w-4 h-4 text-pink-500" />
                   Personalização de Cores dos Botões POS
                 </h3>
                 {onOpenFamilyColors && (
                   <button
                     type="button"
                     onClick={onOpenFamilyColors}
-                    className="text-[11px] bg-indigo-950 text-indigo-300 border border-indigo-800 hover:bg-indigo-900 px-2 py-1 rounded font-medium flex items-center gap-1 transition"
+                    className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition shadow-xs"
                   >
                     Gestor por Família ➔
                   </button>
@@ -842,7 +842,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
               {/* Presets Rapid0s */}
               <div className="space-y-2">
-                <span className="text-[10px] text-slate-400 font-medium block">Paleta de Cores Rápida:</span>
+                <span className="text-[10px] text-slate-500 font-medium block">Paleta de Cores Rápida:</span>
                 <div className="grid grid-cols-4 gap-2">
                   {PRESET_COLORS.map((preset, idx) => (
                     <button
@@ -854,7 +854,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         setApplyLetra(true);
                         setLetraHex(preset.textHex);
                       }}
-                      className="py-2 px-1 rounded-lg border border-slate-700 shadow flex items-center justify-center gap-1 transition hover:scale-105"
+                      className="py-2 px-1 rounded-lg border border-slate-300 shadow-xs flex items-center justify-center gap-1 transition hover:scale-105"
                       style={{ backgroundColor: preset.hex, color: preset.textHex }}
                       title={`Aplicar ${preset.name}`}
                     >
@@ -865,14 +865,14 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               </div>
 
               {/* Fundo Botão */}
-              <div className="space-y-2 pt-2 border-t border-slate-900">
-                <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                  <span className="flex items-center gap-2 font-medium">
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={applyFundo}
                       onChange={(e) => setApplyFundo(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                      className="rounded border-slate-300 bg-white text-indigo-600"
                     />
                     Cor de Fundo do Botão (`fundo`)
                   </span>
@@ -881,20 +881,20 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     disabled={!applyFundo}
                     value={fundoHex}
                     onChange={(e) => setFundoHex(e.target.value.toUpperCase())}
-                    className="w-8 h-8 rounded cursor-pointer border border-slate-700 bg-slate-900 disabled:opacity-40"
+                    className="w-8 h-8 rounded cursor-pointer border border-slate-300 bg-white disabled:opacity-40"
                   />
                 </label>
               </div>
 
               {/* Texto Botão */}
               <div className="space-y-2">
-                <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                  <span className="flex items-center gap-2 font-medium">
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={applyLetra}
                       onChange={(e) => setApplyLetra(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                      className="rounded border-slate-300 bg-white text-indigo-600"
                     />
                     Cor do Texto / Fonte (`letra`)
                   </span>
@@ -903,20 +903,20 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     disabled={!applyLetra}
                     value={letraHex}
                     onChange={(e) => setLetraHex(e.target.value.toUpperCase())}
-                    className="w-8 h-8 rounded cursor-pointer border border-slate-700 bg-slate-900 disabled:opacity-40"
+                    className="w-8 h-8 rounded cursor-pointer border border-slate-300 bg-white disabled:opacity-40"
                   />
                 </label>
               </div>
 
               {/* Etiqueta / Tag */}
               <div className="space-y-2">
-                <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                  <span className="flex items-center gap-2 font-medium">
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={applyCor}
                       onChange={(e) => setApplyCor(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                      className="rounded border-slate-300 bg-white text-indigo-600"
                     />
                     Etiqueta / Tag Secundária (`cor`)
                   </span>
@@ -925,23 +925,23 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     disabled={!applyCor}
                     value={corHex}
                     onChange={(e) => setCorHex(e.target.value.toUpperCase())}
-                    className="w-8 h-8 rounded cursor-pointer border border-slate-700 bg-slate-900 disabled:opacity-40"
+                    className="w-8 h-8 rounded cursor-pointer border border-slate-300 bg-white disabled:opacity-40"
                   />
                 </label>
               </div>
 
               {/* Live Visual Preview */}
-              <div className="pt-3 border-t border-slate-900 space-y-2">
-                <span className="text-[10px] text-slate-400 block font-medium">Simulação em Tempo Real do Botão no POS:</span>
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <span className="text-[10px] text-slate-500 block font-semibold">Simulação em Tempo Real do Botão no POS:</span>
                 <div
-                  className="w-full py-4 px-4 rounded-xl text-center font-bold text-sm shadow-2xl border border-slate-700 transition flex flex-col items-center justify-center gap-1"
+                  className="w-full py-4 px-4 rounded-xl text-center font-bold text-sm shadow-md border border-slate-300 transition flex flex-col items-center justify-center gap-1"
                   style={{
-                    backgroundColor: applyFundo ? fundoHex : '#1e293b',
-                    color: applyLetra ? letraHex : '#f8fafc'
+                    backgroundColor: applyFundo ? fundoHex : '#2563eb',
+                    color: applyLetra ? letraHex : '#ffffff'
                   }}
                 >
                   <span>{selectedProducts[0]?.descricao || 'Exemplo de Botão POS'}</span>
-                  <span className="text-[10px] opacity-80 font-normal">
+                  <span className="text-[10px] opacity-90 font-mono font-medium">
                     {selectedProducts[0]?.pvp1 ? `${selectedProducts[0].pvp1.toFixed(2)} €` : '1.50 €'}
                   </span>
                 </div>
@@ -953,20 +953,20 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 4: CATEGORIAS & FAMÍLIAS ------------------- */}
         {activeTab === 'categories' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                <FolderTree className="w-4 h-4 text-sky-400" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                <FolderTree className="w-4 h-4 text-sky-600" />
                 Estrutura de Categorias (Família ➔ Subfamília)
               </h3>
 
               {/* Família */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-xs text-slate-300 font-semibold cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-slate-800 font-bold cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applyFamilia}
                     onChange={(e) => setApplyFamilia(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                    className="rounded border-slate-300 bg-white text-indigo-600"
                   />
                   <span>Alterar Família</span>
                 </label>
@@ -979,7 +979,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       const firstSub = subfamilies.find(sf => sf.familia === fCode);
                       setNewSubfamilia(firstSub ? firstSub.codigo : undefined);
                     }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 font-semibold"
                   >
                     {families.map((f) => (
                       <option key={f.codigo} value={f.codigo}>
@@ -991,13 +991,13 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               </div>
 
               {/* Subfamília */}
-              <div className="space-y-2 pt-3 border-t border-slate-900">
-                <label className="flex items-center gap-2 text-xs text-slate-300 font-semibold cursor-pointer">
+              <div className="space-y-2 pt-3 border-t border-slate-100">
+                <label className="flex items-center gap-2 text-xs text-slate-800 font-bold cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applySubfamilia}
                     onChange={(e) => setApplySubfamilia(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                    className="rounded border-slate-300 bg-white text-indigo-600"
                   />
                   <span>Alterar Subfamília (Filtrada por Família)</span>
                 </label>
@@ -1005,7 +1005,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   <select
                     value={newSubfamilia ?? ''}
                     onChange={(e) => setNewSubfamilia(e.target.value === '' ? undefined : Number(e.target.value))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 font-semibold"
                   >
                     <option value="">Nenhuma Subfamília (Vazio)</option>
                     {filteredSubfamilies.map((sf) => (
@@ -1024,16 +1024,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {activeTab === 'codes' && (
           <div className="space-y-4">
             {/* PLU (Teclado / Balança) */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applyPlu}
                     onChange={(e) => setApplyPlu(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
                   />
-                  <Hash className="w-4 h-4 text-amber-400" />
+                  <Hash className="w-4 h-4 text-amber-600" />
                   <span>Código PLU (Teclado / Balança)</span>
                 </label>
               </div>
@@ -1046,8 +1046,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setPluMode('direct')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         pluMode === 'direct'
-                          ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Fixo (Número)
@@ -1057,8 +1057,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setPluMode('sequence')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         pluMode === 'sequence'
-                          ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Sequencial
@@ -1068,8 +1068,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setPluMode('copy_codigo')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         pluMode === 'copy_codigo'
-                          ? 'bg-amber-600 text-white border-amber-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Copiar Cód. Interno
@@ -1079,8 +1079,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setPluMode('clear')}
                       className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         pluMode === 'clear'
-                          ? 'bg-rose-950 text-rose-300 border-rose-800 font-bold'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-rose-600 text-white border-rose-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Limpar PLU (0)
@@ -1093,19 +1093,19 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       placeholder="Novo número de PLU..."
                       value={newPlu ?? ''}
                       onChange={(e) => setNewPlu(e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
                     />
                   )}
 
                   {pluMode === 'sequence' && (
                     <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 font-semibold block">PLU Inicial (Balança):</label>
+                      <label className="text-[10px] text-slate-500 font-semibold block">PLU Inicial (Balança):</label>
                       <input
                         type="number"
                         placeholder="1"
                         value={pluSeqStart}
                         onChange={(e) => setPluSeqStart(Number(e.target.value))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-amber-500"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
                       />
                     </div>
                   )}
@@ -1114,16 +1114,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
             </div>
 
             {/* Código de Barras (EAN) */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={applyCodbarras}
                     onChange={(e) => setApplyCodbarras(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
                   />
-                  <Barcode className="w-4 h-4 text-purple-400" />
+                  <Barcode className="w-4 h-4 text-purple-600" />
                   <span>Código de Barras (EAN-13 / UPC)</span>
                 </label>
               </div>
@@ -1136,8 +1136,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setCodbarrasMode('direct')}
                       className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         codbarrasMode === 'direct'
-                          ? 'bg-purple-600 text-white border-purple-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-purple-600 text-white border-purple-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Valor Fixo
@@ -1147,8 +1147,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setCodbarrasMode('sequence')}
                       className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         codbarrasMode === 'sequence'
-                          ? 'bg-purple-600 text-white border-purple-500 font-bold shadow'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-purple-600 text-white border-purple-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Sequencial
@@ -1158,8 +1158,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onClick={() => setCodbarrasMode('clear')}
                       className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
                         codbarrasMode === 'clear'
-                          ? 'bg-rose-950 text-rose-300 border-rose-800 font-bold'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-rose-600 text-white border-rose-600 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       Limpar EAN
@@ -1172,7 +1172,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       placeholder="Novo código de barras EAN-13..."
                       value={newCodbarras}
                       onChange={(e) => setNewCodbarras(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100"
                     />
                   )}
                 </div>
@@ -1180,13 +1180,13 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
             </div>
 
             {/* Referência SKU */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-              <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+              <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyReferencia}
                   onChange={(e) => setApplyReferencia(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                  className="rounded border-slate-300 bg-white text-indigo-600"
                 />
                 <span>Alterar Referência de Fornecedor (`referencia`)</span>
               </label>
@@ -1197,7 +1197,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   placeholder="Nova referência SKU / Fornecedor..."
                   value={newReferencia}
                   onChange={(e) => setNewReferencia(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                 />
               )}
             </div>
@@ -1207,33 +1207,33 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 6: CENTROS DE PRODUÇÃO ------------------- */}
         {activeTab === 'production' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                <Utensils className="w-4 h-4 text-amber-400" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                <Utensils className="w-4 h-4 text-amber-600" />
                 Encaminhamento para Produção (Cozinha/Bar)
               </h3>
 
               {/* Production Center Checkbox & Selector */}
-              <label className="flex items-center gap-2 font-bold text-xs text-slate-100 cursor-pointer">
+              <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyCentroProd}
                   onChange={(e) => setApplyCentroProd(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                  className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
                 />
                 <span>Alterar Centro de Produção de Destino (`dbo.produtoscentrosprod`)</span>
               </label>
 
               {applyCentroProd && (
-                <div className="space-y-3 pt-2 border-t border-slate-900">
+                <div className="space-y-3 pt-2 border-t border-slate-100">
                   <div>
-                    <label className="text-[11px] text-slate-400 font-semibold block mb-1">
+                    <label className="text-[11px] text-slate-600 font-semibold block mb-1">
                       Selecionar Centro de Produção:
                     </label>
                     <select
                       value={newCentroProd ?? ''}
                       onChange={(e) => setNewCentroProd(e.target.value === '' ? null : Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-semibold"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-semibold"
                     >
                       <option value="">(Remover / Sem Centro de Produção)</option>
                       {productionCenters.map((pc) => (
@@ -1246,7 +1246,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
                   {newCentroProd !== null && newCentroProd > 0 && (
                     <div>
-                      <label className="text-[11px] text-slate-400 font-semibold block mb-1">
+                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">
                         Tipo de Pedido no POS:
                       </label>
                       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1255,8 +1255,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                           onClick={() => setCentroProdInfo(0)}
                           className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
                             centroProdInfo === 0
-                              ? 'bg-amber-950 border-amber-600 text-amber-300 font-bold shadow'
-                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                              ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
                           🔥 Preparação (Imprime Pedido)
@@ -1266,8 +1266,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                           onClick={() => setCentroProdInfo(1)}
                           className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
                             centroProdInfo === 1
-                              ? 'bg-blue-950 border-blue-600 text-blue-300 font-bold shadow'
-                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                              ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
                           ℹ️ Informativo (Apenas Ecrã)
@@ -1276,12 +1276,12 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     </div>
                   )}
 
-                  <div className="p-3 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                    <p className="flex items-center gap-1 font-semibold text-amber-400">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                    <p className="flex items-center gap-1 font-bold text-amber-700">
                       💡 Informação de Sincronização:
                     </p>
                     <p className="leading-relaxed">
-                      Ao guardar, a tabela <code className="text-indigo-300">dbo.produtoscentrosprod</code> é atualizada e os artigos são automaticamente marcados com <code className="text-amber-300">sync = 1</code> para atualizar os postos POS na cloud.
+                      Ao guardar, a tabela <code className="text-indigo-600 font-mono font-semibold">dbo.produtoscentrosprod</code> é atualizada e os artigos são automaticamente marcados com <code className="text-amber-600 font-mono font-semibold">sync = 1</code> para atualizar os postos POS na cloud.
                     </p>
                   </div>
                 </div>
@@ -1293,29 +1293,29 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         {/* ------------------- SETOR 7: ESTADO & SINCRONIZAÇÃO CLOUD ------------------- */}
         {activeTab === 'status' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                <Cloud className="w-4 h-4 text-indigo-400" />
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                <Cloud className="w-4 h-4 text-indigo-600" />
                 Estado, Visibilidade POS e Sincronização Cloud
               </h3>
 
               {/* Bloqueado */}
-              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                <span className="flex items-center gap-2 font-medium">
+              <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                <span className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={applyBloqueado}
                     onChange={(e) => setApplyBloqueado(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                    className="rounded border-slate-300 bg-white text-indigo-600"
                   />
-                  <Lock className="w-4 h-4 text-slate-400" />
+                  <Lock className="w-4 h-4 text-slate-500" />
                   <span>Estado de Bloqueio do Artigo</span>
                 </span>
                 {applyBloqueado && (
                   <select
                     value={newBloqueado}
                     onChange={(e) => setNewBloqueado(Number(e.target.value))}
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
+                    className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
                   >
                     <option value={0}>Ativo (Permitir Venda)</option>
                     <option value={1}>Bloqueado (Impedir Venda)</option>
@@ -1324,22 +1324,22 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               </label>
 
               {/* FrontOffice */}
-              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer pt-3 border-t border-slate-900">
-                <span className="flex items-center gap-2 font-medium">
+              <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold pt-3 border-t border-slate-100">
+                <span className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={applyFrontoffice}
                     onChange={(e) => setApplyFrontoffice(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                    className="rounded border-slate-300 bg-white text-indigo-600"
                   />
-                  <Eye className="w-4 h-4 text-slate-400" />
+                  <Eye className="w-4 h-4 text-slate-500" />
                   <span>Visibilidade FrontOffice (Botões POS)</span>
                 </span>
                 {applyFrontoffice && (
                   <select
                     value={newFrontoffice}
                     onChange={(e) => setNewFrontoffice(Number(e.target.value))}
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
+                    className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
                   >
                     <option value={1}>Visível no POS</option>
                     <option value={0}>Oculto no POS</option>
@@ -1348,18 +1348,18 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               </label>
 
               {/* Cloud Sync Flag */}
-              <div className="pt-3 border-t border-slate-900 space-y-1.5">
-                <label className="flex items-center gap-2 text-xs text-emerald-400 font-semibold cursor-pointer">
+              <div className="pt-3 border-t border-slate-100 space-y-1.5">
+                <label className="flex items-center gap-2 text-xs text-emerald-800 font-bold cursor-pointer">
                   <input
                     type="checkbox"
                     checked={markCloudSync}
                     onChange={(e) => setMarkCloudSync(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-emerald-600"
+                    className="rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-500"
                   />
-                  <Cloud className="w-4 h-4 text-emerald-400" />
+                  <Cloud className="w-4 h-4 text-emerald-600" />
                   <span>Ativar Sinalizador de Sincronização Cloud (`sync = 1`)</span>
                 </label>
-                <p className="text-[10px] text-slate-400 leading-relaxed pl-6">
+                <p className="text-[10px] text-slate-500 leading-relaxed pl-6">
                   Força a sincronização imediata dos artigos alterados com a nuvem e outros terminais do sistema POS.
                 </p>
               </div>
@@ -1370,11 +1370,11 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       </div>
 
       {/* Action Button Sticky Footer */}
-      <div className="p-4 bg-slate-900 border-t border-slate-800 space-y-2 sticky bottom-0">
+      <div className="p-4 bg-white border-t border-slate-200 space-y-2 sticky bottom-0 shadow-lg">
         <button
           disabled={selectedCount === 0}
           onClick={handleRunPreview}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-2 transition"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl shadow-md shadow-indigo-600/10 flex items-center justify-center gap-2 transition"
         >
           <Play className="w-4 h-4 fill-white" />
           Simular & Aplicar Alterações ({selectedCount} Artigos)

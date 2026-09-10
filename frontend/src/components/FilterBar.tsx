@@ -67,11 +67,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   };
 
   return (
-    <div className="bg-slate-800/80 backdrop-blur border-b border-slate-700 p-4">
+    <div className="bg-white border-b border-slate-200 p-3.5 shadow-sm">
       <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
         
         {/* Search Input & Selectors */}
-        <div className="flex flex-wrap items-center gap-2.5 flex-1">
+        <div className="flex flex-wrap items-center gap-2 flex-1">
           {/* Search text */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -80,7 +80,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               placeholder="Pesquisar por Código ou Nome..."
               value={filters.search || ''}
               onChange={(e) => onFilterChange({ search: e.target.value, page: 1 })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition shadow-sm"
             />
           </div>
 
@@ -89,7 +89,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <select
               value={filters.familia ?? ''}
               onChange={handleFamilyChange}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
             >
               <option value="">Todas as Famílias</option>
               {families.map((f) => (
@@ -105,7 +105,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <select
               value={filters.subfamilia ?? ''}
               onChange={handleSubfamilyChange}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
             >
               <option value="">
                 {filters.familia !== undefined ? 'Subfamílias da Família' : 'Todas as Subfamílias'}
@@ -123,7 +123,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <select
               value={filters.centro_prod ?? ''}
               onChange={(e) => onFilterChange({ centro_prod: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
             >
               <option value="">Todos os Centros Produção</option>
               <option value="0">(Sem Centro de Produção)</option>
@@ -140,7 +140,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <select
               value={filters.iva ?? ''}
               onChange={(e) => onFilterChange({ iva: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
             >
               <option value="">Todos os IVAs</option>
               {vats.map((v) => (
@@ -153,22 +153,22 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
           {/* Sort By Select */}
           <div className="relative flex items-center gap-1 min-w-[170px]">
-            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 ml-1" />
             <select
               value={`${filters.sort_by || 'codigo'}-${filters.sort_order || 'asc'}`}
               onChange={(e) => {
                 const [by, order] = e.target.value.split('-');
                 onFilterChange({ sort_by: by, sort_order: order, page: 1 });
               }}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition appearance-none"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
             >
               <option value="codigo-asc">Ord: Código (Crescente)</option>
               <option value="codigo-desc">Ord: Código (Decrescente)</option>
               <option value="descricao-asc">Ord: Nome (A - Z)</option>
               <option value="descricao-desc">Ord: Nome (Z - A)</option>
-              <option value="precovenda-asc">Ord: Preço PVP1 (Menor primeiro)</option>
-              <option value="precovenda-desc">Ord: Preço PVP1 (Maior primeiro)</option>
-              <option value="posicaofront-asc">Ord: Posição POS (Frontoffice)</option>
+              <option value="precovenda-asc">Ord: Preço PVP1 (Menor)</option>
+              <option value="precovenda-desc">Ord: Preço PVP1 (Maior)</option>
+              <option value="posicaofront-asc">Ord: Posição POS</option>
               <option value="familia-asc">Ord: Família</option>
             </select>
           </div>
@@ -176,10 +176,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           {/* Reset Filters button */}
           <button
             onClick={onResetFilters}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 text-xs transition"
+            className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold transition shadow-sm"
             title="Limpar todos os filtros"
           >
-            <RotateCcw className="w-3 h-3" />
+            <RotateCcw className="w-3 h-3 text-slate-500" />
             Limpar
           </button>
         </div>
@@ -189,20 +189,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           {/* Import Excel button */}
           <button
             onClick={onImportExcel}
-            className="flex items-center gap-1.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 px-3 py-1.5 rounded-lg font-semibold transition"
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-xl font-bold transition shadow-sm"
             title="Importar artigos e preços a partir de ficheiro Excel/CSV"
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Upload className="w-3.5 h-3.5 text-indigo-600" />
             Importar Excel
           </button>
 
           {/* Export Excel / CSV button */}
           <button
             onClick={onExportCSV}
-            className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 px-3 py-1.5 rounded-lg font-semibold transition"
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold transition shadow-sm"
             title="Exportar artigos para CSV (Microsoft Excel)"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             Exportar Excel
           </button>
 
@@ -210,22 +210,22 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <button
             onClick={onPrintLabels}
             disabled={selectedCount === 0}
-            className="flex items-center gap-1.5 bg-blue-950/80 hover:bg-blue-900 disabled:opacity-40 text-blue-300 border border-blue-700/60 px-3 py-1.5 rounded-lg font-semibold transition"
+            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 text-blue-900 border border-blue-200 px-3 py-1.5 rounded-xl font-bold transition shadow-sm"
             title="Imprimir etiquetas de prateleira em PDF para os artigos selecionados"
           >
-            <Printer className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5 text-blue-600" />
             Etiquetas PDF ({selectedCount})
           </button>
 
           {/* Stats counter badge */}
           <div className="flex items-center gap-2 font-mono ml-1">
-            <span className="text-slate-400">
-              Total: <strong className="text-slate-200 font-sans">{totalItems}</strong>
+            <span className="text-slate-500 font-sans text-xs">
+              Total: <strong className="text-slate-900 font-bold">{totalItems}</strong>
             </span>
-            <span className={`px-2.5 py-1 rounded-md border font-semibold ${
+            <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs shadow-sm ${
               selectedCount > 0
-                ? 'bg-indigo-950 border-indigo-700 text-indigo-300'
-                : 'bg-slate-900 border-slate-700 text-slate-500'
+                ? 'bg-indigo-600 border-indigo-600 text-white'
+                : 'bg-slate-100 border-slate-300 text-slate-600'
             }`}>
               {selectedCount} sel.
             </span>
