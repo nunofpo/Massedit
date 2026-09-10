@@ -10,11 +10,13 @@ from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
     BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
     ImportPreviewResponse, ImportApplyRequest,
-    ProductionCenterItem, PrinterItem
+    ProductionCenterItem, PrinterItem,
+    SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse
 )
 from backend.db import db_manager
 from backend.services.products import (
-    search_products, get_families, get_families_detailed, update_family_colors,
+    search_products, get_filtered_product_codes, get_selection_summary,
+    get_families, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
     get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers
@@ -171,6 +173,16 @@ def search_products_endpoint(filters: ProductFilter):
         "page_size": filters.page_size,
         "use_mock": db_manager.use_mock
     }
+
+@app.post("/api/products/codes", response_model=ProductCodesResponse)
+def get_product_codes_endpoint(filters: ProductFilter):
+    """Devolve todos os códigos que correspondem ao filtro (até 20.000)."""
+    return get_filtered_product_codes(filters)
+
+@app.post("/api/products/selection-summary", response_model=SelectionSummaryResponse)
+def get_selection_summary_endpoint(req: SelectionSummaryRequest):
+    """Devolve o resumo da seleção de artigos (contagem, artigos com vendas e artigo de amostra)."""
+    return get_selection_summary(req.product_codes)
 
 @app.post("/api/products/preview-bulk-edit", response_model=BulkEditPreviewResponse)
 def preview_bulk_edit_endpoint(req: BulkEditRequest):

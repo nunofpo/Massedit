@@ -3,10 +3,11 @@ import {
   Palette, DollarSign, FolderTree, Percent, Lock, Eye, Cloud, Play,
   ShieldAlert, Sparkles, Copy, Barcode, Hash, Tag, CheckCircle2, Layers, Utensils
 } from 'lucide-react';
-import { Family, Subfamily, Vat, BulkEditRequest, ProductItem, ProductionCenterItem } from '../types';
+import { Family, Subfamily, Vat, BulkEditRequest, ProductionCenterItem, SelectionSummaryResponse } from '../types';
 
 interface BulkEditPanelProps {
-  selectedProducts: ProductItem[];
+  selectedCodes: number[];
+  pageProductCodes?: Set<number>;
   families: Family[];
   subfamilies: Subfamily[];
   vats: Vat[];
@@ -39,7 +40,8 @@ const PRICE_QUICK_PRESETS = [
 ];
 
 export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
-  selectedProducts,
+  selectedCodes,
+  pageProductCodes,
   families,
   subfamilies,
   vats,
@@ -47,9 +49,46 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   onPreview,
   onOpenFamilyColors
 }) => {
-  const selectedCount = selectedProducts.length;
-  const hasSalesCount = selectedProducts.filter(p => p.has_sales).length;
+  const [summary, setSummary] = useState<SelectionSummaryResponse>({
+    count: selectedCodes.length,
+    with_sales_count: 0,
+    sales_check_ok: true,
+    sample: null
+  });
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+
+  useEffect(() => {
+    if (selectedCodes.length === 0) {
+      setSummary({ count: 0, with_sales_count: 0, sales_check_ok: true, sample: null });
+      return;
+    }
+    setIsLoadingSummary(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/products/selection-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_codes: selectedCodes })
+        });
+        if (res.ok) {
+          const data: SelectionSummaryResponse = await res.json();
+          setSummary(data);
+        }
+      } catch (e) {
+        console.error('Erro ao obter resumo da seleção', e);
+      } finally {
+        setIsLoadingSummary(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [selectedCodes]);
+
+  const selectedCount = selectedCodes.length;
+  const hasSalesCount = summary.with_sales_count;
   const allHaveSales = selectedCount > 0 && hasSalesCount === selectedCount;
+  const outsidePageCount = pageProductCodes
+    ? selectedCodes.filter(c => !pageProductCodes.has(c)).length
+    : 0;
 
   // Active Sector Tab State
   const [activeTab, setActiveTab] = useState<SectorTab>('names');
@@ -146,7 +185,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
   const handleBuildRequest = (): BulkEditRequest => {
     return {
-      product_codes: selectedProducts.map(p => p.codigo),
+      product_codes: selectedCodes,
       apply_descricao: applyDescricao && !allHaveSales,
       new_descricao: newDescricao,
       descricao_mode: descricaoMode,
@@ -222,7 +261,12 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         </div>
         <p className="text-xs text-slate-500 mt-1">
           {selectedCount > 0 ? (
-            <span className="text-indigo-600 font-semibold">{selectedCount} artigo(s) selecionados para alterar</span>
+            <span className="text-indigo-600 font-semibold">
+              {selectedCount} artigo(s) selecionados para alterar
+              {outsidePageCount > 0 && (
+                <span className="text-slate-500 font-normal"> ({outsidePageCount} fora desta página)</span>
+              )}
+            </span>
           ) : (
             <span className="text-amber-600 font-medium">Selecione artigos na tabela para ativar a edição</span>
           )}
@@ -970,9 +1014,9 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     color: applyLetra ? letraHex : '#ffffff'
                   }}
                 >
-                  <span>{selectedProducts[0]?.descricao || 'Exemplo de Botão POS'}</span>
+                  <span>{summary.sample?.descricao || 'Exemplo de Botão POS'}</span>
                   <span className="text-[10px] opacity-90 font-mono font-medium">
-                    {selectedProducts[0]?.pvp1 ? `${selectedProducts[0].pvp1.toFixed(2)} €` : '1.50 €'}
+                    {summary.sample?.pvp1 ? `${summary.sample.pvp1.toFixed(2)} €` : '1.50 €'}
                   </span>
                 </div>
               </div>

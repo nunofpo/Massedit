@@ -296,9 +296,21 @@ def get_products_by_codes(codes: List[int]) -> List[ProductItem]:
         conn.close()
 
 
-def _build_product_where(filters: ProductFilter, schema: SchemaInfo) -> Tuple[str, List[Any]]:
+def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table: Optional[str] = None) -> Tuple[str, List[Any]]:
     where = ["1=1"]
     params: List[Any] = []
+
+    if filters.codes is not None:
+        if not filters.codes:
+            where.append("1=0")
+        elif temp_table:
+            where.append(f"EXISTS (SELECT 1 FROM {temp_table} fc WHERE fc.codigo = p.codigo)")
+        else:
+            in_clauses = []
+            for chunk in _chunks(filters.codes, 1000):
+                in_clauses.append(f"p.codigo IN ({_placeholders(len(chunk))})")
+                params.extend(chunk)
+            where.append(f"({' OR '.join(in_clauses)})")
 
     if filters.search and filters.search.strip():
         st = f"%{filters.search.strip()}%"
@@ -358,7 +370,16 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
     try:
         cursor = conn.cursor()
         schema = _schema(cursor)
-        where_sql, params = _build_product_where(filters, schema)
+
+        temp_table = None
+        if filters.codes is not None and len(filters.codes) > 1000:
+            temp_table = "#filter_codes_search"
+            cursor.execute(f"CREATE TABLE {temp_table} (codigo INT PRIMARY KEY)")
+            for chunk in _chunks(filters.codes, 1000):
+                val_rows = ",".join(["(?)"] * len(chunk))
+                cursor.execute(f"INSERT INTO {temp_table} (codigo) VALUES {val_rows}", chunk)
+
+        where_sql, params = _build_product_where(filters, schema, temp_table=temp_table)
 
         cursor.execute(f"SELECT COUNT(*) FROM dbo.produtos p WHERE {where_sql}", params)
         total_count = cursor.fetchone()[0]
@@ -387,6 +408,93 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
         sales = get_sales_codes(cursor, [int(r[0]) for r in rows])
         items = [_row_to_product(r, sales) for r in rows]
         return items, total_count
+    finally:
+        conn.close()
+
+
+def get_filtered_product_codes(filters: ProductFilter) -> Dict[str, Any]:
+    """Devolve todos os códigos de artigos que correspondem ao filtro (máximo 20.000)."""
+    MAX_CODES = 20000
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+
+        temp_table = None
+        if filters.codes is not None and len(filters.codes) > 1000:
+            temp_table = "#filter_codes_list"
+            cursor.execute(f"CREATE TABLE {temp_table} (codigo INT PRIMARY KEY)")
+            for chunk in _chunks(filters.codes, 1000):
+                val_rows = ",".join(["(?)"] * len(chunk))
+                cursor.execute(f"INSERT INTO {temp_table} (codigo) VALUES {val_rows}", chunk)
+
+        where_sql, params = _build_product_where(filters, schema, temp_table=temp_table)
+
+        cursor.execute(f"SELECT COUNT(*) FROM dbo.produtos p WHERE {where_sql}", params)
+        total_count = int(cursor.fetchone()[0])
+
+        sort_map = {
+            "codigo": "p.codigo",
+            "plu": "ISNULL(p.codigo_alf, 0)",
+            "descricao": "p.descricao",
+            "precovenda": "ISNULL(p.precovenda, 0)",
+            "posicaofront": "ISNULL(p.ordem, 0)",
+            "familia": "f.descricao",
+            "subfamilia": "sf.descricao",
+            "codbarras": "p.codbarras",
+        }
+        sort_col = sort_map.get(filters.sort_by or "codigo", "p.codigo")
+        sort_dir = "DESC" if filters.sort_order == "desc" else "ASC"
+        order_sql = f"{sort_col} {sort_dir}" + (", p.codigo ASC" if sort_col != "p.codigo" else "")
+
+        cursor.execute(
+            f"SELECT TOP {MAX_CODES} p.codigo {PRODUCT_FROM_SQL} WHERE {where_sql} ORDER BY {order_sql}",
+            params
+        )
+        codes = [int(r[0]) for r in cursor.fetchall()]
+        return {
+            "codes": codes,
+            "total": total_count,
+            "truncated": total_count > MAX_CODES
+        }
+    finally:
+        conn.close()
+
+
+def get_selection_summary(product_codes: List[int]) -> Dict[str, Any]:
+    """Calcula o resumo dos artigos selecionados (total, com vendas e amostra)."""
+    codes = _unique_codes(product_codes)
+    if not codes:
+        return {
+            "count": 0,
+            "with_sales_count": 0,
+            "sales_check_ok": True,
+            "sample": None
+        }
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        sales = get_sales_codes(cursor, codes)
+        sample_item = None
+        if codes:
+            sample_list = _fetch_products_by_codes(cursor, [codes[0]], with_sales=(sales is not None), with_centros=True)
+            if sample_list:
+                sample_item = sample_list[0]
+
+        if sales is None:
+            with_sales_count = len(codes)
+            sales_check_ok = False
+        else:
+            with_sales_count = len(sales)
+            sales_check_ok = True
+
+        return {
+            "count": len(codes),
+            "with_sales_count": with_sales_count,
+            "sales_check_ok": sales_check_ok,
+            "sample": sample_item.model_dump() if sample_item else None
+        }
     finally:
         conn.close()
 

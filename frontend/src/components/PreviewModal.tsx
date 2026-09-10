@@ -81,52 +81,59 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
               Nenhuma alteração foi detetada com as opções selecionadas.
             </div>
           ) : (
-            previewData.previews.map((item) => (
-              <div key={item.codigo} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-                      Cód. {item.codigo}
-                    </span>
-                    <span className="font-bold text-sm text-slate-900">{item.descricao}</span>
+            <>
+              {previewData.previews.slice(0, 200).map((item) => (
+                <div key={item.codigo} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                        Cód. {item.codigo}
+                      </span>
+                      <span className="font-bold text-sm text-slate-900">{item.descricao}</span>
+                    </div>
+
+                    {item.has_sales && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                        <ShieldAlert className="w-3 h-3 text-amber-600" />
+                        Nome Protegido (Com Vendas)
+                      </span>
+                    )}
                   </div>
 
-                  {item.has_sales && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <ShieldAlert className="w-3 h-3 text-amber-600" />
-                      Nome Protegido (Com Vendas)
-                    </span>
-                  )}
-                </div>
-
-                {/* Diff items */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                  {item.diffs.map((diff) => (
-                    diff.blocked ? (
-                      <div key={diff.field_name} className="bg-amber-50 p-2.5 rounded-lg border border-amber-300 font-mono text-[11px] space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-amber-900 flex items-center gap-1">
-                            <ShieldAlert className="w-3 h-3 text-amber-600" />
-                            {diff.field_label}: NÃO SERÁ ALTERADO
-                          </span>
-                          <span className="text-amber-700">{String(diff.old_value)}</span>
+                  {/* Diff items */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {item.diffs.map((diff) => (
+                      diff.blocked ? (
+                        <div key={diff.field_name} className="bg-amber-50 p-2.5 rounded-lg border border-amber-300 font-mono text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-amber-900 flex items-center gap-1">
+                              <ShieldAlert className="w-3 h-3 text-amber-600" />
+                              {diff.field_label}: NÃO SERÁ ALTERADO
+                            </span>
+                            <span className="text-amber-700">{String(diff.old_value)}</span>
+                          </div>
+                          {diff.reason && <p className="font-sans text-amber-800 leading-snug">{diff.reason}</p>}
                         </div>
-                        {diff.reason && <p className="font-sans text-amber-800 leading-snug">{diff.reason}</p>}
-                      </div>
-                    ) : (
-                      <div key={diff.field_name} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between font-mono text-[11px]">
-                        <span className="font-bold text-slate-700">{diff.field_label}:</span>
-                        <div className="flex items-center gap-2">
-                          <span className="line-through text-slate-400">{String(diff.old_value)}</span>
-                          <ArrowRight className="w-3 h-3 text-indigo-500" />
-                          <span className="font-extrabold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{String(diff.new_value)}</span>
+                      ) : (
+                        <div key={diff.field_name} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between font-mono text-[11px]">
+                          <span className="font-bold text-slate-700">{diff.field_label}:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="line-through text-slate-400">{String(diff.old_value)}</span>
+                            <ArrowRight className="w-3 h-3 text-indigo-500" />
+                            <span className="font-extrabold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{String(diff.new_value)}</span>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  ))}
+                      )
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+              {previewData.previews.length > 200 && (
+                <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 text-center text-slate-600 text-xs font-semibold">
+                  … e mais <strong className="text-slate-900">{previewData.previews.length - 200}</strong> artigos com alterações ({previewData.total_affected} afetados no total).
+                </div>
+              )}
+            </>
           )}
         </div>
 

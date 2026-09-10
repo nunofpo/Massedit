@@ -10,7 +10,7 @@ import { FamilyColorsModal } from './components/FamilyColorsModal';
 import { ImportExcelModal } from './components/ImportExcelModal';
 import {
   ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
-  BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem
+  BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
 } from './types';
 
 export const App: React.FC = () => {
@@ -130,6 +130,11 @@ export const App: React.FC = () => {
       alert('Selecione pelo menos 1 artigo para imprimir etiquetas.');
       return;
     }
+    if (selectedCodes.size > 300) {
+      if (!window.confirm(`Tem ${selectedCodes.size} artigos selecionados para impressão de etiquetas. Gerar mais de 300 etiquetas de uma só vez pode tornar o navegador lento. Deseja continuar?`)) {
+        return;
+      }
+    }
     try {
       const res = await fetch('/api/products/print-labels', {
         method: 'POST',
@@ -226,6 +231,44 @@ export const App: React.FC = () => {
     });
   };
 
+  const [isSelectingAllFiltered, setIsSelectingAllFiltered] = useState(false);
+
+  const handleSelectAllFiltered = async () => {
+    setIsSelectingAllFiltered(true);
+    try {
+      const res = await fetch('/api/products/codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters)
+      });
+      if (res.ok) {
+        const data: ProductCodesResponse = await res.json();
+        setSelectedCodes(prev => {
+          const next = new Set(prev);
+          data.codes.forEach(c => next.add(c));
+          return next;
+        });
+        if (data.truncated) {
+          setNotification({
+            type: 'error',
+            text: `Foram selecionados os primeiros 20.000 artigos devido ao limite de segurança (${data.total} encontrados no filtro).`
+          });
+        } else {
+          setNotification({
+            type: 'success',
+            text: `Todos os ${data.codes.length} artigos do filtro foram selecionados.`
+          });
+        }
+      } else {
+        alert('Falha ao obter os códigos de artigos do filtro.');
+      }
+    } catch (e: any) {
+      alert(`Erro ao selecionar artigos: ${e.message}`);
+    } finally {
+      setIsSelectingAllFiltered(false);
+    }
+  };
+
   const handleFilterChange = (newFilters: Partial<ProductFilter>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
   };
@@ -318,8 +361,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const selectedProductsList = products.filter(p => selectedCodes.has(p.codigo));
-
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-100 text-slate-900 font-sans">
       
@@ -377,6 +418,9 @@ export const App: React.FC = () => {
           onSelectAllPage={handleSelectAllPage}
           onDeselectAll={handleDeselectAll}
           onInvertSelection={handleInvertSelection}
+          onSelectAllFiltered={handleSelectAllFiltered}
+          isAllFilteredSelected={selectedCodes.size >= totalProducts && totalProducts > 0}
+          isSelectingAllFiltered={isSelectingAllFiltered}
           isLoading={isLoadingProducts}
           currentPage={filters.page}
           pageSize={filters.page_size}
@@ -386,7 +430,8 @@ export const App: React.FC = () => {
 
         {/* Right Bulk Edit Form Panel */}
         <BulkEditPanel
-          selectedProducts={selectedProductsList}
+          selectedCodes={Array.from(selectedCodes)}
+          pageProductCodes={new Set(products.map(p => p.codigo))}
           families={families}
           subfamilies={subfamilies}
           vats={vats}

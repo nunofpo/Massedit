@@ -9,6 +9,9 @@ interface ProductTableProps {
   onSelectAllPage: () => void;
   onDeselectAll: () => void;
   onInvertSelection: () => void;
+  onSelectAllFiltered?: () => void;
+  isAllFilteredSelected?: boolean;
+  isSelectingAllFiltered?: boolean;
   isLoading: boolean;
   currentPage: number;
   pageSize: number;
@@ -23,6 +26,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   onSelectAllPage,
   onDeselectAll,
   onInvertSelection,
+  onSelectAllFiltered,
+  isAllFilteredSelected = false,
+  isSelectingAllFiltered = false,
   isLoading,
   currentPage,
   pageSize,
@@ -65,6 +71,45 @@ export const ProductTable: React.FC<ProductTableProps> = ({
           Página <strong className="text-slate-900">{currentPage}</strong> de <strong className="text-slate-900">{totalPages}</strong> ({totalCount} resultados)
         </div>
       </div>
+
+      {/* Select All Filtered Banner */}
+      {isAllPageSelected && totalCount > pageSize && onSelectAllFiltered && (
+        <div className="bg-indigo-50 border-b border-indigo-200 px-4 py-2 text-xs flex items-center justify-between gap-3 text-indigo-950">
+          {isAllFilteredSelected ? (
+            <div className="flex items-center justify-between w-full">
+              <span>
+                Todos os <strong className="font-bold">{totalCount}</strong> artigos do filtro estão selecionados.
+              </span>
+              <button
+                onClick={onDeselectAll}
+                className="text-indigo-700 hover:text-indigo-900 font-bold underline cursor-pointer ml-2"
+              >
+                Limpar seleção
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between w-full">
+              <span>
+                Os <strong className="font-bold">{products.length}</strong> artigos desta página estão selecionados.
+              </span>
+              <button
+                onClick={onSelectAllFiltered}
+                disabled={isSelectingAllFiltered}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1 rounded-md transition shadow-xs flex items-center gap-1.5 cursor-pointer ml-2"
+              >
+                {isSelectingAllFiltered ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    A selecionar...
+                  </>
+                ) : (
+                  `Selecionar todos os ${totalCount} artigos do filtro`
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table Content */}
       <div className="flex-1 overflow-auto relative">

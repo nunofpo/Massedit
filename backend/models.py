@@ -13,6 +13,7 @@ class DatabaseConfig(BaseModel):
 
 class ProductFilter(BaseModel):
     search: Optional[str] = None
+    codes: Optional[List[int]] = None
     familia: Optional[int] = None
     subfamilia: Optional[int] = None
     iva: Optional[float] = None  # Taxa (factor) de IVA, p.ex. 23
@@ -24,6 +25,14 @@ class ProductFilter(BaseModel):
     sort_order: Optional[str] = "asc"  # "asc", "desc"
     page: int = 1
     page_size: int = 50
+
+class SelectionSummaryRequest(BaseModel):
+    product_codes: List[int]
+
+class ProductCodesResponse(BaseModel):
+    codes: List[int]
+    total: int
+    truncated: bool
 
 class ProductItem(BaseModel):
     codigo: int
@@ -164,6 +173,12 @@ class BulkEditPreviewResponse(BaseModel):
     total_affected: int
     blocked_descriptions_count: int
     previews: List[ProductDiff]
+
+class SelectionSummaryResponse(BaseModel):
+    count: int
+    with_sales_count: int
+    sales_check_ok: bool
+    sample: Optional[ProductItem] = None
 
 class BackupItem(BaseModel):
     filename: str

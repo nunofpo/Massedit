@@ -101,6 +101,7 @@ export interface Vat {
 
 export interface ProductFilter {
   search?: string;
+  codes?: number[];
   familia?: number;
   subfamilia?: number;
   iva?: number;
@@ -112,6 +113,19 @@ export interface ProductFilter {
   sort_order?: string; // "asc", "desc"
   page: number;
   page_size: number;
+}
+
+export interface ProductCodesResponse {
+  codes: number[];
+  total: number;
+  truncated: boolean;
+}
+
+export interface SelectionSummaryResponse {
+  count: number;
+  with_sales_count: number;
+  sales_check_ok: boolean;
+  sample?: ProductItem | null;
 }
 
 export interface ColorUpdate {
