@@ -104,9 +104,13 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 Porta:
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={formConfig.port}
-                onChange={(e) => setFormConfig({ ...formConfig, port: Number(e.target.value) })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setFormConfig({ ...formConfig, port: val ? Number(val) : 1433 });
+                }}
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
               />
             </div>

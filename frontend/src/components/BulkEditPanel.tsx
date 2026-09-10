@@ -92,7 +92,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [targetPvp, setTargetPvp] = useState('pvp2'); // pvp1..pvp10, all, copy_pvp1
   const [sourcePvp, setSourcePvp] = useState('pvp1'); // pvp1..pvp10
   const [priceMode, setPriceMode] = useState('fixed_add'); // fixed_add, percentage, fixed_set, copy_pvp
-  const [priceValue, setPriceValue] = useState<number>(0.10);
+  const [priceValue, setPriceValue] = useState<number | string>(0.10);
   const [priceRounding, setPriceRounding] = useState('none');
 
   const [applyIva, setApplyIva] = useState(false);
@@ -171,7 +171,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       prices: {
         apply_price: applyPrice,
         mode: priceMode,
-        value: priceValue,
+        value: typeof priceValue === 'number' ? priceValue : (parseFloat(String(priceValue).replace(',', '.')) || 0),
         target_pvp: targetPvp,
         source_pvp: sourcePvp,
         rounding: priceRounding
@@ -741,11 +741,29 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         {priceMode === 'percentage' ? 'Percentagem (%):' : 'Valor (€):'}
                       </label>
                       <input
-                        type="number"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         value={priceValue}
-                        onChange={(e) => setPriceValue(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                        onChange={(e) => {
+                          const val = e.target.value.replace(',', '.');
+                          if (val === '' || val === '-' || val === '.' || val === '-.' || !isNaN(Number(val))) {
+                            setPriceValue(val);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === ',') {
+                            e.preventDefault();
+                            const target = e.target as HTMLInputElement;
+                            const start = target.selectionStart || 0;
+                            const end = target.selectionEnd || 0;
+                            const current = String(priceValue);
+                            if (!current.includes('.')) {
+                              const next = current.slice(0, start) + '.' + current.slice(end);
+                              setPriceValue(next);
+                            }
+                          }
+                        }}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-bold"
                       />
                     </div>
                   )}
@@ -1089,11 +1107,15 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
                   {pluMode === 'direct' && (
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       placeholder="Novo número de PLU..."
                       value={newPlu ?? ''}
-                      onChange={(e) => setNewPlu(e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setNewPlu(val ? Number(val) : undefined);
+                      }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-bold"
                     />
                   )}
 
@@ -1101,11 +1123,15 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                     <div className="space-y-1">
                       <label className="text-[10px] text-slate-500 font-semibold block">PLU Inicial (Balança):</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="1"
                         value={pluSeqStart}
-                        onChange={(e) => setPluSeqStart(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          setPluSeqStart(val ? Number(val) : 1);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-bold"
                       />
                     </div>
                   )}
