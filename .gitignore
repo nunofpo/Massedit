@@ -34,10 +34,13 @@ frontend/dist/
 
 # Backups, configuração local & Temp files
 backups/
+importacoes/
 config.json
 config.json.tmp
 scratch/
 .idea/
 .vscode/
 *.log
+.DS_Store
 *.tmp
+

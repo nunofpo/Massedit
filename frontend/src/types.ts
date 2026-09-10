@@ -285,3 +285,59 @@ export interface PosLayoutApplyRequest {
   mark_cloud_sync?: boolean;
 }
 
+export interface MenuPriceItem {
+  rotulo: string;
+  valor?: number | null;
+}
+
+export interface MenuArticleItem {
+  nome: string;
+  descricao?: string;
+  precos: MenuPriceItem[];
+  confianca: number;
+  notas?: string;
+}
+
+export interface MenuSectionItem {
+  nome: string;
+  subsecao?: string | null;
+  artigos: MenuArticleItem[];
+}
+
+export interface MenuExtractionResponse {
+  secoes: MenuSectionItem[];
+  rotulos_preco_encontrados: string[];
+  avisos: string[];
+}
+
+export interface MenuReviewedRow {
+  seccao: string;
+  subseccao?: string;
+  nome: string;
+  descricaocurta: string;
+  precos: Record<string, number | null>;
+  confianca: number;
+  notas?: string;
+  matched_codigo?: number | null;
+  match_status: 'new' | 'matched' | 'ambiguous';
+  selected_familia?: number | null;
+  selected_subfamilia?: number | null;
+  selected_iva?: number | null;
+}
+
+export interface MenuMatchItem {
+  codigo: number;
+  descricao: string;
+  descricaocurta?: string;
+  familia?: number | null;
+  subfamilia?: number | null;
+  pvp1: number;
+  similarity: number;
+}
+
+export interface MenuMatchResponse {
+  row_index: number;
+  matches: MenuMatchItem[];
+}
+
+

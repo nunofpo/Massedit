@@ -285,5 +285,59 @@ class PosLayoutApplyRequest(BaseModel):
     step: int = 1
     mark_cloud_sync: bool = True
 
+class MenuPriceItem(BaseModel):
+    rotulo: str
+    valor: Optional[float] = None
+
+class MenuVariantItem(BaseModel):
+    nome: str
+    precos: List[MenuPriceItem] = Field(default_factory=list)
+
+class MenuArticleItem(BaseModel):
+    nome: str
+    descricao: Optional[str] = ""
+    precos: List[MenuPriceItem] = Field(default_factory=list)
+    variantes: List[MenuVariantItem] = Field(default_factory=list)
+    confianca: float = 1.0
+    notas: Optional[str] = ""
+
+class MenuSectionItem(BaseModel):
+    nome: str
+    subsecao: Optional[str] = None
+    artigos: List[MenuArticleItem] = Field(default_factory=list)
+
+class MenuExtractionResponse(BaseModel):
+    secoes: List[MenuSectionItem] = Field(default_factory=list)
+    rotulos_preco_encontrados: List[str] = Field(default_factory=list)
+    avisos: List[str] = Field(default_factory=list)
+
+class MenuReviewedRow(BaseModel):
+    seccao: str
+    subseccao: Optional[str] = ""
+    nome: str
+    descricaocurta: str
+    precos: Dict[str, Optional[float]] = Field(default_factory=dict)
+    confianca: float = 1.0
+    notas: Optional[str] = ""
+    matched_codigo: Optional[int] = None
+    match_status: str = "new"  # "new", "matched", "ambiguous"
+    selected_familia: Optional[int] = None
+    selected_subfamilia: Optional[int] = None
+    selected_iva: Optional[float] = None
+
+class MenuMatchItem(BaseModel):
+    codigo: int
+    descricao: str
+    descricaocurta: Optional[str] = ""
+    familia: Optional[int] = None
+    subfamilia: Optional[int] = None
+    pvp1: float = 0.0
+    similarity: float = 1.0
+
+class MenuMatchResponse(BaseModel):
+    row_index: int
+    matches: List[MenuMatchItem] = Field(default_factory=list)
+
+
 
 

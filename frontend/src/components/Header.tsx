@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, QrCode } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, QrCode, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -11,6 +11,7 @@ interface HeaderProps {
   onOpenDataQuality: () => void;
   onOpenPosLayout: () => void;
   onOpenEmentaDigital: () => void;
+  onOpenMenuImport: () => void;
   onRefresh: () => void;
 }
 
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDataQuality,
   onOpenPosLayout,
   onOpenEmentaDigital,
+  onOpenMenuImport,
   onRefresh
 }) => {
   return (
@@ -89,6 +91,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <QrCode className="w-3.5 h-3.5 text-teal-600" />
           Ementa Digital
+        </button>
+
+        <button
+          onClick={onOpenMenuImport}
+          className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-violet-200 transition shadow-sm"
+          title="Importar Ementas (PDF, Fotos, Texto) com Assistente de Mapeamento"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+          Importar Ementa
         </button>
 
         <button

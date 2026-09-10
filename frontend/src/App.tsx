@@ -11,6 +11,7 @@ import { ImportExcelModal } from './components/ImportExcelModal';
 import { DataQualityModal } from './components/DataQualityModal';
 import { PosLayoutModal } from './components/PosLayoutModal';
 import { EmentaDigitalModal } from './components/EmentaDigitalModal';
+import { MenuImportWizardModal } from './components/MenuImportWizardModal';
 import {
   ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -58,6 +59,7 @@ export const App: React.FC = () => {
   const [isDataQualityOpen, setIsDataQualityOpen] = useState(false);
   const [isPosLayoutOpen, setIsPosLayoutOpen] = useState(false);
   const [isEmentaDigitalOpen, setIsEmentaDigitalOpen] = useState(false);
+  const [isMenuImportOpen, setIsMenuImportOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
@@ -420,6 +422,7 @@ export const App: React.FC = () => {
         onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
         onOpenPosLayout={() => setIsPosLayoutOpen(true)}
         onOpenEmentaDigital={() => setIsEmentaDigitalOpen(true)}
+        onOpenMenuImport={() => setIsMenuImportOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
         onRefresh={() => {
           fetchAuxData();
@@ -560,6 +563,19 @@ export const App: React.FC = () => {
       <EmentaDigitalModal
         isOpen={isEmentaDigitalOpen}
         onClose={() => setIsEmentaDigitalOpen(false)}
+      />
+
+      <MenuImportWizardModal
+        isOpen={isMenuImportOpen}
+        onClose={() => setIsMenuImportOpen(false)}
+        families={families}
+        subfamilies={subfamilies}
+        vats={vats}
+        onOpenPreview={handleOpenCustomPreview}
+        onSuccess={(msg) => {
+          loadProducts();
+          setNotification({ type: 'success', text: msg });
+        }}
       />
 
     </div>

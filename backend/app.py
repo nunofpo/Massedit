@@ -4,15 +4,16 @@ from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
     BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
-    ImportPreviewResponse, ImportApplyRequest,
+    ImportPreviewResponse, ImportApplyRequest, ImportRow,
     ProductionCenterItem, PrinterItem,
     SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse,
-    DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest
+    DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest,
+    MenuExtractionResponse, MenuReviewedRow, MenuMatchResponse
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -27,6 +28,10 @@ from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
 from backend.services.ementa_digital import discover_ementa_schema
+from backend.services.menu_ai import (
+    extract_text_from_pdf, parse_plain_text_menu, match_menu_articles,
+    export_zs_import_template_csv, convert_matched_to_import_rows
+)
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
@@ -210,6 +215,31 @@ def get_data_quality_report_endpoint(short_desc_max: int = 20):
 def get_ementa_digital_schema_endpoint():
     """Fase A: Descoberta e inspeção de esquema de tabelas relacionadas com a ementa digital."""
     return discover_ementa_schema()
+
+@app.post("/api/menu-import/extract-text", response_model=MenuExtractionResponse)
+def extract_menu_text_endpoint(raw_text: str = Body(..., embed=True)):
+    """Extrai secções, artigos e preços a partir de texto de ementa (sem recurso a IA)."""
+    return parse_plain_text_menu(raw_text)
+
+@app.post("/api/menu-import/match", response_model=List[MenuMatchResponse])
+def match_menu_endpoint(rows: List[MenuReviewedRow]):
+    """Pesquisa correspondências automáticas na base de dados para cada artigo da ementa."""
+    return match_menu_articles(rows)
+
+@app.post("/api/menu-import/export-zs-template")
+def export_zs_template_endpoint(rows: List[MenuReviewedRow]):
+    """Gera ficheiro CSV formatado de acordo com o template oficial de importação da ZoneSoft."""
+    csv_str = export_zs_import_template_csv(rows)
+    return Response(
+        content=csv_str,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=importacao_zonesoft_artigos.csv"}
+    )
+
+@app.post("/api/menu-import/to-import-rows", response_model=List[ImportRow])
+def to_import_rows_endpoint(rows: List[MenuReviewedRow], price_mapping: Dict[str, str] = Body(...)):
+    """Converte artigos correspondentes em ImportRow para permitir simulação e gravação atómica."""
+    return convert_matched_to_import_rows(rows, price_mapping)
 
 @app.post("/api/products/search")
 def search_products_endpoint(filters: ProductFilter):
