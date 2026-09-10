@@ -265,4 +265,25 @@ class PrinterItem(BaseModel):
     centro: Optional[int] = None
     sync: Optional[int] = 0
 
+class PosLayoutProductItem(BaseModel):
+    codigo: int
+    descricao: str
+    descricaocurta: Optional[str] = ""
+    fundo_hex: str = "#000000"
+    letra_hex: str = "#FFFFFF"
+    ordem: int = 0
+    pvp1: float = 0.0
+    bloqueado: int = 0
+    frontoffice: int = 1
+    subfamilia: Optional[int] = None
+    subfamilia_desc: Optional[str] = ""
+    low_contrast: bool = False
+
+class PosLayoutApplyRequest(BaseModel):
+    familia: int
+    order: List[int]
+    step: int = 1
+    mark_cloud_sync: bool = True
+
+
 

@@ -12,7 +12,7 @@ from backend.models import (
     ImportPreviewResponse, ImportApplyRequest,
     ProductionCenterItem, PrinterItem,
     SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse,
-    DataQualityCheck
+    DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -23,6 +23,9 @@ from backend.services.products import (
     get_production_centers, get_printers
 )
 from backend.services.reports import run_data_quality_report
+from backend.services.pos_layout import (
+    get_pos_layout_products, preview_pos_layout, apply_pos_layout
+)
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
@@ -108,7 +111,40 @@ def update_family_colors_endpoint(req: BulkFamilyColorUpdateRequest):
         "affected_products_count": affected
     }
 
+@app.get("/api/pos-layout/families", response_model=List[DetailedFamilyItem])
+def list_pos_layout_families_endpoint():
+    """Lista famílias para o gestor de botões POS (ordenadas por ordem/posicaofront)."""
+    families = get_families_detailed()
+    families.sort(key=lambda f: (f.posicaofront if f.posicaofront is not None else 0, f.codigo))
+    return families
+
+@app.get("/api/pos-layout/family/{familia}", response_model=List[PosLayoutProductItem])
+def get_pos_layout_products_endpoint(familia: int, include_hidden: bool = False):
+    """Obtém botões dos artigos da família para a grelha POS ordenados por ordem."""
+    return get_pos_layout_products(familia, include_hidden=include_hidden)
+
+@app.post("/api/pos-layout/preview", response_model=BulkEditPreviewResponse)
+def preview_pos_layout_endpoint(req: PosLayoutApplyRequest):
+    """Simula a nova ordenação dos botões POS para a família indicada."""
+    try:
+        return preview_pos_layout(req)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+@app.post("/api/pos-layout/apply")
+def apply_pos_layout_endpoint(req: PosLayoutApplyRequest):
+    """Grava a nova ordenação dos botões POS com backup e transação atómica."""
+    success, message, affected = apply_pos_layout(req)
+    if not success:
+        raise HTTPException(status_code=400 if "duplicados" in message or "pertence" in message else 500, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "affected_count": affected
+    }
+
 @app.post("/api/products/export-csv")
+
 def export_products_csv_endpoint(filters: ProductFilter, selected_codes: Optional[List[int]] = Body(None)):
     """Exporta lista de artigos filtrados ou selecionados para CSV Excel."""
     csv_content = generate_csv_export(filters, selected_codes)

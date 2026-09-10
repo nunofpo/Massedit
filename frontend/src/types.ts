@@ -262,3 +262,26 @@ export interface ImportPreviewResponse {
   blocked_descriptions_count: number;
   previews: ProductDiff[];
 }
+
+export interface PosLayoutProductItem {
+  codigo: number;
+  descricao: string;
+  descricaocurta?: string;
+  fundo_hex: string;
+  letra_hex: string;
+  ordem: number;
+  pvp1: number;
+  bloqueado: number;
+  frontoffice: number;
+  subfamilia?: number;
+  subfamilia_desc?: string;
+  low_contrast: boolean;
+}
+
+export interface PosLayoutApplyRequest {
+  familia: number;
+  order: number[];
+  step?: number;
+  mark_cloud_sync?: boolean;
+}
+

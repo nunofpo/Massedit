@@ -9,6 +9,7 @@ import { ConfigModal } from './components/ConfigModal';
 import { FamilyColorsModal } from './components/FamilyColorsModal';
 import { ImportExcelModal } from './components/ImportExcelModal';
 import { DataQualityModal } from './components/DataQualityModal';
+import { PosLayoutModal } from './components/PosLayoutModal';
 import {
   ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -54,10 +55,12 @@ export const App: React.FC = () => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDataQualityOpen, setIsDataQualityOpen] = useState(false);
+  const [isPosLayoutOpen, setIsPosLayoutOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
   const [currentRequest, setCurrentRequest] = useState<BulkEditRequest | null>(null);
+  const [customConfirmAction, setCustomConfirmAction] = useState<(() => Promise<void>) | null>(null);
   const [previewData, setPreviewData] = useState<BulkEditPreviewResponse | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -308,6 +311,7 @@ export const App: React.FC = () => {
   const handleOpenPreview = async (req: BulkEditRequest) => {
     if (req.product_codes.length === 0) return;
     setCurrentRequest(req);
+    setCustomConfirmAction(null);
     setNotification(null);
 
     try {
@@ -330,11 +334,28 @@ export const App: React.FC = () => {
     }
   };
 
+  // Preview helper for external modals (like PosLayoutModal)
+  const handleOpenCustomPreview = (preview: BulkEditPreviewResponse, onConfirm: () => Promise<void>) => {
+    setCurrentRequest(null);
+    setCustomConfirmAction(() => onConfirm);
+    setPreviewData(preview);
+    setIsPreviewOpen(true);
+  };
+
   // Apply Bulk Edit Execution
   const handleConfirmApply = async () => {
-    if (!currentRequest) return;
     setIsApplying(true);
     try {
+      if (customConfirmAction) {
+        await customConfirmAction();
+        setIsPreviewOpen(false);
+        setPreviewData(null);
+        setCustomConfirmAction(null);
+        loadProducts();
+        return;
+      }
+
+      if (!currentRequest) return;
       const res = await fetch('/api/products/apply-bulk-edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -395,6 +416,7 @@ export const App: React.FC = () => {
         onOpenConfig={() => setIsConfigOpen(true)}
         onOpenBackups={() => setIsBackupsOpen(true)}
         onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
+        onOpenPosLayout={() => setIsPosLayoutOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
         onRefresh={() => {
           fetchAuxData();
@@ -520,6 +542,16 @@ export const App: React.FC = () => {
         onClose={() => setIsDataQualityOpen(false)}
         onViewArticles={handleViewReportArticles}
         onSelectArticles={handleSelectReportArticles}
+      />
+
+      <PosLayoutModal
+        isOpen={isPosLayoutOpen}
+        onClose={() => setIsPosLayoutOpen(false)}
+        onOpenPreview={handleOpenCustomPreview}
+        onSuccess={(msg) => {
+          loadProducts();
+          setNotification({ type: 'success', text: msg });
+        }}
       />
 
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -9,6 +9,7 @@ interface HeaderProps {
   onOpenBackups: () => void;
   onOpenFamilyColors: () => void;
   onOpenDataQuality: () => void;
+  onOpenPosLayout: () => void;
   onRefresh: () => void;
 }
 
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBackups,
   onOpenFamilyColors,
   onOpenDataQuality,
+  onOpenPosLayout,
   onRefresh
 }) => {
   return (
@@ -67,6 +69,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Palette className="w-3.5 h-3.5 text-amber-600" />
           Cores das Famílias
+        </button>
+
+        <button
+          onClick={onOpenPosLayout}
+          className="flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-sky-200 transition shadow-sm"
+          title="Pré-visualização e Reordenação dos Botões do POS (ZSRest)"
+        >
+          <LayoutGrid className="w-3.5 h-3.5 text-sky-600" />
+          Botões POS
         </button>
 
         <button
