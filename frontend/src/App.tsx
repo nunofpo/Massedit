@@ -8,6 +8,7 @@ import { BackupsModal } from './components/BackupsModal';
 import { ConfigModal } from './components/ConfigModal';
 import { FamilyColorsModal } from './components/FamilyColorsModal';
 import { ImportExcelModal } from './components/ImportExcelModal';
+import { DataQualityModal } from './components/DataQualityModal';
 import {
   ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -52,6 +53,8 @@ export const App: React.FC = () => {
   const [isFamilyColorsOpen, setIsFamilyColorsOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isDataQualityOpen, setIsDataQualityOpen] = useState(false);
+  const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
   const [currentRequest, setCurrentRequest] = useState<BulkEditRequest | null>(null);
@@ -274,10 +277,30 @@ export const App: React.FC = () => {
   };
 
   const handleResetFilters = () => {
+    setActiveReportLabel(null);
     setFilters({
       search: '',
+      codes: undefined,
       page: 1,
       page_size: 50
+    });
+  };
+
+  const handleViewReportArticles = (codes: number[], label: string) => {
+    setActiveReportLabel(label);
+    setFilters(prev => ({ ...prev, codes, page: 1 }));
+    setIsDataQualityOpen(false);
+  };
+
+  const handleSelectReportArticles = (codes: number[], label: string) => {
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      codes.forEach(c => next.add(c));
+      return next;
+    });
+    setNotification({
+      type: 'success',
+      text: `${codes.length} artigo(s) da verificação "${label}" adicionados à seleção.`
     });
   };
 
@@ -372,6 +395,7 @@ export const App: React.FC = () => {
         onOpenConfig={() => setIsConfigOpen(true)}
         onOpenBackups={() => setIsBackupsOpen(true)}
         onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
+        onOpenDataQuality={() => setIsDataQualityOpen(true)}
         onRefresh={() => {
           fetchAuxData();
           loadProducts();
@@ -398,6 +422,7 @@ export const App: React.FC = () => {
         subfamilies={subfamilies}
         vats={vats}
         productionCenters={productionCenters}
+        activeReportLabel={activeReportLabel}
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         onExportCSV={handleExportCSV}
@@ -488,6 +513,13 @@ export const App: React.FC = () => {
           loadProducts();
           setNotification({ type: 'success', text: msg });
         }}
+      />
+
+      <DataQualityModal
+        isOpen={isDataQualityOpen}
+        onClose={() => setIsDataQualityOpen(false)}
+        onViewArticles={handleViewReportArticles}
+        onSelectArticles={handleSelectReportArticles}
       />
 
     </div>

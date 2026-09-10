@@ -180,6 +180,22 @@ class SelectionSummaryResponse(BaseModel):
     sales_check_ok: bool
     sample: Optional[ProductItem] = None
 
+class DataQualityGroup(BaseModel):
+    key: str
+    codes: List[int]
+
+class DataQualityCheck(BaseModel):
+    id: str
+    title: str
+    description: str
+    severity: str  # "error" | "warning" | "info"
+    count: int
+    codes: List[int]
+    groups: Optional[List[DataQualityGroup]] = None
+    available: bool = True
+    unavailable_reason: Optional[str] = None
+    truncated: bool = False
+
 class BackupItem(BaseModel):
     filename: str
     created_at: str

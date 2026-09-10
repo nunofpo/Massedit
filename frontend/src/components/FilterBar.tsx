@@ -8,6 +8,7 @@ interface FilterBarProps {
   subfamilies: Subfamily[];
   vats: Vat[];
   productionCenters?: ProductionCenterItem[];
+  activeReportLabel?: string | null;
   onFilterChange: (newFilters: Partial<ProductFilter>) => void;
   onResetFilters: () => void;
   onExportCSV: () => void;
@@ -23,6 +24,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   subfamilies,
   vats,
   productionCenters = [],
+  activeReportLabel = null,
   onFilterChange,
   onResetFilters,
   onExportCSV,
@@ -224,6 +226,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <RotateCcw className="w-3 h-3 text-slate-500" />
             Limpar
           </button>
+
+          {/* Active Report Code Filter Pill */}
+          {filters.codes && filters.codes.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-indigo-100 border border-indigo-300 text-indigo-900 px-2.5 py-1 rounded-xl text-xs font-bold shadow-xs">
+              <span>Filtro: relatório — {activeReportLabel || `${filters.codes.length} artigos`}</span>
+              <button
+                onClick={() => onFilterChange({ codes: undefined, page: 1 })}
+                className="text-indigo-700 hover:text-indigo-950 font-black ml-1 px-1 rounded hover:bg-indigo-200 cursor-pointer"
+                title="Remover filtro do relatório e voltar"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons & Stats */}

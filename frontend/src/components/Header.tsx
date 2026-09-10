@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -8,6 +8,7 @@ interface HeaderProps {
   onOpenConfig: () => void;
   onOpenBackups: () => void;
   onOpenFamilyColors: () => void;
+  onOpenDataQuality: () => void;
   onRefresh: () => void;
 }
 
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenConfig,
   onOpenBackups,
   onOpenFamilyColors,
+  onOpenDataQuality,
   onRefresh
 }) => {
   return (
@@ -65,6 +67,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Palette className="w-3.5 h-3.5 text-amber-600" />
           Cores das Famílias
+        </button>
+
+        <button
+          onClick={onOpenDataQuality}
+          className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-indigo-200 transition shadow-sm"
+          title="Relatório de Problemas e Qualidade dos Dados"
+        >
+          <ClipboardCheck className="w-3.5 h-3.5 text-indigo-600" />
+          Relatório
         </button>
 
         <button

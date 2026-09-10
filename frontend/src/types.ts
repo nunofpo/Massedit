@@ -128,6 +128,24 @@ export interface SelectionSummaryResponse {
   sample?: ProductItem | null;
 }
 
+export interface DataQualityGroup {
+  key: string;
+  codes: number[];
+}
+
+export interface DataQualityCheck {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'error' | 'warning' | 'info';
+  count: number;
+  codes: number[];
+  groups?: DataQualityGroup[] | null;
+  available: boolean;
+  unavailable_reason?: string | null;
+  truncated: boolean;
+}
+
 export interface ColorUpdate {
   apply_fundo: boolean;
   fundo_hex?: string;

@@ -11,7 +11,8 @@ from backend.models import (
     BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
     ImportPreviewResponse, ImportApplyRequest,
     ProductionCenterItem, PrinterItem,
-    SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse
+    SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse,
+    DataQualityCheck
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -21,6 +22,7 @@ from backend.services.products import (
     get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers
 )
+from backend.services.reports import run_data_quality_report
 from fastapi.responses import HTMLResponse, Response
 
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
@@ -161,6 +163,11 @@ def apply_import_endpoint(req: ImportApplyRequest):
 def list_vats_endpoint():
     """Lista taxas de IVA disponíveis."""
     return get_vats()
+
+@app.get("/api/reports/data-quality", response_model=List[DataQualityCheck])
+def get_data_quality_report_endpoint(short_desc_max: int = 20):
+    """Executa diagnóstico de qualidade de dados na base de dados SQL Server."""
+    return run_data_quality_report(short_desc_max=short_desc_max)
 
 @app.post("/api/products/search")
 def search_products_endpoint(filters: ProductFilter):
