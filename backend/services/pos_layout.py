@@ -180,9 +180,8 @@ def preview_pos_layout(req: PosLayoutApplyRequest) -> BulkEditPreviewResponse:
         previews.append(ProductDiff(
             codigo=p.codigo,
             descricao=p.descricao,
-            can_edit_description=p.can_edit_description,
             has_sales=p.has_sales,
-            changes=[c.to_diff() for c in changes]
+            diffs=[c.to_diff() for c in changes]
         ))
 
     return BulkEditPreviewResponse(
