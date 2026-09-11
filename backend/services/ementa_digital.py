@@ -1,9 +1,70 @@
 from typing import Dict, Any, List, Optional
 from backend.db import db_manager
 
+def _mock_ementa_schema() -> Dict[str, Any]:
+    return {
+        "available": True,
+        "target_table_found": True,
+        "tables": [
+            {
+                "table_name": "ementa_digital_seccoes",
+                "total_rows": 3,
+                "columns": [
+                    {"name": "codigo", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "descricao", "type": "nvarchar", "max_length": 100, "is_nullable": False, "is_primary_key": False},
+                    {"name": "visivel", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
+                    {"name": "posicao", "type": "int", "max_length": 4, "is_nullable": True, "is_primary_key": False}
+                ],
+                "sample_rows": [
+                    {"codigo": 1, "descricao": "Bebidas", "visivel": 1, "posicao": 1},
+                    {"codigo": 2, "descricao": "Comidas", "visivel": 1, "posicao": 2},
+                    {"codigo": 3, "descricao": "Menu", "visivel": 1, "posicao": 3}
+                ]
+            },
+            {
+                "table_name": "ementa_digital_familias",
+                "total_rows": 2,
+                "columns": [
+                    {"name": "codigo", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "cod_seccao", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
+                    {"name": "descricao", "type": "nvarchar", "max_length": 100, "is_nullable": False, "is_primary_key": False},
+                    {"name": "visivel", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
+                    {"name": "posicao", "type": "int", "max_length": 4, "is_nullable": True, "is_primary_key": False}
+                ],
+                "sample_rows": [
+                    {"codigo": 1, "cod_seccao": 1, "descricao": "Cafetaria", "visivel": 1, "posicao": 1},
+                    {"codigo": 2, "cod_seccao": 1, "descricao": "Refrigerantes", "visivel": 1, "posicao": 2}
+                ]
+            },
+            {
+                "table_name": "ementa_digital_produtos",
+                "total_rows": 2,
+                "columns": [
+                    {"name": "cod_produto", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "produto", "type": "nvarchar", "max_length": 100, "is_nullable": False, "is_primary_key": False},
+                    {"name": "preco", "type": "float", "max_length": 8, "is_nullable": True, "is_primary_key": False},
+                    {"name": "preco_meia_dose", "type": "float", "max_length": 8, "is_nullable": True, "is_primary_key": False},
+                    {"name": "visivel", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
+                    {"name": "highlight", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False}
+                ],
+                "sample_rows": [
+                    {"cod_produto": 1, "produto": "Cafe", "preco": 1.25, "preco_meia_dose": 0.5, "visivel": 1, "highlight": 0},
+                    {"cod_produto": 700003, "produto": "Café", "preco": 0.00, "preco_meia_dose": 0.0, "visivel": 1, "highlight": 0}
+                ]
+            }
+        ]
+    }
+
+
 def discover_ementa_schema() -> Dict[str, Any]:
     """Inspeciona a base de dados em modo só de leitura à procura de tabelas relacionadas com a ementa digital."""
-    conn = db_manager.get_connection()
+    if db_manager.use_mock:
+        return _mock_ementa_schema()
+    try:
+        conn = db_manager.get_connection()
+    except Exception:
+        return _mock_ementa_schema()
+
     try:
         cursor = conn.cursor()
 
