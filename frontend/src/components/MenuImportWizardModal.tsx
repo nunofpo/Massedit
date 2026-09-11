@@ -48,6 +48,55 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
 
   if (!isOpen) return null;
 
+  const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFile(true);
+    setErrorMsg(null);
+
+    try {
+      if (file.name.toLowerCase().endsWith('.txt')) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const text = (evt.target?.result as string) || '';
+          setRawText(text);
+          setUploadedFileName(file.name);
+          setIsUploadingFile(false);
+        };
+        reader.onerror = () => {
+          setErrorMsg('Falha ao ler o ficheiro de texto.');
+          setIsUploadingFile(false);
+        };
+        reader.readAsText(file, 'utf-8');
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/menu-import/upload-pdf', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setRawText(data.text);
+          setUploadedFileName(data.filename);
+        } else {
+          const err = await res.json();
+          setErrorMsg(err.detail || 'Falha ao extrair texto do PDF.');
+        }
+        setIsUploadingFile(false);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Erro no envio do ficheiro: ${err.message}`);
+      setIsUploadingFile(false);
+    }
+  };
+
   // Step 1: Text extraction
   const handleExtractText = async () => {
     if (!rawText.trim()) {
@@ -275,19 +324,50 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-amber-900 leading-relaxed">
                 <strong>Nota sobre privacidade e extração direta:</strong>
                 <p className="mt-1 text-amber-800">
-                  Pode colar texto diretamente de PDFs, e-mails ou documentos de texto. A leitura direta local é rápida, segura e não envia dados para serviços externos.
+                  Pode carregar um ficheiro PDF / TXT do seu computador ou colar o texto diretamente. A leitura direta local é rápida, segura e não envia dados para serviços externos.
                 </p>
+              </div>
+
+              {/* Botão de Selecionar Ficheiro PDF / TXT */}
+              <div className="border-2 border-dashed border-violet-200 hover:border-violet-400 bg-violet-50/50 hover:bg-violet-50 p-6 rounded-2xl text-center transition flex flex-col items-center justify-center gap-2">
+                <input
+                  type="file"
+                  id="menu-pdf-upload-input"
+                  accept=".pdf,.txt"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="menu-pdf-upload-input"
+                  className="cursor-pointer flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md shadow-violet-600/20 transition"
+                >
+                  {isUploadingFile ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <Upload className="w-4 h-4 text-white" />
+                  )}
+                  {isUploadingFile ? 'A Ler Ficheiro...' : 'Carregar Ficheiro da Ementa (PDF / TXT)'}
+                </label>
+                <span className="text-xs text-slate-500 font-medium mt-1">
+                  Clique no botão para selecionar um ficheiro <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">.pdf</code> ou <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">.txt</code> do computador
+                </span>
+                {uploadedFileName && (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full mt-1 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Ficheiro "{uploadedFileName}" carregado com sucesso!
+                  </span>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Cole o Texto da Ementa ou Artigos:
+                  Ou Cole o Texto da Ementa / Artigos:
                 </label>
                 <textarea
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
                   placeholder={`ENTRADAS\nPão com manteiga 1.50 €\nAzeitonas temperadas 2.00 €\n\nPRATOS DE CARNE\nBitoque da Casa 9.50 €\nBife da Vazia 12.00 €\n\nBEBIDAS\nÁgua Mineral 1.20 €\nRefrigerante 1.80 €`}
-                  rows={14}
+                  rows={10}
                   className="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>

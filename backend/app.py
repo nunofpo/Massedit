@@ -1,6 +1,6 @@
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -220,6 +220,32 @@ def get_ementa_digital_schema_endpoint():
 def extract_menu_text_endpoint(raw_text: str = Body(..., embed=True)):
     """Extrai secções, artigos e preços a partir de texto de ementa (sem recurso a IA)."""
     return parse_plain_text_menu(raw_text)
+
+@app.post("/api/menu-import/upload-pdf")
+async def upload_menu_pdf_endpoint(file: UploadFile = File(...)):
+    """Lê e extrai o texto de um ficheiro PDF ou TXT carregado pelo utilizador."""
+    content = await file.read()
+    filename = file.filename or "ementa.pdf"
+    
+    if filename.lower().endswith(".txt"):
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("latin-1", errors="ignore")
+    else:
+        text = extract_text_from_pdf(content)
+        
+    if not text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Não foi possível extrair texto legível do ficheiro selecionado. Se for um PDF digitalizado ou imagem, cole o texto manualmente."
+        )
+        
+    return {
+        "filename": filename,
+        "text": text,
+        "length": len(text)
+    }
 
 @app.post("/api/menu-import/match", response_model=List[MenuMatchResponse])
 def match_menu_endpoint(rows: List[MenuReviewedRow]):
