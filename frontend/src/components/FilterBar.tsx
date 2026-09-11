@@ -264,7 +264,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               title="Importar ementas em PDF, foto ou texto com Assistente IA"
             >
               <FileText className="w-3.5 h-3.5 text-violet-600" />
-              Importar PDF
+              Importar Ementa (PDF)
             </button>
           )}
 
