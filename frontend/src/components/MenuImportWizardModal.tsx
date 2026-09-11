@@ -46,10 +46,10 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     'Take Away': 'pvp2'
   });
 
-  if (!isOpen) return null;
-
   const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+
+  if (!isOpen) return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
