@@ -204,10 +204,9 @@ Mostrar, por família, uma grelha que se aproxima do aspeto dos botões no ZSRes
 
 ---
 
-## 4. Editor da ementa digital
+## 4. Editor da ementa digital (Removido a pedido do utilizador)
 
-### Objetivo
-Editar em massa os dados da tabela **`dbo.ementa_digital_produtos`** (ementa digital / QR da ZoneSoft), com a mesma segurança do resto da aplicação, em vez de scripts SQL manuais.
+> **Nota:** Esta funcionalidade foi completamente removida da aplicação a pedido do utilizador.
 
 > **A estrutura desta tabela não está documentada neste projeto.** Não assumir nomes de colunas. A implementação tem **duas fases** e a fase B **só começa depois de o Nuno confirmar** o mapeamento das colunas.
 

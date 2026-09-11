@@ -27,7 +27,6 @@ from backend.services.reports import run_data_quality_report
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
-from backend.services.ementa_digital import discover_ementa_schema
 from backend.services.menu_ai import (
     extract_text_from_pdf, parse_plain_text_menu, match_menu_articles,
     export_zs_import_template_csv, convert_matched_to_import_rows
@@ -210,11 +209,6 @@ def list_vats_endpoint():
 def get_data_quality_report_endpoint(short_desc_max: int = 20):
     """Executa diagnóstico de qualidade de dados na base de dados SQL Server."""
     return run_data_quality_report(short_desc_max=short_desc_max)
-
-@app.get("/api/ementa-digital/schema")
-def get_ementa_digital_schema_endpoint():
-    """Fase A: Descoberta e inspeção de esquema de tabelas relacionadas com a ementa digital."""
-    return discover_ementa_schema()
 
 @app.post("/api/menu-import/extract-text", response_model=MenuExtractionResponse)
 def extract_menu_text_endpoint(raw_text: str = Body(..., embed=True)):

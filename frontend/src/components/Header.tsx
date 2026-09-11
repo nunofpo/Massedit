@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, QrCode, Sparkles } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -10,7 +10,6 @@ interface HeaderProps {
   onOpenFamilyColors: () => void;
   onOpenDataQuality: () => void;
   onOpenPosLayout: () => void;
-  onOpenEmentaDigital: () => void;
   onOpenMenuImport: () => void;
   onRefresh: () => void;
 }
@@ -24,7 +23,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenFamilyColors,
   onOpenDataQuality,
   onOpenPosLayout,
-  onOpenEmentaDigital,
   onOpenMenuImport,
   onRefresh
 }) => {
@@ -82,15 +80,6 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <LayoutGrid className="w-3.5 h-3.5 text-sky-600" />
           Botões POS
-        </button>
-
-        <button
-          onClick={onOpenEmentaDigital}
-          className="flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-teal-200 transition shadow-sm"
-          title="Editor da Ementa Digital (QR Code ZoneSoft)"
-        >
-          <QrCode className="w-3.5 h-3.5 text-teal-600" />
-          Ementa Digital
         </button>
 
         <button
