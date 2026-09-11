@@ -47,6 +47,7 @@ def _mock_ementa_schema() -> Dict[str, Any]:
                     {"name": "visivel", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
                     {"name": "highlight", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False}
                 ],
+                "sample_rows": [
                     {"cod_produto": 1, "produto": "Cafe", "preco": 1.25, "preco_meia_dose": 0.5, "visivel": 1, "highlight": 0},
                     {"cod_produto": 700003, "produto": "Café", "preco": 0.00, "preco_meia_dose": 0.0, "visivel": 1, "highlight": 0}
                 ]

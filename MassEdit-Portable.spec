@@ -1,12 +1,16 @@
-# -*- mode: python ; coding: utf-8 -*-
-
+from PyInstaller.utils.hooks import collect_submodules
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[('frontend/dist', 'frontend/dist')],
-    hiddenimports=[],
+    hiddenimports=collect_submodules('backend') + [
+        'pydantic',
+        'uvicorn',
+        'fastapi',
+        'pyodbc',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
