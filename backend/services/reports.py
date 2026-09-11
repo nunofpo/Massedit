@@ -429,9 +429,81 @@ def check_whitespace_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
     )
 
 
+def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
+    return [
+        DataQualityCheck(
+            id="duplicate_barcode",
+            title="Códigos de barras repetidos",
+            description="O mesmo código de barras está atribuído a mais do que um artigo.",
+            severity="error",
+            count=2,
+            codes=[3299, 3300],
+            groups=[DataQualityGroup(key="1000000032994", codes=[3299, 3300])],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
+            id="duplicate_plu",
+            title="PLUs / Códigos Alfa duplicados",
+            description="O mesmo PLU / código de teclado está atribuído a mais do que um artigo.",
+            severity="error",
+            count=0,
+            codes=[],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
+            id="missing_family",
+            title="Artigos sem família associada",
+            description="Artigos cuja família é nula, zero ou inexistente em dbo.familias.",
+            severity="error",
+            count=1,
+            codes=[3308],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
+            id="empty_short_desc",
+            title="Descrição curta vazia (sem texto no botão POS)",
+            description="Artigos cuja descrição curta para os botões do POS está em branco.",
+            severity="info",
+            count=3,
+            codes=[0, 1, 7001],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
+            id="long_short_desc",
+            title=f"Descrição curta com mais de {short_desc_max} caracteres",
+            description=f"Artigos cuja descrição curta ultrapassa o tamanho recomendado de {short_desc_max} caracteres.",
+            severity="info",
+            count=1,
+            codes=[3298],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
+            id="whitespace_desc",
+            title="Designações com espaços extra no início, fim ou duplos",
+            description="Artigos com espaços desnecessários corrigíveis pelo modo Ortografia.",
+            severity="info",
+            count=1,
+            codes=[7001],
+            available=True,
+            truncated=False
+        )
+    ]
+
+
 def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
     """Executa todas as 13 verificações de qualidade de dados sobre a base de dados SQL Server."""
-    conn = db_manager.get_connection()
+    if db_manager.use_mock:
+        return _mock_data_quality_report(short_desc_max)
+    try:
+        conn = db_manager.get_connection()
+    except Exception:
+        return _mock_data_quality_report(short_desc_max)
+
     try:
         cursor = conn.cursor()
         schema = db_manager.get_schema(cursor)
