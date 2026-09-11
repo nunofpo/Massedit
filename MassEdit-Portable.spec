@@ -10,6 +10,8 @@ a = Analysis(
         'uvicorn',
         'fastapi',
         'pyodbc',
+        'python_multipart',
+        'multipart',
     ],
     hookspath=[],
     hooksconfig={},
