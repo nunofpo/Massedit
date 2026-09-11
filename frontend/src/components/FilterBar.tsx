@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, RotateCcw, FileSpreadsheet, Printer, ArrowUpDown, Upload } from 'lucide-react';
+import { Search, RotateCcw, FileSpreadsheet, Printer, ArrowUpDown, Upload, FileText } from 'lucide-react';
 import { Family, Subfamily, Vat, ProductFilter, ProductionCenterItem } from '../types';
 
 interface FilterBarProps {
@@ -13,6 +13,7 @@ interface FilterBarProps {
   onResetFilters: () => void;
   onExportCSV: () => void;
   onImportExcel: () => void;
+  onOpenMenuImport?: () => void;
   onPrintLabels: () => void;
   totalItems: number;
   selectedCount: number;
@@ -29,6 +30,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onResetFilters,
   onExportCSV,
   onImportExcel,
+  onOpenMenuImport,
   onPrintLabels,
   totalItems,
   selectedCount
@@ -253,6 +255,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <Upload className="w-3.5 h-3.5 text-indigo-600" />
             Importar Excel
           </button>
+
+          {/* Import PDF / Menu button */}
+          {onOpenMenuImport && (
+            <button
+              onClick={onOpenMenuImport}
+              className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-900 border border-violet-200 px-3 py-1.5 rounded-xl font-bold transition shadow-sm"
+              title="Importar ementas em PDF, foto ou texto com Assistente IA"
+            >
+              <FileText className="w-3.5 h-3.5 text-violet-600" />
+              Importar PDF
+            </button>
+          )}
 
           {/* Export Excel / CSV button */}
           <button

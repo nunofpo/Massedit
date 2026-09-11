@@ -455,6 +455,7 @@ export const App: React.FC = () => {
         onResetFilters={handleResetFilters}
         onExportCSV={handleExportCSV}
         onImportExcel={() => setIsImportOpen(true)}
+        onOpenMenuImport={() => setIsMenuImportOpen(true)}
         onPrintLabels={handlePrintLabels}
         totalItems={totalProducts}
         selectedCount={selectedCodes.size}
