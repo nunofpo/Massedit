@@ -47,9 +47,41 @@ def _mock_ementa_schema() -> Dict[str, Any]:
                     {"name": "visivel", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False},
                     {"name": "highlight", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False}
                 ],
-                "sample_rows": [
                     {"cod_produto": 1, "produto": "Cafe", "preco": 1.25, "preco_meia_dose": 0.5, "visivel": 1, "highlight": 0},
                     {"cod_produto": 700003, "produto": "Café", "preco": 0.00, "preco_meia_dose": 0.0, "visivel": 1, "highlight": 0}
+                ]
+            },
+            {
+                "table_name": "ementa_digital_idiomas",
+                "total_rows": 4,
+                "columns": [
+                    {"name": "codigo", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "idioma", "type": "nvarchar", "max_length": 50, "is_nullable": False, "is_primary_key": False},
+                    {"name": "sigla", "type": "varchar", "max_length": 5, "is_nullable": False, "is_primary_key": False},
+                    {"name": "ativo", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": False}
+                ],
+                "sample_rows": [
+                    {"codigo": 1, "idioma": "Português", "sigla": "PT", "ativo": 1},
+                    {"codigo": 2, "idioma": "Inglês", "sigla": "EN", "ativo": 1},
+                    {"codigo": 3, "idioma": "Espanhol", "sigla": "ES", "ativo": 1},
+                    {"codigo": 4, "idioma": "Francês", "sigla": "FR", "ativo": 1}
+                ]
+            },
+            {
+                "table_name": "ementa_digital_traducoes",
+                "total_rows": 4,
+                "columns": [
+                    {"name": "cod_idioma", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "tabela_alvo", "type": "nvarchar", "max_length": 50, "is_nullable": False, "is_primary_key": True},
+                    {"name": "cod_registo", "type": "int", "max_length": 4, "is_nullable": False, "is_primary_key": True},
+                    {"name": "campo", "type": "nvarchar", "max_length": 50, "is_nullable": False, "is_primary_key": True},
+                    {"name": "texto_traduzido", "type": "nvarchar", "max_length": 250, "is_nullable": True, "is_primary_key": False}
+                ],
+                "sample_rows": [
+                    {"cod_idioma": 2, "tabela_alvo": "familias", "cod_registo": 1, "campo": "descricao", "texto_traduzido": "Coffee & Bakery"},
+                    {"cod_idioma": 2, "tabela_alvo": "produtos", "cod_registo": 1, "campo": "descricao", "texto_traduzido": "Espresso Coffee"},
+                    {"cod_idioma": 3, "tabela_alvo": "familias", "cod_registo": 1, "campo": "descricao", "texto_traduzido": "Cafetería"},
+                    {"cod_idioma": 3, "tabela_alvo": "produtos", "cod_registo": 1, "campo": "descricao", "texto_traduzido": "Café Solo"}
                 ]
             }
         ]
@@ -68,11 +100,12 @@ def discover_ementa_schema() -> Dict[str, Any]:
     try:
         cursor = conn.cursor()
 
-        # 1. Procurar tabelas com 'ementa' no nome em sys.tables (schema dbo)
+        # 1. Procurar tabelas com 'ementa', 'trad' ou 'idiom' no nome em sys.tables (schema dbo)
         cursor.execute("""
             SELECT t.name, t.object_id
             FROM sys.tables t
-            WHERE t.schema_id = SCHEMA_ID('dbo') AND t.name LIKE '%ementa%'
+            WHERE t.schema_id = SCHEMA_ID('dbo') 
+              AND (t.name LIKE '%ementa%' OR t.name LIKE '%trad%' OR t.name LIKE '%idiom%')
             ORDER BY t.name ASC
         """)
         ementa_tables = cursor.fetchall()
