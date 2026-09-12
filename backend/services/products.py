@@ -2149,7 +2149,7 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         target_isencao = "M07"
 
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?)",
+                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 5002)",
                     (
                         imp.codigo,
                         imp.codigo,
@@ -2162,6 +2162,13 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         target_isencao
                     )
                 )
+
+                try:
+                    cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (imp.codigo, fam_code, imp.codigo, fam_code))
+                    cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod WHERE codigo = ? AND centro = 5002) INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, 5002, 0)", (imp.codigo, imp.codigo))
+                except Exception:
+                    pass
+
                 affected += 1
 
 

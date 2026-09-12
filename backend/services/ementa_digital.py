@@ -1943,11 +1943,16 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                     "UPDATE dbo.produtos SET descricao = ?, precovenda = ?, familia = ? WHERE codigo = ?",
                     (artigo_nome, price_val, fam_code, code)
                 )
-            else:
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0')",
+                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha) VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0', 5002)",
                     (code, code, artigo_nome, price_val, fam_code, idx + 1)
                 )
+
+            try:
+                cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (code, fam_code, code, fam_code))
+                cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod WHERE codigo = ? AND centro = 5002) INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, 5002, 0)", (code, code))
+            except Exception:
+                pass
 
             cursor.execute("SELECT cod_produto FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (code,))
             ed_exists = cursor.fetchone()
