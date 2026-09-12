@@ -2169,45 +2169,55 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                 except Exception:
                     sql_desc = "?"
 
+                pvp_val = float(imp.pvp1 or 0.0)
+                iva_rate = float(target_iva or 23.0)
+                pvp_siva = round(pvp_val / (1.0 + (iva_rate / 100.0)), 4) if iva_rate >= 0 else pvp_val
+
                 if sql_desc != "?":
                     cursor.execute(
                         f"INSERT INTO dbo.produtos ("
-                        f"id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
-                        f"unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        f"id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
+                        f"vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
+                        f"ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao"
+                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
                         (
                             imp.codigo,
                             imp.codigo,
                             prod_curta,
-                            imp.pvp1 or 0.0,
+                            pvp_val,
+                            pvp_siva,
                             fam_code,
                             target_iva,
                             idx + 1,
                             target_isencao,
                             target_iva,
                             target_iva,
-                            target_iva
+                            target_iva,
+                            imp.codigo
                         )
                     )
                 else:
                     cursor.execute(
                         "INSERT INTO dbo.produtos ("
-                        "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
-                        "unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                        ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        "id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
+                        "vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
+                        "ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao"
+                        ") VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
                         (
                             imp.codigo,
                             imp.codigo,
                             prod_desc,
                             prod_curta,
-                            imp.pvp1 or 0.0,
+                            pvp_val,
+                            pvp_siva,
                             fam_code,
                             target_iva,
                             idx + 1,
                             target_isencao,
                             target_iva,
                             target_iva,
-                            target_iva
+                            target_iva,
+                            imp.codigo
                         )
                     )
 
