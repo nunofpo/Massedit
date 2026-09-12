@@ -2147,11 +2147,7 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         (fam_code, fam_code, fam_code)
                     )
 
-                target_isencao = "0"
-                if float(target_iva or 0) == 0.0:
-                    target_isencao = (imp.isencao or "M07").strip()
-                    if not target_isencao or target_isencao == "0":
-                        target_isencao = "M07"
+                target_isencao = (imp.isencao or "0").strip()
 
                 prod_desc = (imp.descricao or f"Artigo {imp.codigo}")[:250]
                 prod_curta = (imp.descricaocurta or "")[:250]
