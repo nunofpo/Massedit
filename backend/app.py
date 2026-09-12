@@ -32,8 +32,9 @@ from backend.services.products import (
     search_products, get_filtered_product_codes, get_selection_summary,
     get_families, create_family, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
-    get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
+    get_vats, get_motivos_isencao, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers
+
 )
 from backend.services.reports import run_data_quality_report
 from backend.services.pos_layout import (
@@ -356,6 +357,12 @@ def apply_import_endpoint(req: ImportApplyRequest):
 def list_vats_endpoint():
     """Lista taxas de IVA disponíveis."""
     return get_vats()
+
+@app.get("/api/motivos-isencao")
+def list_motivos_isencao_endpoint():
+    """Lista motivos de isenção de IVA disponíveis em dbo.motivos_isencao."""
+    return get_motivos_isencao()
+
 
 @app.get("/api/reports/data-quality", response_model=List[DataQualityCheck])
 def get_data_quality_report_endpoint(short_desc_max: int = 20):

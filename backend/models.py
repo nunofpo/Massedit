@@ -246,7 +246,9 @@ class ImportRow(BaseModel):
     familia: Optional[int] = None
     subfam: Optional[int] = None
     iva: Optional[float] = None
+    isencao: Optional[str] = "0"
     pvp1: Optional[float] = None
+
     pvp2: Optional[float] = None
     pvp3: Optional[float] = None
     pvp4: Optional[float] = None
@@ -340,7 +342,9 @@ class MenuReviewedRow(BaseModel):
     selected_familia: Optional[int] = None
     selected_subfamilia: Optional[int] = None
     selected_iva: Optional[float] = None
+    selected_isencao: Optional[str] = "M07"
     selected: bool = True
+
 
 class MenuMatchItem(BaseModel):
     codigo: int

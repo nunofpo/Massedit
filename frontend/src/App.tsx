@@ -14,9 +14,10 @@ import { MenuImportWizardModal } from './components/MenuImportWizardModal';
 import { EmentaDigitalModal } from './components/EmentaDigitalModal';
 import { CustomersModal } from './components/CustomersModal';
 import {
-  ProductItem, Family, Subfamily, Vat, ProductFilter, BulkEditRequest,
+  ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
 } from './types';
+
 
 export const App: React.FC = () => {
   // DB Config State
@@ -36,7 +37,9 @@ export const App: React.FC = () => {
   const [families, setFamilies] = useState<Family[]>([]);
   const [subfamilies, setSubfamilies] = useState<Subfamily[]>([]);
   const [vats, setVats] = useState<Vat[]>([]);
+  const [motivosIsencao, setMotivosIsencao] = useState<MotivoIsencao[]>([]);
   const [productionCenters, setProductionCenters] = useState<ProductionCenterItem[]>([]);
+
 
   // Filter & List State
   const [filters, setFilters] = useState<ProductFilter>({
@@ -94,20 +97,23 @@ export const App: React.FC = () => {
 
   const fetchAuxData = async () => {
     try {
-      const [fRes, sfRes, vRes, pcRes] = await Promise.all([
+      const [fRes, sfRes, vRes, pcRes, miRes] = await Promise.all([
         fetch('/api/families'),
         fetch('/api/subfamilies'),
         fetch('/api/vats'),
-        fetch('/api/production-centers')
+        fetch('/api/production-centers'),
+        fetch('/api/motivos-isencao')
       ]);
       if (fRes.ok) setFamilies(await fRes.json());
       if (sfRes.ok) setSubfamilies(await sfRes.json());
       if (vRes.ok) setVats(await vRes.json());
       if (pcRes.ok) setProductionCenters(await pcRes.json());
+      if (miRes && miRes.ok) setMotivosIsencao(await miRes.json());
     } catch (e) {
-      console.error('Erro ao obter famílias, subfamílias, IVAs e centros de produção', e);
+      console.error('Erro ao obter famílias, subfamílias, IVAs, centros de produção e motivos de isenção', e);
     }
   };
+
 
   // Export CSV
   const handleExportCSV = async () => {
@@ -570,12 +576,14 @@ export const App: React.FC = () => {
         families={families}
         subfamilies={subfamilies}
         vats={vats}
+        motivosIsencao={motivosIsencao}
         onOpenPreview={handleOpenCustomPreview}
         onSuccess={(msg) => {
           loadProducts();
           setNotification({ type: 'success', text: msg });
         }}
       />
+
 
       <EmentaDigitalModal
         isOpen={isEmentaDigitalOpen}

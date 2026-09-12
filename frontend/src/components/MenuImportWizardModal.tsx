@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, Download, RefreshCw, Layers, CheckCircle2, HelpCircle
 } from 'lucide-react';
 import {
-  Family, Subfamily, Vat, MenuExtractionResponse, MenuReviewedRow,
+  Family, Subfamily, Vat, MotivoIsencao, MenuExtractionResponse, MenuReviewedRow,
   MenuMatchResponse, ImportRow, BulkEditPreviewResponse
 } from '../types';
 
@@ -14,6 +14,7 @@ interface MenuImportWizardModalProps {
   families: Family[];
   subfamilies: Subfamily[];
   vats: Vat[];
+  motivosIsencao?: MotivoIsencao[];
   onOpenPreview: (previewData: BulkEditPreviewResponse, onConfirm: () => Promise<void>) => void;
   onSuccess: (message: string) => void;
 }
@@ -24,9 +25,11 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   families,
   subfamilies,
   vats,
+  motivosIsencao,
   onOpenPreview,
   onSuccess
 }) => {
+
   const [step, setStep] = useState<number>(1);
   const [rawText, setRawText] = useState<string>('');
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
@@ -106,21 +109,47 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     }
   };
 
+  const [dbMotivos, setDbMotivos] = useState<MotivoIsencao[]>(motivosIsencao || []);
+
+  useEffect(() => {
+    if (motivosIsencao && motivosIsencao.length > 0) {
+      setDbMotivos(motivosIsencao);
+    } else {
+      fetch('/api/motivos-isencao')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => { if (Array.isArray(data) && data.length > 0) setDbMotivos(data); })
+        .catch(() => {});
+    }
+  }, [motivosIsencao]);
+
+  const defaultMotivosList: MotivoIsencao[] = [
+    { codigo: 'M07', descricao: 'Isento artigo 9.º do CIVA' },
+    { codigo: 'M10', descricao: 'IVA - Regime de isenção' },
+    { codigo: 'M01', descricao: 'Artigo 16.º, n.º 6 do CIVA' },
+    { codigo: 'M99', descricao: 'Não sujeito ou não tributado' }
+  ];
+
+  const availableMotivos = dbMotivos.length > 0 ? dbMotivos : defaultMotivosList;
+
   const uniqueSections = React.useMemo(() => {
-    const map = new Map<string, { count: number; currentIva: number | 'misto' }>();
+    const map = new Map<string, { count: number; currentIva: number | 'misto'; currentIsencao: string | 'misto' }>();
 
     reviewedRows.forEach(row => {
       const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
       const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
       const ivaVal = row.selected_iva !== undefined && row.selected_iva !== null ? row.selected_iva : 23.0;
+      const isencaoVal = row.selected_isencao || 'M07';
 
       const curr = map.get(name);
       if (!curr) {
-        map.set(name, { count: 1, currentIva: ivaVal });
+        map.set(name, { count: 1, currentIva: ivaVal, currentIsencao: isencaoVal });
       } else {
         curr.count += 1;
         if (curr.currentIva !== 'misto' && curr.currentIva !== ivaVal) {
           curr.currentIva = 'misto';
+        }
+        if (curr.currentIsencao !== 'misto' && curr.currentIsencao !== isencaoVal) {
+          curr.currentIsencao = 'misto';
         }
       }
     });
@@ -128,24 +157,48 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     return Array.from(map.entries()).map(([name, val]) => ({
       name,
       count: val.count,
-      commonIva: val.currentIva
+      commonIva: val.currentIva,
+      commonIsencao: val.currentIsencao
     }));
   }, [reviewedRows, localFamilies]);
 
-  const applyIvaToSection = (sectionName: string, factor: number) => {
+  const applyIvaToSection = (sectionName: string, factor: number, motiveCode?: string) => {
     setReviewedRows(prev => prev.map(row => {
       const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
       const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
       if (name === sectionName || (row.seccao || '(Sem Secção)') === sectionName) {
-        return { ...row, selected_iva: factor };
+        return {
+          ...row,
+          selected_iva: factor,
+          selected_isencao: factor === 0 ? (motiveCode || row.selected_isencao || availableMotivos[0]?.codigo || 'M07') : '0'
+        };
       }
       return row;
     }));
   };
 
-  const applyBulkIvaToAll = (factor: number) => {
-    setReviewedRows(prev => prev.map(row => ({ ...row, selected_iva: factor })));
+  const applyIsencaoToSection = (sectionName: string, motiveCode: string) => {
+    setReviewedRows(prev => prev.map(row => {
+      const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
+      const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
+      if (name === sectionName || (row.seccao || '(Sem Secção)') === sectionName) {
+        return {
+          ...row,
+          selected_isencao: motiveCode
+        };
+      }
+      return row;
+    }));
   };
+
+  const applyBulkIvaToAll = (factor: number, motiveCode?: string) => {
+    setReviewedRows(prev => prev.map(row => ({
+      ...row,
+      selected_iva: factor,
+      selected_isencao: factor === 0 ? (motiveCode || row.selected_isencao || availableMotivos[0]?.codigo || 'M07') : '0'
+    })));
+  };
+
 
 
   if (!isOpen) return null;
@@ -785,31 +838,49 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                     {uniqueSections.map(sec => (
-                      <div key={sec.name} className="bg-white border border-slate-200 hover:border-violet-300 rounded-lg p-2.5 flex items-center justify-between text-xs shadow-2xs transition">
-                        <div className="truncate mr-2">
-                          <span className="font-bold text-slate-900 block truncate" title={sec.name}>
+                      <div key={sec.name} className="bg-white border border-slate-200 hover:border-violet-300 rounded-lg p-2.5 flex flex-col gap-1.5 text-xs shadow-2xs transition">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 truncate max-w-[130px]" title={sec.name}>
                             {sec.name}
                           </span>
                           <span className="text-[10px] text-slate-500 font-medium font-mono">
-                            {sec.count} artigo(s)
+                            {sec.count} art.
                           </span>
                         </div>
-                        <select
-                          value={sec.commonIva === 'misto' ? 'misto' : sec.commonIva}
-                          onChange={(e) => {
-                            if (e.target.value !== 'misto') {
-                              applyIvaToSection(sec.name, parseFloat(e.target.value));
-                            }
-                          }}
-                          className="bg-slate-50 border border-slate-300 hover:border-violet-500 rounded px-2 py-1 text-xs font-bold text-slate-800 shrink-0 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                        >
-                          {sec.commonIva === 'misto' && (
-                            <option value="misto" disabled>(Vários / Misto)</option>
-                          )}
-                          {vats.map(v => (
-                            <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={sec.commonIva === 'misto' ? 'misto' : sec.commonIva}
+                            onChange={(e) => {
+                              if (e.target.value !== 'misto') {
+                                applyIvaToSection(sec.name, parseFloat(e.target.value));
+                              }
+                            }}
+                            className="bg-slate-50 border border-slate-300 hover:border-violet-500 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-violet-500 flex-1"
+                          >
+                            {sec.commonIva === 'misto' && (
+                              <option value="misto" disabled>(Vários / Misto)</option>
+                            )}
+                            {vats.map(v => (
+                              <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {sec.commonIva === 0 && (
+                          <div className="pt-0.5 border-t border-slate-100">
+                            <span className="text-[9px] text-amber-800 font-bold block mb-0.5">Motivo Isenção:</span>
+                            <select
+                              value={sec.commonIsencao === 'misto' ? (availableMotivos[0]?.codigo || 'M07') : sec.commonIsencao}
+                              onChange={(e) => applyIsencaoToSection(sec.name, e.target.value)}
+                              className="w-full bg-amber-50 border border-amber-300 rounded px-1 py-0.5 text-[10px] font-bold text-amber-950 truncate"
+                            >
+                              {availableMotivos.map(m => (
+                                <option key={m.codigo} value={m.codigo}>
+                                  {m.codigo} - {m.descricao}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -912,21 +983,54 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <select
-                              value={row.selected_iva !== null && row.selected_iva !== undefined ? row.selected_iva : 23}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                const updated = [...reviewedRows];
-                                updated[idx].selected_iva = val;
-                                setReviewedRows(updated);
-                              }}
-                              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs"
-                            >
-                              {vats.map(v => (
-                                <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
-                              ))}
-                            </select>
+                            <div className="space-y-1">
+                              <select
+                                value={row.selected_iva !== null && row.selected_iva !== undefined ? row.selected_iva : 23}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  const updated = [...reviewedRows];
+                                  updated[idx].selected_iva = val;
+                                  if (val === 0 && (!updated[idx].selected_isencao || updated[idx].selected_isencao === '0')) {
+                                    updated[idx].selected_isencao = availableMotivos[0]?.codigo || 'M07';
+                                  }
+                                  setReviewedRows(updated);
+                                }}
+                                className={`bg-slate-50 border rounded px-2 py-1 text-xs font-semibold ${
+                                  row.selected_iva === 0 ? 'border-amber-400 bg-amber-50 text-amber-950 font-bold' : 'border-slate-200'
+                                }`}
+                              >
+                                {vats.map(v => (
+                                  <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
+                                ))}
+                              </select>
+
+                              {row.selected_iva === 0 && (
+                                <div className="flex flex-col gap-0.5 pt-0.5">
+                                  <span className="text-[9px] font-bold text-amber-800 uppercase tracking-tight flex items-center gap-1">
+                                    <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                    Isenção (Obrigatório):
+                                  </span>
+                                  <select
+                                    value={row.selected_isencao || availableMotivos[0]?.codigo || 'M07'}
+                                    onChange={(e) => {
+                                      const updated = [...reviewedRows];
+                                      updated[idx].selected_isencao = e.target.value;
+                                      setReviewedRows(updated);
+                                    }}
+                                    className="bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 text-[10px] font-bold text-amber-950 max-w-[190px] truncate"
+                                    title="Selecione o motivo de isenção de IVA para esta taxa de 0%"
+                                  >
+                                    {availableMotivos.map(m => (
+                                      <option key={m.codigo} value={m.codigo}>
+                                        {m.codigo} - {m.descricao}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
                           </td>
+
                           <td className="px-3 py-2">
                             {row.match_status === 'matched' ? (
                               <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">

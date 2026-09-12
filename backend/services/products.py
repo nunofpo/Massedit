@@ -658,6 +658,26 @@ def get_vats() -> List[Dict[str, Any]]:
     return result
 
 
+def get_motivos_isencao() -> List[Dict[str, Any]]:
+    """Obtém lista de motivos de isenção de IVA diretamente do SQL Server."""
+    try:
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, descricao, norma FROM dbo.motivos_isencao ORDER BY codigo ASC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"codigo": str(r[0]), "descricao": str(r[1]), "norma": str(r[2] or "")} for r in rows]
+    except Exception as e:
+        print(f"Aviso ao ler dbo.motivos_isencao: {e}")
+        return [
+            {"codigo": "M07", "descricao": "Isento artigo 9.º do CIVA", "norma": "Artigo 9.º do CIVA"},
+            {"codigo": "M10", "descricao": "IVA - Regime de isenção", "norma": "Artigo 57.º do CIVA"},
+            {"codigo": "M01", "descricao": "Artigo 16.º, n.º 6 do CIVA", "norma": "Artigo 16.º do CIVA"},
+            {"codigo": "M99", "descricao": "Não sujeito ou não tributado", "norma": "Outras situações"},
+        ]
+
+
+
 def get_subfamilies(familia: Optional[int] = None) -> List[Dict[str, Any]]:
     """Obtém lista de subfamílias diretamente do SQL Server."""
     conn = db_manager.get_connection()
@@ -2106,8 +2126,14 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         (fam_code, fam_code)
                     )
 
+                target_isencao = "0"
+                if float(target_iva or 0) == 0.0:
+                    target_isencao = (imp.isencao or "M07").strip()
+                    if not target_isencao or target_isencao == "0":
+                        target_isencao = "M07"
+
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, '0')",
+                    "INSERT INTO dbo.produtos (codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?)",
                     (
                         imp.codigo,
                         (imp.descricao or f"Artigo {imp.codigo}")[:250],
@@ -2115,10 +2141,12 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         imp.pvp1 or 0.0,
                         fam_code,
                         target_iva,
-                        idx + 1
+                        idx + 1,
+                        target_isencao
                     )
                 )
                 affected += 1
+
 
             conn.commit()
         except Exception as e:

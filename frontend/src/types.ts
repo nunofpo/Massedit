@@ -323,6 +323,12 @@ export interface MenuExtractionResponse {
   proximo_codigo?: number;
 }
 
+export interface MotivoIsencao {
+  codigo: string;
+  descricao: string;
+  norma?: string;
+}
+
 export interface MenuReviewedRow {
   codigo?: number | null;
   seccao: string;
@@ -337,8 +343,10 @@ export interface MenuReviewedRow {
   selected_familia?: number | null;
   selected_subfamilia?: number | null;
   selected_iva?: number | null;
+  selected_isencao?: string | null;
   selected?: boolean;
 }
+
 
 export interface MenuMatchItem {
   codigo: number;
