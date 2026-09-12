@@ -1946,15 +1946,14 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
             else:
                 cursor.execute(
                     "INSERT INTO dbo.produtos ("
-                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha, "
-                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, qtdstock, prodstock, retalho, composto"
-                    ") VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0', 5002, 1, 1, 0.0, GETDATE(), 23, 23, 0.0, 0, 0, 0)",
+                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, "
+                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                    ") VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0', 1, 1, 0.0, GETDATE(), 23, 23, 23, 0.0, 0, 0, 0)",
                     (code, code, artigo_nome, price_val, fam_code, idx + 1)
                 )
 
             try:
                 cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (code, fam_code, code, fam_code))
-                cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod WHERE codigo = ? AND centro = 5002) INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, 5002, 0)", (code, code))
             except Exception:
                 pass
 

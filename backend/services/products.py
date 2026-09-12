@@ -2150,9 +2150,9 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
 
                 cursor.execute(
                     "INSERT INTO dbo.produtos ("
-                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha, "
-                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, qtdstock, prodstock, retalho, composto"
-                    ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 5002, 1, 1, 0.0, GETDATE(), ?, ?, 0.0, 0, 0, 0)",
+                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, "
+                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                    ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
                     (
                         imp.codigo,
                         imp.codigo,
@@ -2164,13 +2164,13 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         idx + 1,
                         target_isencao,
                         target_iva,
+                        target_iva,
                         target_iva
                     )
                 )
 
                 try:
                     cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (imp.codigo, fam_code, imp.codigo, fam_code))
-                    cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod WHERE codigo = ? AND centro = 5002) INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, 5002, 0)", (imp.codigo, imp.codigo))
                 except Exception:
                     pass
 
