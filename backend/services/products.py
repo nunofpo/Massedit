@@ -585,19 +585,32 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -
 
         has_posprint = "posicaoprint" in fam_cols
         
-        cols = ["codigo", "descricao", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
-        vals = [next_code, desc_clean, 1, next_code, fundo, letra, 0]
+        cols = ["codigo", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
+        vals = [next_code, 1, next_code, fundo, letra, 0]
 
         if has_posprint:
             cols.append("posicaoprint")
             vals.append(0)
 
-        cols_sql = ", ".join(cols)
-        placeholders = ", ".join(["?"] * len(cols))
+        try:
+            hex_str = "0x" + desc_clean.encode('cp1252').hex()
+            desc_sql = f"CONVERT(VARCHAR(250), {hex_str})"
+        except Exception:
+            desc_sql = "?"
+            cols.append("descricao")
+            vals.append(desc_clean)
 
-        cursor.execute(f"INSERT INTO dbo.familias ({cols_sql}) VALUES ({placeholders})", vals)
+        cols_str = ", ".join(cols)
+        placeholders = ", ".join(["?"] * len(vals))
+
+        if desc_sql != "?":
+            cursor.execute(f"INSERT INTO dbo.familias ({cols_str}, descricao) VALUES ({placeholders}, {desc_sql})", vals)
+        else:
+            cursor.execute(f"INSERT INTO dbo.familias ({cols_str}) VALUES ({placeholders})", vals)
+
         conn.commit()
         return {"codigo": next_code, "descricao": desc_clean}
+
     finally:
         conn.close()
 
