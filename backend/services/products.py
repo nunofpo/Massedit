@@ -2173,8 +2173,8 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                     cursor.execute(
                         f"INSERT INTO dbo.produtos ("
                         f"id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
-                        f"unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        f"unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
                         (
                             imp.codigo,
                             imp.codigo,
@@ -2193,8 +2193,8 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                     cursor.execute(
                         "INSERT INTO dbo.produtos ("
                         "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
-                        "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                        ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        "unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                        ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
                         (
                             imp.codigo,
                             imp.codigo,
