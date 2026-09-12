@@ -106,6 +106,48 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     }
   };
 
+  const uniqueSections = React.useMemo(() => {
+    const map = new Map<string, { count: number; currentIva: number | 'misto' }>();
+
+    reviewedRows.forEach(row => {
+      const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
+      const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
+      const ivaVal = row.selected_iva !== undefined && row.selected_iva !== null ? row.selected_iva : 23.0;
+
+      const curr = map.get(name);
+      if (!curr) {
+        map.set(name, { count: 1, currentIva: ivaVal });
+      } else {
+        curr.count += 1;
+        if (curr.currentIva !== 'misto' && curr.currentIva !== ivaVal) {
+          curr.currentIva = 'misto';
+        }
+      }
+    });
+
+    return Array.from(map.entries()).map(([name, val]) => ({
+      name,
+      count: val.count,
+      commonIva: val.currentIva
+    }));
+  }, [reviewedRows, localFamilies]);
+
+  const applyIvaToSection = (sectionName: string, factor: number) => {
+    setReviewedRows(prev => prev.map(row => {
+      const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
+      const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
+      if (name === sectionName || (row.seccao || '(Sem Secção)') === sectionName) {
+        return { ...row, selected_iva: factor };
+      }
+      return row;
+    }));
+  };
+
+  const applyBulkIvaToAll = (factor: number) => {
+    setReviewedRows(prev => prev.map(row => ({ ...row, selected_iva: factor })));
+  };
+
+
   if (!isOpen) return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -705,6 +747,75 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   )}
                 </div>
               </div>
+
+
+              {/* Gestão de IVA em Massa por Família */}
+              {uniqueSections.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-violet-600"></span>
+                      <h4 className="text-xs font-bold text-slate-800">
+                        Atribuição em Massa de Taxas de IVA por Família
+                      </h4>
+                      <span className="text-[10px] bg-violet-100 text-violet-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                        {uniqueSections.length} famílias detetadas
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500 font-semibold">Aplicar IVA Global a Todos:</span>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value !== '') {
+                            applyBulkIvaToAll(parseFloat(e.target.value));
+                            e.target.value = '';
+                          }
+                        }}
+                        className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-violet-900 focus:ring-1 focus:ring-violet-500"
+                      >
+                        <option value="">-- Alterar Todos --</option>
+                        {vats.map(v => (
+                          <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {uniqueSections.map(sec => (
+                      <div key={sec.name} className="bg-white border border-slate-200 hover:border-violet-300 rounded-lg p-2.5 flex items-center justify-between text-xs shadow-2xs transition">
+                        <div className="truncate mr-2">
+                          <span className="font-bold text-slate-900 block truncate" title={sec.name}>
+                            {sec.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium font-mono">
+                            {sec.count} artigo(s)
+                          </span>
+                        </div>
+                        <select
+                          value={sec.commonIva === 'misto' ? 'misto' : sec.commonIva}
+                          onChange={(e) => {
+                            if (e.target.value !== 'misto') {
+                              applyIvaToSection(sec.name, parseFloat(e.target.value));
+                            }
+                          }}
+                          className="bg-slate-50 border border-slate-300 hover:border-violet-500 rounded px-2 py-1 text-xs font-bold text-slate-800 shrink-0 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        >
+                          {sec.commonIva === 'misto' && (
+                            <option value="misto" disabled>(Vários / Misto)</option>
+                          )}
+                          {vats.map(v => (
+                            <option key={v.codigo} value={v.factor}>{v.descricao || `${v.factor}%`}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
 
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
                 <table className="w-full text-xs text-left">
