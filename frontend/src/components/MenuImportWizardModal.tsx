@@ -141,7 +141,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       const famObj = localFamilies.find(f => f.codigo === row.selected_familia);
       const name = famObj ? famObj.descricao : (row.seccao?.trim() || '(Sem Secção)');
       const ivaVal = row.selected_iva !== undefined && row.selected_iva !== null ? row.selected_iva : 23.0;
-      const isencaoVal = row.selected_isencao || 'M07';
+      const isencaoVal = row.selected_isencao || (ivaVal === 0 ? (availableMotivos[0]?.codigo || 'M07') : '');
 
       const curr = map.get(name);
       if (!curr) {
@@ -163,7 +163,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       commonIva: val.currentIva,
       commonIsencao: val.currentIsencao
     }));
-  }, [reviewedRows, localFamilies]);
+  }, [reviewedRows, localFamilies, availableMotivos]);
 
   const applyIvaToSection = (sectionName: string, factor: number, motiveCode?: string) => {
     setReviewedRows(prev => prev.map(row => {
@@ -173,7 +173,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
         return {
           ...row,
           selected_iva: factor,
-          selected_isencao: factor === 0 ? (motiveCode || row.selected_isencao || availableMotivos[0]?.codigo || 'M07') : '0'
+          selected_isencao: factor === 0 ? (motiveCode || row.selected_isencao || availableMotivos[0]?.codigo || 'M07') : ''
         };
       }
       return row;

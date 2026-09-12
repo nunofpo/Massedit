@@ -347,7 +347,7 @@ class MenuReviewedRow(BaseModel):
     selected_familia: Optional[int] = None
     selected_subfamilia: Optional[int] = None
     selected_iva: Optional[float] = None
-    selected_isencao: Optional[str] = "M07"
+    selected_isencao: Optional[str] = ""
     selected: bool = True
 
 
