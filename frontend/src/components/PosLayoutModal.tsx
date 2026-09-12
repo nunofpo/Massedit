@@ -102,11 +102,36 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
     }
   };
 
-  // Drag-and-drop handlers
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
+  // Extract unique subfamilies in loaded products with counts
+  const availableSubfamilies = React.useMemo(() => {
+    const map = new Map<number, { desc: string; count: number }>();
+    products.forEach(p => {
+      if (p.subfamilia !== null && p.subfamilia !== undefined) {
+        const existing = map.get(p.subfamilia);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(p.subfamilia, {
+            desc: p.subfamilia_desc || `Subfamília #${p.subfamilia}`,
+            count: 1
+          });
+        }
+      }
+    });
+    return Array.from(map.entries());
+  }, [products]);
+
+  // Filtered products to display (subfamily filter)
+  const displayedProducts = React.useMemo(() => {
+    if (subfamilyFilter === 'all') return products;
+    const sfId = parseInt(subfamilyFilter, 10);
+    return products.filter(p => p.subfamilia === sfId);
+  }, [products, subfamilyFilter]);
+
+  // Drag-and-drop handlers (works seamlessly both when filtered by subfamily and when showing all)
+  const handleDragStart = (e: React.DragEvent, actualIndex: number) => {
+    setDraggedIndex(actualIndex);
     e.dataTransfer.effectAllowed = 'move';
-    // Transparent or ghost styling can be handled via CSS
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -114,38 +139,55 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = (e: React.DragEvent, targetActualIndex: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === targetIndex) {
+    if (draggedIndex === null || draggedIndex === targetActualIndex) {
       setDraggedIndex(null);
       return;
     }
 
     const updated = [...products];
     const [movedItem] = updated.splice(draggedIndex, 1);
-    updated.splice(targetIndex, 0, movedItem);
+    updated.splice(targetActualIndex, 0, movedItem);
     setProducts(updated);
     setDraggedIndex(null);
   };
 
-  // Direct reordering button actions
-  const moveItem = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= products.length || fromIndex === toIndex) return;
+  // Direct reordering button actions (relative to displayed subset if filtered)
+  const moveItemInDisplayed = (displayedIndex: number, targetDisplayedIndex: number) => {
+    if (targetDisplayedIndex < 0 || targetDisplayedIndex >= displayedProducts.length || displayedIndex === targetDisplayedIndex) return;
+    
+    const sourceItem = displayedProducts[displayedIndex];
+    const targetItem = displayedProducts[targetDisplayedIndex];
+    
+    const sourceActualIndex = products.findIndex(p => p.codigo === sourceItem.codigo);
+    const targetActualIndex = products.findIndex(p => p.codigo === targetItem.codigo);
+    
+    if (sourceActualIndex === -1 || targetActualIndex === -1) return;
+
     const updated = [...products];
-    const [movedItem] = updated.splice(fromIndex, 1);
-    updated.splice(toIndex, 0, movedItem);
+    const [movedItem] = updated.splice(sourceActualIndex, 1);
+    updated.splice(targetActualIndex, 0, movedItem);
     setProducts(updated);
   };
 
-  const moveToPositionPrompt = (currentIndex: number) => {
-    const currentPos = currentIndex + 1;
-    const input = window.prompt(`Mover artigo "${products[currentIndex].descricao}" para que posição? (1 a ${products.length})`, currentPos.toString());
+  const moveToPositionPrompt = (displayedIndex: number) => {
+    const item = displayedProducts[displayedIndex];
+    const isFiltered = subfamilyFilter !== 'all';
+    const totalScope = isFiltered ? displayedProducts.length : products.length;
+    const currentScopePos = displayedIndex + 1;
+
+    const promptText = isFiltered
+      ? `Mover artigo "${item.descricao}" para que posição dentro desta subfamília? (1 a ${totalScope})`
+      : `Mover artigo "${item.descricao}" para que posição? (1 a ${totalScope})`;
+
+    const input = window.prompt(promptText, currentScopePos.toString());
     if (input === null) return;
-    const targetPos = parseInt(input.trim(), 10);
-    if (!isNaN(targetPos) && targetPos >= 1 && targetPos <= products.length) {
-      moveItem(currentIndex, targetPos - 1);
+    const targetScopePos = parseInt(input.trim(), 10);
+    if (!isNaN(targetScopePos) && targetScopePos >= 1 && targetScopePos <= totalScope) {
+      moveItemInDisplayed(displayedIndex, targetScopePos - 1);
     } else {
-      alert(`Posição inválida. Escolha um número entre 1 e ${products.length}.`);
+      alert(`Posição inválida. Escolha um número entre 1 e ${totalScope}.`);
     }
   };
 
@@ -158,31 +200,8 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
     }
   };
 
-  // Check if order has changes compared to initial
+  // Check current order vs initial
   const currentOrder = products.map(p => p.codigo);
-  const isOrderModified = initialOrder.length > 0 && currentOrder.some((code, idx) => {
-    const p = products[idx];
-    const expectedOrder = (idx + 1) * step;
-    return p.ordem !== expectedOrder;
-  });
-
-  // Extract unique subfamilies in loaded products
-  const availableSubfamilies = React.useMemo(() => {
-    const map = new Map<number, string>();
-    products.forEach(p => {
-      if (p.subfamilia !== null && p.subfamilia !== undefined) {
-        map.set(p.subfamilia, p.subfamilia_desc || `Subfamília #${p.subfamilia}`);
-      }
-    });
-    return Array.from(map.entries());
-  }, [products]);
-
-  // Filtered products to display (subfamily filter)
-  const displayedProducts = React.useMemo(() => {
-    if (subfamilyFilter === 'all') return products;
-    const sfId = parseInt(subfamilyFilter, 10);
-    return products.filter(p => p.subfamilia === sfId);
-  }, [products, subfamilyFilter]);
 
   // Simulate & Save
   const handleSimulateAndSave = async () => {
@@ -425,18 +444,30 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
 
                 {/* Subfamily Filter if applicable */}
                 {availableSubfamilies.length > 0 && (
-                  <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                    <span>Subfamília:</span>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-indigo-50/70 border border-indigo-200/80 px-2 py-1 rounded-xl shadow-2xs">
+                    <span className="text-indigo-900 font-bold">Subfamília:</span>
                     <select
                       value={subfamilyFilter}
                       onChange={(e) => setSubfamilyFilter(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="bg-white border border-indigo-200 rounded-lg px-2 py-1 text-xs font-semibold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                     >
-                      <option value="all">Todas ({products.length})</option>
-                      {availableSubfamilies.map(([id, desc]) => (
-                        <option key={id} value={id}>{desc}</option>
+                      <option value="all">Todas as subfamílias ({products.length})</option>
+                      {availableSubfamilies.map(([id, item]) => (
+                        <option key={id} value={id}>
+                          {item.desc} ({item.count})
+                        </option>
                       ))}
                     </select>
+                    {subfamilyFilter !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={() => setSubfamilyFilter('all')}
+                        className="text-indigo-600 hover:text-indigo-900 font-bold px-1 text-xs"
+                        title="Limpar filtro de subfamília"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -445,7 +476,15 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
               {/* Status & Counts */}
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-500">
-                  <strong className="text-slate-800 font-bold">{products.length}</strong> artigos na família
+                  {subfamilyFilter !== 'all' ? (
+                    <>
+                      A mostrar <strong className="text-indigo-700 font-bold">{displayedProducts.length}</strong> de <strong className="text-slate-800 font-bold">{products.length}</strong> artigos
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-slate-800 font-bold">{products.length}</strong> artigos na família
+                    </>
+                  )}
                 </span>
               </div>
             </div>
@@ -477,7 +516,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                     gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
                   }}
                 >
-                  {displayedProducts.map((p) => {
+                  {displayedProducts.map((p, dispIndex) => {
                     const actualIndex = products.findIndex(x => x.codigo === p.codigo);
                     const newOrderNum = (actualIndex + 1) * step;
                     const isDragged = draggedIndex === actualIndex;
@@ -517,9 +556,9 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                moveItem(actualIndex, actualIndex - 1);
+                                moveItemInDisplayed(dispIndex, dispIndex - 1);
                               }}
-                              disabled={actualIndex === 0}
+                              disabled={dispIndex === 0}
                               className="p-1 hover:bg-white/20 rounded disabled:opacity-30"
                               title="Mover para a esquerda / anterior"
                             >
@@ -529,9 +568,9 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                moveItem(actualIndex, actualIndex + 1);
+                                moveItemInDisplayed(dispIndex, dispIndex + 1);
                               }}
-                              disabled={actualIndex === products.length - 1}
+                              disabled={dispIndex === displayedProducts.length - 1}
                               className="p-1 hover:bg-white/20 rounded disabled:opacity-30"
                               title="Mover para a direita / seguinte"
                             >
@@ -541,7 +580,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                moveToPositionPrompt(actualIndex);
+                                moveToPositionPrompt(dispIndex);
                               }}
                               className="px-1 py-0.5 text-[9px] font-bold hover:bg-white/20 rounded"
                               title="Mover diretamente para a posição..."
