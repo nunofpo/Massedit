@@ -2149,7 +2149,10 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         target_isencao = "M07"
 
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 5002)",
+                    "INSERT INTO dbo.produtos ("
+                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, cozinha, "
+                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, qtdstock, prodstock, retalho, composto"
+                    ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 5002, 1, 1, 0.0, GETDATE(), ?, ?, 0.0, 0, 0, 0)",
                     (
                         imp.codigo,
                         imp.codigo,
@@ -2159,7 +2162,9 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         fam_code,
                         target_iva,
                         idx + 1,
-                        target_isencao
+                        target_isencao,
+                        target_iva,
+                        target_iva
                     )
                 )
 
