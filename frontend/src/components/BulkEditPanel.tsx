@@ -782,8 +782,24 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                         <option value="pvp5">Copiar do PVP 5</option>
                         <option value="pvp6">Copiar do PVP 6</option>
                       </select>
-                      <p className="text-[10px] text-amber-800 font-medium">
-                        O valor do <span className="font-bold uppercase text-amber-950">{sourcePvp}</span> será copiado diretamente para o <span className="font-bold uppercase text-amber-950">{targetPvp}</span>.
+                      <div className="pt-2 border-t border-amber-200">
+                        <label className="text-[11px] text-amber-950 font-bold block mb-1">
+                          Ajuste / Margem Adicional na Cópia (%):
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Ex: 10 para +10%, ou 0 para cópia exata"
+                          value={priceValue}
+                          onChange={(e) => setPriceValue(e.target.value.replace(',', '.'))}
+                          className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono font-bold"
+                        />
+                        <span className="text-[10px] text-amber-700 block mt-1">
+                          Se preenchido com 10, o {targetPvp.toUpperCase()} será igual a {sourcePvp.toUpperCase()} + 10%.
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-amber-800 font-medium mt-1">
+                        O valor do <span className="font-bold uppercase text-amber-950">{sourcePvp}</span> será copiado para o <span className="font-bold uppercase text-amber-950">{targetPvp}</span>.
                       </p>
                     </div>
                   ) : (
@@ -855,6 +871,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     >
                       <option value="none">Sem arredondamento (Exato)</option>
+                      <option value="nearest_5_cents">🎯 Aos 5 cêntimos mais próximos (ex: 1.43€ ➔ 1.45€)</option>
+                      <option value="ends_0_or_5">Terminar sempre em .x0 ou .x5</option>
                       <option value="90_cents">Terminar em .90 € (ex: 1.90€)</option>
                       <option value="95_cents">Terminar em .95 € (ex: 1.95€)</option>
                       <option value="00_cents">Arredondar para Euro exato (.00€)</option>

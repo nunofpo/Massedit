@@ -411,3 +411,36 @@ export interface EmentaSchemaInfo {
     row_count?: number;
   }>;
 }
+
+export interface CustomerItem {
+  codigo: number;
+  nome: string;
+  nif: string;
+  morada?: string;
+  localidade?: string;
+  codpostal?: string;
+  telefone?: string;
+  email?: string;
+  is_valid_nif: boolean;
+  nif_validation_message?: string;
+}
+
+export interface CustomerAuditResponse {
+  total: number;
+  valid_count: number;
+  invalid_count: number;
+  customers: CustomerItem[];
+}
+
+export interface NifLookupResponse {
+  nif: string;
+  is_valid: boolean;
+  validation_message: string;
+  nome?: string;
+  morada?: string;
+  localidade?: string;
+  codpostal?: string;
+  telefone?: string;
+  email?: string;
+  atividade?: string;
+}

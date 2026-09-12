@@ -472,3 +472,56 @@ class EmentaSaveTranslationsRequest(BaseModel):
     cod_produto: int
     translations: Dict[str, Dict[str, str]] = Field(default_factory=dict)
 
+
+# ======================================================================
+# Modelos de Clientes e Verificação NIF
+# ======================================================================
+
+class CustomerItem(BaseModel):
+    codigo: int
+    nome: str
+    nif: str
+    morada: Optional[str] = ""
+    localidade: Optional[str] = ""
+    codpostal: Optional[str] = ""
+    telefone: Optional[str] = ""
+    email: Optional[str] = ""
+    is_valid_nif: bool = True
+    nif_validation_message: Optional[str] = ""
+
+class CustomerAuditResponse(BaseModel):
+    total: int
+    valid_count: int
+    invalid_count: int
+    customers: List[CustomerItem]
+
+class NifLookupRequest(BaseModel):
+    nif: str
+    api_key: Optional[str] = None
+
+class NifLookupResponse(BaseModel):
+    nif: str
+    is_valid: bool
+    validation_message: str
+    nome: Optional[str] = None
+    morada: Optional[str] = None
+    localidade: Optional[str] = None
+    codpostal: Optional[str] = None
+    telefone: Optional[str] = None
+    email: Optional[str] = None
+    atividade: Optional[str] = None
+    raw_data: Optional[Dict[str, Any]] = None
+
+class CustomerUpdateItem(BaseModel):
+    codigo: int
+    nome: Optional[str] = None
+    nif: Optional[str] = None
+    morada: Optional[str] = None
+    localidade: Optional[str] = None
+    codpostal: Optional[str] = None
+    telefone: Optional[str] = None
+    email: Optional[str] = None
+
+class BulkCustomerUpdateRequest(BaseModel):
+    customers: List[CustomerUpdateItem]
+

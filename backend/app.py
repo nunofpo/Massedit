@@ -20,7 +20,11 @@ from backend.models import (
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
     EmentaSuggestDescRequest,
-    PortInfo, PortScanRequest, PortScanResponse
+    PortInfo, PortScanRequest, PortScanResponse,
+    CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest
+)
+from backend.services.customers import (
+    get_customers, update_customer_data, lookup_nif_pt, validate_pt_nif
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -193,6 +197,28 @@ def debug_sales_endpoint():
         }
     finally:
         conn.close()
+
+# ======================================================================
+# Endpoints de Clientes e Validação de NIF (NIF.pt)
+# ======================================================================
+
+@app.get("/api/customers", response_model=CustomerAuditResponse)
+def list_customers_endpoint(search: Optional[str] = None, only_invalid: bool = False, limit: int = 300):
+    """Lista e audita clientes do SQL Server com validação de NIF."""
+    return get_customers(search=search, only_invalid=only_invalid, limit=limit)
+
+@app.post("/api/customers/lookup-nif", response_model=NifLookupResponse)
+def lookup_customer_nif_endpoint(req: NifLookupRequest):
+    """Consulta dados de faturação da empresa através da API do NIF.pt."""
+    return lookup_nif_pt(req.nif, req.api_key)
+
+@app.post("/api/customers/update")
+def update_customers_endpoint(req: BulkCustomerUpdateRequest):
+    """Atualiza dados de clientes em lote no SQL Server com sync=1."""
+    success, msg, count = update_customer_data(req)
+    if not success:
+        raise HTTPException(status_code=500, detail=msg)
+    return {"success": True, "message": msg, "updated_count": count}
 
 @app.get("/api/families")
 def list_families_endpoint():

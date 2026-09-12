@@ -81,7 +81,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Pesquisar por Código ou Nome..."
+              placeholder="Pesquisar por Nome, Código, Intervalo (ex: 100-250) ou Lista (10, 25, 42)..."
               value={filters.search || ''}
               onChange={(e) => onFilterChange({ search: e.target.value, page: 1 })}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition shadow-sm"

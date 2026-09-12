@@ -317,12 +317,30 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
             where.append(f"({' OR '.join(in_clauses)})")
 
     if filters.search and filters.search.strip():
-        st = f"%{filters.search.strip()}%"
-        where.append(
-            "(p.descricao LIKE ? OR p.descricaocurta LIKE ? OR CAST(p.codigo AS VARCHAR(20)) LIKE ? "
-            "OR CAST(p.codigo_alf AS VARCHAR(20)) LIKE ? OR p.codbarras LIKE ? OR p.referencia LIKE ?)"
-        )
-        params.extend([st] * 6)
+        raw_search = filters.search.strip()
+        # Verificar se é um intervalo (ex: 100-250)
+        range_match = re.match(r"^(\d+)\s*-\s*(\d+)$", raw_search)
+        # Verificar se é uma lista de códigos (ex: 10, 25, 42 ou 10 25 42)
+        list_match = re.findall(r"\b\d+\b", raw_search)
+        
+        if range_match:
+            c_start = int(range_match.group(1))
+            c_end = int(range_match.group(2))
+            if c_start > c_end:
+                c_start, c_end = c_end, c_start
+            where.append("p.codigo BETWEEN ? AND ?")
+            params.extend([c_start, c_end])
+        elif len(list_match) > 1 and all(len(x) <= 8 for x in list_match) and ("," in raw_search or ";" in raw_search):
+            code_ints = [int(x) for x in list_match]
+            where.append(f"p.codigo IN ({_placeholders(len(code_ints))})")
+            params.extend(code_ints)
+        else:
+            st = f"%{raw_search}%"
+            where.append(
+                "(p.descricao LIKE ? OR p.descricaocurta LIKE ? OR CAST(p.codigo AS VARCHAR(20)) LIKE ? "
+                "OR CAST(p.codigo_alf AS VARCHAR(20)) LIKE ? OR p.codbarras LIKE ? OR p.referencia LIKE ?)"
+            )
+            params.extend([st] * 6)
     if filters.familia is not None:
         where.append("p.familia = ?")
         params.append(filters.familia)
@@ -778,7 +796,11 @@ def calculate_new_price(old_price: float, mode: str, value: float, rounding: Opt
     if new_p < 0:
         new_p = 0.0
 
-    if rounding == "90_cents":
+    if rounding == "nearest_5_cents":
+        new_p = round(new_p * 20.0) / 20.0
+    elif rounding == "ends_0_or_5":
+        new_p = math.ceil(new_p * 20.0) / 20.0
+    elif rounding == "90_cents":
         new_p = math.floor(new_p) + 0.90
     elif rounding == "95_cents":
         new_p = math.floor(new_p) + 0.95
@@ -1114,6 +1136,13 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
         if is_copy:
             src_idx = _pvp_index(req.prices.source_pvp) or 1
             src_price = float(getattr(p, f"pvp{src_idx}", 0.0))
+            # Se tiver valor adicional ou arredondamento definido para a cópia
+            final_src_price = src_price
+            if req.prices.value and float(req.prices.value) != 0:
+                final_src_price = calculate_new_price(src_price, "percentage" if req.prices.value > 0 or req.prices.value < 0 else "fixed_set", float(req.prices.value), req.prices.rounding)
+            elif req.prices.rounding and req.prices.rounding != "none":
+                final_src_price = calculate_new_price(src_price, "fixed_set", src_price, req.prices.rounding)
+
             if target in ("all", "copy_pvp1"):
                 indices = [i for i in range(1, 11) if i != src_idx]
             else:
@@ -1121,8 +1150,9 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
             for idx in indices:
                 if idx == src_idx:
                     continue
-                changes.append(_price_change(idx, f"Preço PVP {idx} (Cópia de PVP {src_idx})",
-                                             float(getattr(p, f"pvp{idx}", 0.0)), src_price))
+                label_extra = f" (Cópia de PVP {src_idx}{f' + {req.prices.value}%' if req.prices.value else ''})"
+                changes.append(_price_change(idx, f"Preço PVP {idx}{label_extra}",
+                                             float(getattr(p, f"pvp{idx}", 0.0)), final_src_price))
         else:
             if target == "all":
                 indices = list(range(1, 11))

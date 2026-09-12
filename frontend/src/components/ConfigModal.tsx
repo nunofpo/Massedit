@@ -30,6 +30,48 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [portScanResults, setPortScanResults] = useState<PortInfo[] | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
+  // Connection Profiles State
+  const [profiles, setProfiles] = useState<Array<{ name: string; config: DatabaseConfig }>>([]);
+  const [newProfileName, setNewProfileName] = useState('');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('massedit_db_profiles');
+      if (saved) {
+        setProfiles(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const handleSaveCurrentProfile = () => {
+    if (!newProfileName.trim()) {
+      alert('Introduza um nome para o perfil (ex: Restaurante X).');
+      return;
+    }
+    const updated = [...profiles.filter(p => p.name !== newProfileName.trim()), {
+      name: newProfileName.trim(),
+      config: formConfig
+    }];
+    setProfiles(updated);
+    localStorage.setItem('massedit_db_profiles', JSON.stringify(updated));
+    setNewProfileName('');
+  };
+
+  const handleSelectProfile = (profName: string) => {
+    const found = profiles.find(p => p.name === profName);
+    if (found) {
+      setFormConfig(found.config);
+    }
+  };
+
+  const handleDeleteProfile = (profName: string) => {
+    const updated = profiles.filter(p => p.name !== profName);
+    setProfiles(updated);
+    localStorage.setItem('massedit_db_profiles', JSON.stringify(updated));
+  };
+
   useEffect(() => {
     setFormConfig(config);
     setPortScanResults(null);
@@ -143,6 +185,57 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs bg-slate-50/30">
           
+          {/* Perfis Guardados (Clientes Frequentes) */}
+          <div className="bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs">
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                Perfis de Clientes Guardados:
+              </span>
+              {profiles.length > 0 && (
+                <span className="text-[10px] text-indigo-600 font-semibold">{profiles.length} perfil(is)</span>
+              )}
+            </div>
+
+            {profiles.length > 0 ? (
+              <div className="flex gap-2 items-center">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) handleSelectProfile(e.target.value);
+                  }}
+                  className="flex-1 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Carregar perfil de cliente...</option>
+                  {profiles.map(p => (
+                    <option key={p.name} value={p.name}>
+                      🏢 {p.name} ({p.config.server}:{p.config.port} / {p.config.database})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-[11px] text-indigo-700">Ainda não tem perfis gravados. Pode gravar o perfil atual abaixo.</p>
+            )}
+
+            <div className="flex gap-2 pt-1 border-t border-indigo-100/80">
+              <input
+                type="text"
+                placeholder="Nome do cliente (ex: Pastelaria Central)..."
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                className="flex-1 bg-white border border-indigo-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 placeholder-slate-400 font-medium"
+              />
+              <button
+                type="button"
+                onClick={handleSaveCurrentProfile}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1 rounded-lg text-xs transition shadow-xs"
+              >
+                Gravar Perfil
+              </button>
+            </div>
+          </div>
+
           {/* Servidor & Porta com Scan de Portas */}
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-3">

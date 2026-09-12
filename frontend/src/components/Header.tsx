@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, QrCode } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, QrCode, Users } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -12,6 +12,7 @@ interface HeaderProps {
   onOpenPosLayout: () => void;
   onOpenEmentaDigital: () => void;
   onOpenMenuImport: () => void;
+  onOpenCustomers: () => void;
   onRefresh: () => void;
 }
 
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPosLayout,
   onOpenEmentaDigital,
   onOpenMenuImport,
+  onOpenCustomers,
   onRefresh
 }) => {
   return (
@@ -100,6 +102,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Sparkles className="w-3.5 h-3.5 text-violet-600" />
           Importar Ementa
+        </button>
+
+        <button
+          onClick={onOpenCustomers}
+          className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition shadow-sm"
+          title="Auditoria de Clientes & Consulta NIF.pt"
+        >
+          <Users className="w-3.5 h-3.5 text-emerald-600" />
+          Clientes & NIF
         </button>
 
         <button
