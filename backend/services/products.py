@@ -587,6 +587,9 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -
         
         cols = ["codigo", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
         vals = [next_code, 1, next_code, fundo, letra, 0]
+        if "id" in fam_cols:
+            cols.append("id")
+            vals.append(next_code)
 
         if has_posprint:
             cols.append("posicaoprint")
@@ -1946,7 +1949,7 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
                     try:
                         conn_f = db_manager.get_connection()
                         cur_f = conn_f.cursor()
-                        cur_f.execute("INSERT INTO dbo.familias (codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, raw_fam.strip(), max_fam_code))
+                        cur_f.execute("INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, raw_fam.strip(), max_fam_code))
                         conn_f.commit()
                         conn_f.close()
                     except Exception:
@@ -2134,9 +2137,9 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                 cursor.execute("SELECT COUNT(*) FROM dbo.familias WHERE codigo = ?", (fam_code,))
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(
-                        "INSERT INTO dbo.familias (codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) "
-                        "VALUES (?, 'Geral', 1, ?, 0, 8421504, 16777215, 0)",
-                        (fam_code, fam_code)
+                        "INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) "
+                        "VALUES (?, ?, 'Geral', 1, ?, 0, 8421504, 16777215, 0)",
+                        (fam_code, fam_code, fam_code)
                     )
 
                 target_isencao = "0"
@@ -2146,8 +2149,9 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         target_isencao = "M07"
 
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?)",
+                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?)",
                     (
+                        imp.codigo,
                         imp.codigo,
                         (imp.descricao or f"Artigo {imp.codigo}")[:250],
                         (imp.descricaocurta or "")[:250],

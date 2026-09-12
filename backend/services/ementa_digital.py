@@ -1874,8 +1874,8 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                 family_map[k] = max_fam_code
                 try:
                     cursor.execute(
-                        "INSERT INTO dbo.familias (codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, 1, ?, 8421504, 16777215, 0)",
-                        (max_fam_code, f_name, max_fam_code)
+                        "INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)",
+                        (max_fam_code, max_fam_code, f_name, max_fam_code)
                     )
                 except Exception:
                     pass
@@ -1945,8 +1945,8 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO dbo.produtos (codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0')",
-                    (code, artigo_nome, price_val, fam_code, idx + 1)
+                    "INSERT INTO dbo.produtos (id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0')",
+                    (code, code, artigo_nome, price_val, fam_code, idx + 1)
                 )
 
             cursor.execute("SELECT cod_produto FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (code,))
