@@ -1330,8 +1330,9 @@ def _read_family_colors(cursor, codes: List[int]) -> List[Dict[str, Any]]:
 
 
 def create_backup_snapshot(products: List[ProductItem], description: str,
-                           families: Optional[List[Dict[str, Any]]] = None) -> str:
-    """Cria um ficheiro JSON de backup com o estado anterior dos produtos (e famílias). Lança exceção se falhar."""
+                           families: Optional[List[Dict[str, Any]]] = None,
+                           ementa_digital: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Cria um ficheiro JSON de backup com o estado anterior dos produtos (e famílias / ementa digital). Lança exceção se falhar."""
     now = datetime.now()
     filename = f"backup_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}.json"
     filepath = os.path.join(BACKUP_DIR, filename)
@@ -1341,11 +1342,12 @@ def create_backup_snapshot(products: List[ProductItem], description: str,
         "format_version": BACKUP_FORMAT_VERSION,
         "timestamp": now.isoformat(),
         "description": description,
-        "items_count": len(products) + len(families or []),
+        "items_count": len(products) + len(families or []) + len(ementa_digital or []),
         "database": db_manager.config.database,
         "optional_columns": [c for c in OPTIONAL_PRODUCT_COLUMNS if _has_optional_int_col(schema, c)],
         "products": [p.model_dump() for p in products],
         "families": families or [],
+        "ementa_digital": ementa_digital or [],
     }
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -1449,7 +1451,8 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
     version = int(data.get("format_version", 1) or 1)
     products_data = [bp for bp in data.get("products", []) if isinstance(bp, dict) and bp.get("codigo") is not None]
     families_data = [fd for fd in (data.get("families") or []) if isinstance(fd, dict) and fd.get("codigo") is not None]
-    if not products_data and not families_data:
+    ementa_data = [ed for ed in (data.get("ementa_digital") or []) if isinstance(ed, dict) and ed.get("cod_produto") is not None]
+    if not products_data and not families_data and not ementa_data:
         return False, "Nenhum registo encontrado dentro do ficheiro de backup."
 
     backup_optional = set(data.get("optional_columns", [])) if version >= 2 else set()
@@ -1519,7 +1522,46 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
             if int(fd.get("fundo", 0)) != cf["fundo"] or int(fd.get("letra", 16777215)) != cf["letra"]:
                 fam_plan.append((int(fd["codigo"]), int(fd.get("fundo", 0)), int(fd.get("letra", 16777215))))
 
-        if not plan and not fam_plan:
+        # Planeamento de Ementa Digital
+        ementa_plan = []
+        cur_ementa_snapshots = []
+        has_ementa_table = "ementa_digital_produtos" in schema
+        if has_ementa_table and ementa_data:
+            ementa_cols = schema["ementa_digital_produtos"]
+            ed_codes = [int(ed["cod_produto"]) for ed in ementa_data]
+            chunks = [ed_codes[i:i + 500] for i in range(0, len(ed_codes), 500)]
+            existing_ementa = {}
+            for chunk in chunks:
+                placeholders = ",".join("?" for _ in chunk)
+                cursor.execute(f"SELECT * FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", chunk)
+                desc = [c[0].lower() for c in cursor.description]
+                for row in cursor.fetchall():
+                    row_dict = dict(zip(desc, row))
+                    existing_ementa[int(row_dict["cod_produto"])] = row_dict
+
+            restore_cols = ["produto", "descricao", "visivel", "highlight", "posicao", "gluten", "sal",
+                            "lactose", "picante", "dieta", "vegetariano", "pessoas", "calorias", "tempo", "image_url"]
+            valid_restore_cols = [c for c in restore_cols if c in ementa_cols]
+
+            for ed in ementa_data:
+                c_prod = int(ed["cod_produto"])
+                cur_ed = existing_ementa.get(c_prod)
+                if not cur_ed:
+                    continue
+                cur_ementa_snapshots.append(cur_ed)
+                ed_sets: List[str] = []
+                ed_params: List[Any] = []
+                for col in valid_restore_cols:
+                    if col in ed:
+                        val = ed[col]
+                        cur_val = cur_ed.get(col)
+                        if str(val) != str(cur_val):
+                            ed_sets.append(f"{col} = ?")
+                            ed_params.append(val)
+                if ed_sets:
+                    ementa_plan.append({"cod_produto": c_prod, "sets": ed_sets, "params": ed_params})
+
+        if not plan and not fam_plan and not ementa_plan:
             msg = "Nada a restaurar: os artigos já estão no estado desta cópia de segurança."
             if protected:
                 msg += f" ({protected} designação(ões) de artigos com vendas não foram repostas.)"
@@ -1530,7 +1572,8 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
             safety_name = create_backup_snapshot(
                 [cur for cur, _, _, _ in plan],
                 f"Estado antes do restauro de {filename}",
-                families=[cur_fam_map[c] for c, _, _ in fam_plan]
+                families=[cur_fam_map[c] for c, _, _ in fam_plan],
+                ementa_digital=cur_ementa_snapshots
             )
         except Exception as e:
             return False, f"Não foi possível criar a cópia de segurança do estado atual ({e}). Nada foi alterado."
@@ -1558,6 +1601,19 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
                     f"UPDATE dbo.familias SET fundo = ?, letra = ?{', sync = 1' if fam_sync else ''} WHERE codigo = ?",
                     (fundo, letra, code)
                 )
+
+            # Restaurar Ementa Digital
+            if ementa_plan:
+                has_ed_sync = "sync" in schema.get("ementa_digital_produtos", {})
+                for ed_item in ementa_plan:
+                    sets_sql = list(ed_item["sets"])
+                    if has_ed_sync:
+                        sets_sql.append("sync = 1")
+                    cursor.execute(
+                        f"UPDATE dbo.ementa_digital_produtos SET {', '.join(sets_sql)} WHERE cod_produto = ?",
+                        ed_item["params"] + [ed_item["cod_produto"]]
+                    )
+
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -1566,13 +1622,15 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
         parts = [f"Reversão concluída! {len(plan)} artigo(s) restaurado(s)"]
         if fam_plan:
             parts.append(f"e {len(fam_plan)} família(s)")
+        if ementa_plan:
+            parts.append(f"e {len(ementa_plan)} artigo(s) na ementa digital")
         msg = " ".join(parts) + f". Estado anterior guardado em {safety_name}."
         if protected:
             msg += f" {protected} designação(ões) não foram repostas porque os artigos já têm vendas."
         if missing:
             msg += f" {missing} artigo(s) do backup já não existem na base de dados."
         if version < 2:
-            msg += " (Backup antigo: centros de produção não incluídos.)"
+            msg += " (Backup antigo: centros de produção e ementa digital não incluídos.)"
         return True, msg
     finally:
         conn.close()

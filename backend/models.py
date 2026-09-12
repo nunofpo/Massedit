@@ -339,5 +339,122 @@ class MenuMatchResponse(BaseModel):
     matches: List[MenuMatchItem] = Field(default_factory=list)
 
 
+# ======================================================================
+# Modelos da Ementa Digital e Traduções
+# ======================================================================
 
+class EmentaProductItem(BaseModel):
+    codigo: int
+    pos_descricao: str
+    familia: Optional[int] = None
+    familia_desc: Optional[str] = ""
+    subfamilia: Optional[int] = None
+    subfamilia_desc: Optional[str] = ""
+    pvp1: float = 0.0
+    exists_in_ementa: bool = False
+    produto: Optional[str] = ""
+    descricao: Optional[str] = ""
+    visivel: int = 1
+    highlight: int = 0
+    posicao: int = 0
+    image_url: Optional[str] = ""
+    has_image_bytes: bool = False
+    alergenios: int = 0
+    gluten: int = 0
+    sal: int = 0
+    lactose: int = 0
+    picante: int = 0
+    dieta: int = 0
+    vegetariano: int = 0
+    pessoas: int = 0
+    calorias: int = 0
+    tempo: int = 0
+
+
+class EmentaProductFilter(BaseModel):
+    search: Optional[str] = None
+    familia: Optional[int] = None
+    visivel_filter: Optional[str] = "all"  # "all", "visible", "hidden"
+    has_ementa_filter: Optional[str] = "all"  # "all", "with_ementa", "without_ementa"
+    page: int = 1
+    page_size: int = 50
+
+
+class EmentaProductResponse(BaseModel):
+    items: List[EmentaProductItem] = Field(default_factory=list)
+    total_count: int = 0
+    page: int = 1
+    total_pages: int = 1
+
+
+class EmentaImportFromPosRequest(BaseModel):
+    codes: Optional[List[int]] = None
+    familia: Optional[int] = None
+    all_missing: bool = False
+    overwrite: bool = False
+    default_visivel: int = 1
+
+
+class EmentaImportResponse(BaseModel):
+    success: bool
+    imported_count: int
+    message: str
+
+
+class EmentaBulkEditAction(BaseModel):
+    set_visivel: Optional[int] = None  # 0 or 1
+    set_highlight: Optional[int] = None  # 0 or 1
+    copy_pos_name: Optional[bool] = None  # if true, set produto = pos_descricao
+    copy_pos_short_desc: Optional[bool] = None  # if true, set descricao = pos_descricaocurta
+    text_case_name: Optional[str] = None  # "upper", "lower", "title", "capitalize"
+    set_descricao: Optional[str] = None
+    append_descricao: Optional[str] = None
+    set_gluten: Optional[int] = None
+    set_lactose: Optional[int] = None
+    set_vegetariano: Optional[int] = None
+    set_picante: Optional[int] = None
+    set_dieta: Optional[int] = None
+
+
+class EmentaBulkEditRequest(BaseModel):
+    codes: List[int]
+    actions: EmentaBulkEditAction
+
+
+class EmentaSingleProductUpdate(BaseModel):
+    produto: Optional[str] = None
+    descricao: Optional[str] = None
+    visivel: Optional[int] = None
+    highlight: Optional[int] = None
+    gluten: Optional[int] = None
+    lactose: Optional[int] = None
+    vegetariano: Optional[int] = None
+    picante: Optional[int] = None
+    sal: Optional[int] = None
+    calorias: Optional[int] = None
+    tempo: Optional[int] = None
+
+
+class EmentaSuggestDescRequest(BaseModel):
+    codigo: int
+    nome: str
+
+
+class EmentaImageUrlRequest(BaseModel):
+    image_url: str
+
+
+class EmentaTranslateRequest(BaseModel):
+    texts: List[str]
+    target_langs: List[str] = Field(default_factory=lambda: ["en", "es", "fr", "de"])
+    source_lang: str = "pt"
+
+
+class EmentaTranslateResponse(BaseModel):
+    translations: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+
+
+class EmentaSaveTranslationsRequest(BaseModel):
+    cod_produto: int
+    translations: Dict[str, Dict[str, str]] = Field(default_factory=dict)
 

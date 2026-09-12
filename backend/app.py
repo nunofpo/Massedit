@@ -13,7 +13,13 @@ from backend.models import (
     ProductionCenterItem, PrinterItem,
     SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse,
     DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest,
-    MenuExtractionResponse, MenuReviewedRow, MenuMatchResponse
+    MenuExtractionResponse, MenuReviewedRow, MenuMatchItem, MenuMatchResponse,
+    EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
+    EmentaImportFromPosRequest, EmentaImportResponse,
+    EmentaBulkEditRequest, EmentaImageUrlRequest,
+    EmentaTranslateRequest, EmentaTranslateResponse,
+    EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
+    EmentaSuggestDescRequest
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -30,6 +36,14 @@ from backend.services.pos_layout import (
 from backend.services.menu_ai import (
     extract_text_from_pdf, parse_plain_text_menu, match_menu_articles,
     export_zs_import_template_csv, convert_matched_to_import_rows
+)
+from backend.services.ementa_digital import (
+    get_ementa_schema_info, search_ementa_products, import_products_to_ementa,
+    preview_ementa_bulk_edit, apply_ementa_bulk_edit,
+    save_product_image_data, set_product_image_url, get_product_image_bytes,
+    get_ementa_languages, get_product_translations, save_product_translations,
+    translate_menu_texts, update_single_ementa_product,
+    suggest_description_for_product, IMAGES_DIR
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -321,6 +335,146 @@ def restore_backup_endpoint(filename: str = Body(..., embed=True)):
         "success": True,
         "message": message
     }
+
+
+# ======================================================================
+# Endpoints da Ementa Digital e Traduções
+# ======================================================================
+
+@app.get("/api/ementa-digital/schema")
+def get_ementa_schema_endpoint():
+    """Devolve informações da estrutura das tabelas da ementa digital."""
+    return get_ementa_schema_info()
+
+
+@app.post("/api/ementa-digital/search", response_model=EmentaProductResponse)
+def search_ementa_products_endpoint(filter_req: EmentaProductFilter):
+    """Pesquisa e lista artigos com os respetivos dados da ementa digital."""
+    return search_ementa_products(filter_req)
+
+
+@app.post("/api/ementa-digital/import-from-pos", response_model=EmentaImportResponse)
+def import_products_to_ementa_endpoint(req: EmentaImportFromPosRequest):
+    """Importa artigos de dbo.produtos para dbo.ementa_digital_produtos."""
+    return import_products_to_ementa(req)
+
+
+@app.post("/api/ementa-digital/preview", response_model=BulkEditPreviewResponse)
+def preview_ementa_bulk_edit_endpoint(req: EmentaBulkEditRequest):
+    """Simulação (dry-run) de alterações em massa na ementa digital."""
+    return preview_ementa_bulk_edit(req)
+
+
+@app.post("/api/ementa-digital/apply")
+def apply_ementa_bulk_edit_endpoint(req: EmentaBulkEditRequest):
+    """Aplica alterações em massa à ementa digital com backup e transação segura."""
+    success, message, count = apply_ementa_bulk_edit(req)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "affected_count": count
+    }
+
+
+@app.post("/api/ementa-digital/product/{cod_produto}")
+def update_single_ementa_product_endpoint(cod_produto: int, req: EmentaSingleProductUpdate):
+    """Atualiza a descrição e detalhes de um artigo individual na ementa digital."""
+    success, message = update_single_ementa_product(cod_produto, req)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@app.post("/api/ementa-digital/suggest-description")
+def suggest_description_endpoint(req: EmentaSuggestDescRequest):
+    """Gera uma sugestão de descrição culinária baseada no nome do artigo."""
+    suggestion = suggest_description_for_product(req.codigo, req.nome)
+    return {
+        "suggestion": suggestion
+    }
+
+
+@app.post("/api/ementa-digital/upload-image/{cod_produto}")
+async def upload_product_image_endpoint(cod_produto: int, file: UploadFile = File(...)):
+    """Upload e associação de imagem para um artigo da ementa digital."""
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="A imagem excede o tamanho máximo de 10 MB.")
+    success, message, url = save_product_image_data(cod_produto, contents, file.filename or "image.jpg")
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "image_url": url
+    }
+
+
+@app.post("/api/ementa-digital/set-image-url/{cod_produto}")
+def set_product_image_url_endpoint(cod_produto: int, req: EmentaImageUrlRequest):
+    """Define o URL de imagem para um artigo da ementa digital."""
+    success, message = set_product_image_url(cod_produto, req.image_url)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@app.get("/api/ementa-digital/image/{cod_produto}")
+def get_product_image_endpoint(cod_produto: int):
+    """Devolve a imagem binária de um artigo da ementa digital."""
+    data, mime = get_product_image_bytes(cod_produto)
+    if not data or not mime:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada.")
+    return Response(content=data, media_type=mime)
+
+
+@app.get("/api/ementa-digital/image-file/{filename}")
+def get_local_image_file_endpoint(filename: str):
+    """Serve imagens armazenadas localmente para a ementa digital."""
+    clean_name = os.path.basename(filename)
+    path = os.path.join(IMAGES_DIR, clean_name)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Ficheiro de imagem não encontrado.")
+    return FileResponse(path)
+
+
+@app.get("/api/ementa-digital/languages")
+def get_ementa_languages_endpoint():
+    """Devolve a lista de idiomas para tradução da ementa."""
+    return get_ementa_languages()
+
+
+@app.get("/api/ementa-digital/translations/{cod_produto}")
+def get_product_translations_endpoint(cod_produto: int):
+    """Obtém as traduções de um produto em todos os idiomas."""
+    return get_product_translations(cod_produto)
+
+
+@app.post("/api/ementa-digital/translations")
+def save_product_translations_endpoint(req: EmentaSaveTranslationsRequest):
+    """Grava as traduções de um produto."""
+    success, message = save_product_translations(req)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@app.post("/api/ementa-digital/translate", response_model=EmentaTranslateResponse)
+def translate_menu_texts_endpoint(req: EmentaTranslateRequest):
+    """Assistente de tradução culinária para textos e descrições."""
+    return translate_menu_texts(req)
+
 
 # Servir Frontend estático se compilado (Suporte a PyInstaller bundle)
 def get_bundle_dir():

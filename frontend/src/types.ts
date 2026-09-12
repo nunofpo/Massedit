@@ -340,4 +340,62 @@ export interface MenuMatchResponse {
   matches: MenuMatchItem[];
 }
 
+export interface EmentaProductItem {
+  codigo: number;
+  pos_descricao: string;
+  familia?: number;
+  familia_desc?: string;
+  subfamilia?: number;
+  subfamilia_desc?: string;
+  pvp1: number;
+  exists_in_ementa: boolean;
+  produto?: string;
+  descricao?: string;
+  visivel: number;
+  highlight: number;
+  posicao: number;
+  image_url?: string;
+  has_image_bytes: boolean;
+  alergenios: number;
+  gluten: number;
+  sal: number;
+  lactose: number;
+  picante: number;
+  dieta: number;
+  vegetariano: number;
+  pessoas: number;
+  calorias: number;
+  tempo: number;
+}
 
+export interface EmentaProductResponse {
+  items: EmentaProductItem[];
+  total_count: number;
+  page: number;
+  total_pages: number;
+}
+
+export interface EmentaLanguage {
+  id: string;
+  name: string;
+  code: string;
+  visivel?: number;
+}
+
+export interface EmentaSchemaInfo {
+  available: boolean;
+  has_produtos: boolean;
+  has_traducoes: boolean;
+  has_paises: boolean;
+  has_familias: boolean;
+  tables: Record<string, {
+    exists: boolean;
+    columns?: Array<{
+      name: string;
+      type: string;
+      max_length: number;
+      is_nullable: boolean;
+    }>;
+    row_count?: number;
+  }>;
+}
