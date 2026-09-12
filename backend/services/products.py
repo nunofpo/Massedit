@@ -2179,7 +2179,7 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         f"id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
                         f"vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
                         f"ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao"
-                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
+                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 0, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
                         (
                             imp.codigo,
                             imp.codigo,
@@ -2202,7 +2202,7 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                         "id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
                         "vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
                         "ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao"
-                        ") VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 1, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
+                        ") VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 0, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 2, 4, -1, 'P', 1)",
                         (
                             imp.codigo,
                             imp.codigo,

@@ -1951,7 +1951,7 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                     "id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
                     "vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
                     "ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao"
-                    ") VALUES (?, ?, ?, '', ?, ?, ?, 0, 23, ?, 9999, 9999, 8421504, 16777215, 1, '0', 1, 1, 1, 1, 1, 0.0, GETDATE(), 23, 23, 23, 1.0, ?, 2, 4, -1, 'P', 1)",
+                    ") VALUES (?, ?, ?, '', ?, ?, ?, 0, 23, ?, 9999, 9999, 8421504, 16777215, 1, '0', 0, 1, 1, 1, 1, 0.0, GETDATE(), 23, 23, 23, 1.0, ?, 2, 4, -1, 'P', 1)",
                     (code, code, artigo_nome, pvp_v, pvp_s, fam_code, idx + 1, code)
                 )
 
