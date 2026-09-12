@@ -272,7 +272,10 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ raw_text: rawText })
       });
-      if (!res.ok) throw new Error('Falha ao processar texto.');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || 'Falha ao processar texto.');
+      }
       const data: MenuExtractionResponse = await res.json();
       
       let currentCode = data.proximo_codigo || 700001;
