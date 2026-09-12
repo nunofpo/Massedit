@@ -561,7 +561,7 @@ def get_families() -> List[Dict[str, Any]]:
     return [{"codigo": row[0], "descricao": row[1] or ""} for row in rows]
 
 
-def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -> Dict[str, Any]:
+def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215, codigo: Optional[int] = None) -> Dict[str, Any]:
     """Cria uma nova família em dbo.familias se não existir e devolve {codigo, descricao}."""
     desc_clean = (descricao or "").strip()
     if not desc_clean:
@@ -575,22 +575,32 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -
 
         cursor.execute("SELECT codigo, ISNULL(descricao, '') FROM dbo.familias")
         all_fam = cursor.fetchall()
+        existing_codes = {int(code) for code, _ in all_fam}
         norm_target = remove_accents(desc_clean).lower()
-        for code, desc in all_fam:
-            if remove_accents(desc or "").lower() == norm_target:
-                return {"codigo": int(code), "descricao": desc or ""}
+        
+        if codigo is None:
+            for code, desc in all_fam:
+                if remove_accents(desc or "").lower() == norm_target:
+                    return {"codigo": int(code), "descricao": desc or ""}
 
-        cursor.execute("SELECT ISNULL(MAX(codigo), 100) FROM dbo.familias")
-        max_c = cursor.fetchone()[0] or 100
-        next_code = max(101, int(max_c) + 1)
+        if codigo is not None:
+            target_code = int(codigo)
+            if target_code in existing_codes:
+                raise ValueError(f"Já existe uma família com o código {target_code}.")
+        else:
+            cursor.execute("SELECT ISNULL(MAX(codigo), 100) FROM dbo.familias")
+            max_c = cursor.fetchone()[0] or 100
+            target_code = max(101, int(max_c) + 1)
+            while target_code in existing_codes:
+                target_code += 1
 
         has_posprint = "posicaoprint" in fam_cols
         
         cols = ["codigo", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
-        vals = [next_code, 1, next_code, fundo, letra, 0]
+        vals = [target_code, 1, target_code, fundo, letra, 0]
         if "id" in fam_cols:
             cols.append("id")
-            vals.append(next_code)
+            vals.append(target_code)
 
         if has_posprint:
             cols.append("posicaoprint")
@@ -613,7 +623,7 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -
             cursor.execute(f"INSERT INTO dbo.familias ({cols_str}) VALUES ({placeholders})", vals)
 
         conn.commit()
-        return {"codigo": next_code, "descricao": desc_clean}
+        return {"codigo": target_code, "descricao": desc_clean}
 
     finally:
         conn.close()

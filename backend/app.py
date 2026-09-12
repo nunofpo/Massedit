@@ -13,7 +13,7 @@ from backend.models import (
     ProductionCenterItem, PrinterItem,
     SelectionSummaryRequest, SelectionSummaryResponse, ProductCodesResponse,
     DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest,
-    MenuExtractionResponse, MenuReviewedRow, MenuMatchItem, MenuMatchResponse,
+    MenuExtractionResponse, MenuReviewedRow, MenuMatchItem, MenuMatchResponse, CreateFamilyRequest,
     EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
     EmentaDigitalStructureResponse,
     EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
@@ -228,13 +228,14 @@ def list_families_endpoint():
     return get_families()
 
 @app.post("/api/families/create")
-def create_family_endpoint(descricao: str = Body(..., embed=True)):
-    """Cria uma nova família no SQL Server se não existir."""
+def create_family_endpoint(req: CreateFamilyRequest):
+    """Cria uma nova família no SQL Server com código opcional."""
     try:
-        res = create_family(descricao)
+        res = create_family(req.descricao, codigo=req.codigo)
         return {"success": True, "family": res}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/api/subfamilies")
 def list_subfamilies_endpoint(familia: Optional[int] = None):

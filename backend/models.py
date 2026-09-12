@@ -40,6 +40,11 @@ class ProductFilter(BaseModel):
     page: int = 1
     page_size: int = 50
 
+class CreateFamilyRequest(BaseModel):
+    descricao: str
+    codigo: Optional[int] = None
+
+
 class SelectionSummaryRequest(BaseModel):
     product_codes: List[int]
 

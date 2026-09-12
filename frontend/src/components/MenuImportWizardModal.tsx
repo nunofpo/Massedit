@@ -53,6 +53,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [localFamilies, setLocalFamilies] = useState<Family[]>(families);
   const [showNewFamilyInput, setShowNewFamilyInput] = useState<boolean>(false);
+  const [newFamilyCode, setNewFamilyCode] = useState<string>('');
   const [newFamilyName, setNewFamilyName] = useState<string>('');
   const [isCreatingFamily, setIsCreatingFamily] = useState<boolean>(false);
 
@@ -71,15 +72,16 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     return match ? match.codigo : -1;
   };
 
-  const handleCreateNewFamilySubmit = async (nameToCreate?: string) => {
+  const handleCreateNewFamilySubmit = async (nameToCreate?: string, codeToCreate?: number) => {
     const targetName = (nameToCreate || newFamilyName).trim();
     if (!targetName) return;
+    const codeVal = codeToCreate !== undefined ? codeToCreate : (newFamilyCode.trim() ? parseInt(newFamilyCode.trim(), 10) : undefined);
     setIsCreatingFamily(true);
     try {
       const res = await fetch('/api/families/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descricao: targetName })
+        body: JSON.stringify({ descricao: targetName, codigo: codeVal })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -101,6 +103,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       }));
 
       setNewFamilyName('');
+      setNewFamilyCode('');
       setShowNewFamilyInput(false);
     } catch (err: any) {
       alert(`Erro ao criar família: ${err.message}`);
@@ -765,13 +768,21 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   {showNewFamilyInput ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 bg-white border border-violet-300 rounded-lg p-1 shadow-2xs">
+                      <input
+                        type="number"
+                        value={newFamilyCode}
+                        onChange={(e) => setNewFamilyCode(e.target.value)}
+                        placeholder="Código (Ex: 105)"
+                        title="Código numérico da família (opcional - se deixado em branco, atribui o código seguinte)"
+                        className="w-28 bg-slate-50 border border-violet-200 rounded px-2 py-1 text-xs text-violet-950 font-bold font-mono focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
                       <input
                         type="text"
                         value={newFamilyName}
                         onChange={(e) => setNewFamilyName(e.target.value)}
                         placeholder="Nome da Família"
-                        className="bg-white border border-violet-300 rounded px-2 py-1 text-xs text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        className="bg-slate-50 border border-violet-200 rounded px-2 py-1 text-xs text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleCreateNewFamilySubmit();
                         }}
@@ -780,14 +791,18 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                         type="button"
                         onClick={() => handleCreateNewFamilySubmit()}
                         disabled={isCreatingFamily || !newFamilyName.trim()}
-                        className="bg-violet-600 hover:bg-violet-700 text-white font-bold px-2.5 py-1 rounded text-xs transition disabled:opacity-50"
+                        className="bg-violet-600 hover:bg-violet-700 text-white font-bold px-3 py-1 rounded text-xs transition disabled:opacity-50"
                       >
-                        {isCreatingFamily ? 'A criar...' : 'Gravar'}
+                        {isCreatingFamily ? 'A criar...' : 'Gravar Família'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowNewFamilyInput(false)}
-                        className="text-slate-500 hover:text-slate-800 text-xs px-1"
+                        onClick={() => {
+                          setShowNewFamilyInput(false);
+                          setNewFamilyCode('');
+                          setNewFamilyName('');
+                        }}
+                        className="text-slate-500 hover:text-slate-800 text-xs px-1.5 font-semibold"
                       >
                         Cancelar
                       </button>

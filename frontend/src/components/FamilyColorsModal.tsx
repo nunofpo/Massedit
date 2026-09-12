@@ -31,8 +31,44 @@ export const FamilyColorsModal: React.FC<FamilyColorsModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
   const [editedColors, setEditedColors] = useState<Record<number, { fundo_hex: string; letra_hex: string; apply_to_products: boolean }>>({});
+
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newCode, setNewCode] = useState<string>('');
+  const [newName, setNewName] = useState<string>('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null);
+
+  const handleCreateFamily = async () => {
+    if (!newName.trim()) return;
+    setIsCreating(true);
+    setErrorMsg(null);
+    setCreateSuccessMsg(null);
+    try {
+      const codeVal = newCode.trim() ? parseInt(newCode.trim(), 10) : undefined;
+      const res = await fetch('/api/families/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao: newName.trim(), codigo: codeVal })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Erro ao criar família.');
+      }
+      const data = await res.json();
+      setCreateSuccessMsg(`Família "${data.family.descricao}" (Código ${data.family.codigo}) criada com sucesso!`);
+      setNewName('');
+      setNewCode('');
+      setShowCreateForm(false);
+      fetchFamilies();
+    } catch (e: any) {
+      setErrorMsg(e.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
 
   const fetchFamilies = async () => {
     setIsLoading(true);
@@ -192,7 +228,12 @@ export const FamilyColorsModal: React.FC<FamilyColorsModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs"
+            >
+              + Criar Nova Família
+            </button>
             <button
               onClick={() => handleSetAllApplyProducts(true)}
               className="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold transition flex items-center gap-1.5 shadow-xs"
@@ -215,6 +256,62 @@ export const FamilyColorsModal: React.FC<FamilyColorsModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Formulário de Criação de Família com Código Personalizado */}
+        {showCreateForm && (
+          <div className="mx-6 mt-4 p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+            <div className="flex items-center gap-2 font-bold text-emerald-950">
+              <Layers className="w-4 h-4 text-emerald-600" />
+              <span>Nova Família:</span>
+            </div>
+            <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+              <input
+                type="number"
+                value={newCode}
+                onChange={e => setNewCode(e.target.value)}
+                placeholder="Código (Ex: 105)"
+                title="Código da família (opcional - se deixado em branco, atribui o código seguinte)"
+                className="w-28 bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500"
+              />
+              <input
+                type="text"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Nome da Família (Ex: Sobremesas)"
+                className="flex-1 bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreateFamily();
+                }}
+              />
+              <button
+                onClick={handleCreateFamily}
+                disabled={isCreating || !newName.trim()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1.5 rounded-lg transition disabled:opacity-50"
+              >
+                {isCreating ? 'A gravar...' : 'Gravar Família'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setNewCode('');
+                  setNewName('');
+                }}
+                className="text-slate-500 hover:text-slate-800 font-semibold px-2 py-1.5"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Success Alert */}
+        {createSuccessMsg && (
+          <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2 font-bold">
+            <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{createSuccessMsg}</span>
+          </div>
+        )}
+
 
         {/* Error Alert */}
         {errorMsg && (
