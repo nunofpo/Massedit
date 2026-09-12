@@ -30,8 +30,8 @@ BACKUP_NAME_RE = re.compile(r"^backup_[0-9_]+\.json$")
 MAX_SQL_PARAMS = 2000
 DEFAULT_CHUNK = 500
 
-# Tabelas onde se procura movimento de vendas de um artigo
-SALES_TABLES = ("vendasprod", "consumo_doc", "movimentos")
+# Tabelas onde se procura movimento de vendas de um artigo no ZoneSoft
+SALES_TABLES = ("vendas", "vendasprod", "consumo_doc", "movimentos", "vendas_devolucao", "vendastemp")
 
 # Colunas opcionais de dbo.produtos (só usadas se existirem nesta base de dados)
 INT_TYPES = {"int", "bigint", "smallint", "tinyint", "bit"}
@@ -124,7 +124,7 @@ def _sales_tables(schema: SchemaInfo) -> List[Tuple[str, bool]]:
 def get_sales_codes(cursor, codes: List[int]) -> Optional[Set[int]]:
     """
     Devolve o conjunto de códigos com movimento de vendas.
-    Devolve None se não for possível verificar (tabelas inexistentes ou erro) — nesse caso
+    Devolve None se não for possível verificar (tabelas inexistentes ou erro em todas) — nesse caso
     os artigos devem ser tratados como TENDO vendas (fail-safe).
     """
     codes = _unique_codes(codes)
@@ -132,30 +132,34 @@ def get_sales_codes(cursor, codes: List[int]) -> Optional[Set[int]]:
         return set()
     try:
         tables = _sales_tables(_schema(cursor))
-    except Exception:
+    except Exception as e:
+        print(f"[get_sales_codes] Erro ao obter esquema de vendas: {e}")
         return None
     if not tables:
+        print("[get_sales_codes] Nenhuma tabela de vendas encontrada no esquema.")
         return None
 
     found: Set[int] = set()
-    chunk_size = max(1, min(DEFAULT_CHUNK, MAX_SQL_PARAMS // len(tables)))
-    try:
-        for chunk in _chunks(codes, chunk_size):
-            parts = []
-            params: List[Any] = []
-            for table, is_text in tables:
-                parts.append(f"SELECT codigo FROM dbo.{table} WHERE codigo IN ({_placeholders(len(chunk))})")
-                params.extend([str(c) for c in chunk] if is_text else chunk)
-            sql = "SELECT DISTINCT codigo FROM (" + " UNION ALL ".join(parts) + ") AS vendas"
-            cursor.execute(sql, params)
-            for (raw,) in cursor.fetchall():
-                if raw is None:
-                    continue
-                try:
-                    found.add(int(str(raw).strip()))
-                except ValueError:
-                    continue
-    except Exception:
+    at_least_one_success = False
+
+    for table, is_text in tables:
+        try:
+            for chunk in _chunks(codes, DEFAULT_CHUNK):
+                params = [str(c) for c in chunk] if is_text else chunk
+                sql = f"SELECT DISTINCT codigo FROM dbo.{table} WHERE codigo IN ({_placeholders(len(chunk))})"
+                cursor.execute(sql, params)
+                for (raw,) in cursor.fetchall():
+                    if raw is not None:
+                        try:
+                            found.add(int(str(raw).strip()))
+                        except ValueError:
+                            continue
+            at_least_one_success = True
+        except Exception as ex:
+            print(f"[get_sales_codes] Aviso na tabela dbo.{table}: {ex}")
+            continue
+
+    if not at_least_one_success:
         return None
     return found
 

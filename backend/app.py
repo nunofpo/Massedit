@@ -162,6 +162,38 @@ def scan_sql_ports(req: PortScanRequest):
         recommended_port=recommended_port
     )
 
+@app.get("/api/debug-sales")
+def debug_sales_endpoint():
+    """Diagnóstico das tabelas de vendas na base de dados atualmente conetada."""
+    if db_manager.use_mock:
+        return {"mode": "mock", "message": "Em modo mock não há base de dados real ligada."}
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = db_manager.get_schema(cursor)
+        from backend.services.products import _sales_tables, SALES_TABLES
+        detected_sales_tables = _sales_tables(schema)
+        
+        counts = {}
+        for table, is_text in detected_sales_tables:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM dbo.{table}")
+                row = cursor.fetchone()
+                counts[table] = {"exists": True, "count": row[0] if row else 0, "is_text": is_text}
+            except Exception as ex:
+                counts[table] = {"exists": True, "error": str(ex)}
+                
+        all_tables_in_schema = [t for t in schema.keys() if "venda" in t or "consumo" in t or "movimento" in t or "linha" in t or "doc" in t]
+        
+        return {
+            "configured_sales_tables": list(SALES_TABLES),
+            "detected_sales_tables": [t for t, _ in detected_sales_tables],
+            "table_stats": counts,
+            "similar_tables_in_db": all_tables_in_schema
+        }
+    finally:
+        conn.close()
+
 @app.get("/api/families")
 def list_families_endpoint():
     """Lista famílias disponíveis para filtragem e atribuição."""
