@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   EmentaProductItem, EmentaProductResponse, EmentaLanguage,
-  EmentaSchemaInfo, BulkEditPreviewResponse
+  EmentaSchemaInfo, BulkEditPreviewResponse, EmentaDigitalStructureResponse
 } from '../types';
 
 interface EmentaDigitalModalProps {
@@ -17,6 +17,16 @@ interface EmentaDigitalModalProps {
   onOpenPreview: (previewData: BulkEditPreviewResponse, onConfirm: () => Promise<void>) => void;
   onSuccess: (message: string) => void;
 }
+
+const ALL_SUPPORTED_LANGUAGES: EmentaLanguage[] = [
+  { id: 'GB', name: 'Inglês 🇬🇧', code: 'gb' },
+  { id: 'ES', name: 'Espanhol 🇪🇸', code: 'es' },
+  { id: 'FR', name: 'Francês 🇫🇷', code: 'fr' },
+  { id: 'DE', name: 'Alemão 🇩🇪', code: 'de' },
+  { id: 'IT', name: 'Italiano 🇮🇹', code: 'it' },
+  { id: 'NL', name: 'Holandês 🇳🇱', code: 'nl' },
+  { id: 'RU', name: 'Russo 🇷🇺', code: 'ru' }
+];
 
 export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   isOpen,
@@ -38,8 +48,12 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   // Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedFamily, setSelectedFamily] = useState<string>('all');
+  const [selectedEmentaFamily, setSelectedEmentaFamily] = useState<string>('all');
   const [visivelFilter, setVisivelFilter] = useState<string>('all');
-  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('all');
+  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('with_ementa');
+
+  // Digital Menu Structure
+  const [digitalStructure, setDigitalStructure] = useState<EmentaDigitalStructureResponse | null>(null);
 
   // Bulk Actions
   const [bulkVisivel, setBulkVisivel] = useState<string>('');
@@ -54,7 +68,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     picante?: number;
   }>({});
 
-  // Single Product Edit Modal (Nome, Descrição detalhada, Alergénios, Visibilidade)
+  // Single Product Edit Modal
   const [editModalProduct, setEditModalProduct] = useState<EmentaProductItem | null>(null);
   const [editForm, setEditForm] = useState({
     produto: '',
@@ -75,19 +89,104 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Import from POS Modal
+  // Import Modal
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [importMode, setImportMode] = useState<'pos' | 'csv'>('pos');
+  const [csvInput, setCsvInput] = useState<string>('');
+  const [csvStartCode, setCsvStartCode] = useState<string>('700001');
   const [importFamily, setImportFamily] = useState<string>('all');
+  const [importEmentaFamily, setImportEmentaFamily] = useState<string>('default');
   const [importOverwrite, setImportOverwrite] = useState<boolean>(false);
+  const [importStorePreset, setImportStorePreset] = useState<string>('7');
+  const [importMinCode, setImportMinCode] = useState<string>('700001');
+  const [importMaxCode, setImportMaxCode] = useState<string>('799999');
   const [isImporting, setIsImporting] = useState<boolean>(false);
+
+  const handleStorePresetChange = (preset: string) => {
+    setImportStorePreset(preset);
+    if (preset === '7') {
+      setImportMinCode('700001');
+      setImportMaxCode('799999');
+    } else if (preset === '1') {
+      setImportMinCode('100001');
+      setImportMaxCode('199999');
+    } else if (preset === 'all') {
+      setImportMinCode('');
+      setImportMaxCode('');
+    }
+  };
 
   // Translation tab state
   const [selectedProductForTranslation, setSelectedProductForTranslation] = useState<EmentaProductItem | null>(null);
-  const [languages, setLanguages] = useState<EmentaLanguage[]>([]);
-  const [activeLangTab, setActiveLangTab] = useState<string>('en');
+  const [languages, setLanguages] = useState<EmentaLanguage[]>(ALL_SUPPORTED_LANGUAGES);
+  const [selectedLangCodes, setSelectedLangCodes] = useState<Set<string>>(new Set(['gb']));
+  const [activeLangTab, setActiveLangTab] = useState<string>('gb');
   const [translationsData, setTranslationsData] = useState<Record<string, { produto: string; descricao: string }>>({});
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [isSavingTranslations, setIsSavingTranslations] = useState<boolean>(false);
+  const [isAutoGeneralTranslating, setIsAutoGeneralTranslating] = useState<boolean>(false);
+
+  const toggleLangCode = (code: string) => {
+    const lower = code.toLowerCase();
+    const next = new Set(selectedLangCodes);
+    if (next.has(lower)) {
+      if (next.size <= 1) return; // Garante pelo menos 1 idioma ativo
+      next.delete(lower);
+    } else {
+      next.add(lower);
+    }
+    setSelectedLangCodes(next);
+    const activeList = Array.from(next);
+    if (!next.has(activeLangTab.toLowerCase()) && activeList.length > 0) {
+      setActiveLangTab(activeList[0]);
+    }
+  };
+
+  const [isActivatingLangs, setIsActivatingLangs] = useState<boolean>(false);
+
+  const handleActivateLanguagesInDb = async () => {
+    setIsActivatingLangs(true);
+    try {
+      const activeCountries = Array.from(selectedLangCodes).map(c => c.toUpperCase());
+      const res = await fetch('/api/ementa-digital/activate-languages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(activeCountries)
+      });
+      const data = await res.json();
+      if (data.success) {
+        onSuccess(data.message || `Idiomas (${activeCountries.join(', ')}) ativados com sucesso na ementa digital ZoneSoft!`);
+      } else {
+        alert(data.detail || data.message || 'Erro ao ativar idiomas no banco de dados.');
+      }
+    } catch (err) {
+      alert('Erro na comunicação ao ativar idiomas.');
+    } finally {
+      setIsActivatingLangs(false);
+    }
+  };
+
+  const handleAutoGeneralTranslations = async () => {
+    setIsAutoGeneralTranslating(true);
+    try {
+      const activeCountries = Array.from(selectedLangCodes).map(c => c.toUpperCase());
+      const res = await fetch('/api/ementa-digital/auto-general-translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(activeCountries)
+      });
+      const data = await res.json();
+      if (data.success) {
+        onSuccess(data.message || `Traduções gerais do sistema preenchidas com sucesso para ${activeCountries.join(', ')}!`);
+      } else {
+        alert(data.detail || data.message || 'Erro ao preencher traduções gerais.');
+      }
+    } catch (err) {
+      alert('Erro ao comunicar com o servidor.');
+    } finally {
+      setIsAutoGeneralTranslating(false);
+    }
+  };
 
   // Schema tab state
   const [schemaInfo, setSchemaInfo] = useState<EmentaSchemaInfo | null>(null);
@@ -99,8 +198,21 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       loadProducts();
       loadLanguages();
       loadSchemaInfo();
+      loadDigitalStructure();
     }
-  }, [isOpen, page, selectedFamily, visivelFilter, hasEmentaFilter]);
+  }, [isOpen, page, selectedFamily, selectedEmentaFamily, visivelFilter, hasEmentaFilter]);
+
+  const loadDigitalStructure = async () => {
+    try {
+      const res = await fetch('/api/ementa-digital/structure');
+      if (res.ok) {
+        const data: EmentaDigitalStructureResponse = await res.json();
+        setDigitalStructure(data);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar estrutura da ementa:', err);
+    }
+  };
 
   const loadProducts = async () => {
     setIsLoading(true);
@@ -111,6 +223,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         body: JSON.stringify({
           search: searchTerm || null,
           familia: selectedFamily !== 'all' ? parseInt(selectedFamily, 10) : null,
+          ementa_familia: selectedEmentaFamily !== 'all' ? parseInt(selectedEmentaFamily, 10) : null,
           visivel_filter: visivelFilter,
           has_ementa_filter: hasEmentaFilter,
           page: page,
@@ -134,10 +247,28 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     try {
       const res = await fetch('/api/ementa-digital/languages');
       if (res.ok) {
-        const data = await res.json();
-        setLanguages(data);
-        if (data.length > 0 && !activeLangTab) {
-          setActiveLangTab(data[0].code);
+        const data: Array<{ id: string; name: string; code: string; visivel?: number }> = await res.json();
+        const combinedMap = new Map<string, EmentaLanguage>();
+        ALL_SUPPORTED_LANGUAGES.forEach(l => combinedMap.set(l.code.toLowerCase(), l));
+        data.forEach(l => {
+          const lower = l.code.toLowerCase();
+          const existing = combinedMap.get(lower);
+          combinedMap.set(lower, {
+            id: l.id || lower.toUpperCase(),
+            name: l.name || existing?.name || lower.toUpperCase(),
+            code: lower
+          });
+        });
+        const mergedList = Array.from(combinedMap.values());
+        setLanguages(mergedList);
+
+        const activeFromDb = data.filter(l => (l.visivel === undefined || l.visivel === 1)).map(l => l.code.toLowerCase());
+        if (activeFromDb.length > 0) {
+          setSelectedLangCodes(new Set(activeFromDb));
+          setActiveLangTab(activeFromDb[0]);
+        } else {
+          setSelectedLangCodes(new Set(['gb']));
+          setActiveLangTab('gb');
         }
       }
     } catch (err) {
@@ -253,6 +384,9 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         body: JSON.stringify({
           codes: selectedCodes.size > 0 ? Array.from(selectedCodes) : null,
           familia: importFamily !== 'all' ? parseInt(importFamily, 10) : null,
+          ementa_familia: importEmentaFamily !== 'default' ? parseInt(importEmentaFamily, 10) : null,
+          min_code: importMinCode ? parseInt(importMinCode, 10) : null,
+          max_code: importMaxCode ? parseInt(importMaxCode, 10) : null,
           all_missing: selectedCodes.size === 0 && importFamily === 'all',
           overwrite: importOverwrite,
           default_visivel: 1
@@ -268,6 +402,37 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       }
     } catch (err) {
       alert('Erro de comunicação ao importar artigos.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportCsv = async () => {
+    if (!csvInput.trim()) {
+      alert('Por favor introduza ou cole o conteúdo do CSV (Família, Artigo, Descrição, Preço).');
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const res = await fetch('/api/ementa-digital/import-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csv_text: csvInput,
+          start_code: csvStartCode ? parseInt(csvStartCode, 10) : 700001,
+          overwrite: true
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        onSuccess(data.message);
+        setIsImportModalOpen(false);
+        loadProducts();
+      } else {
+        alert(data.message || 'Falha ao importar CSV.');
+      }
+    } catch (err) {
+      alert('Erro de comunicação ao importar CSV.');
     } finally {
       setIsImporting(false);
     }
@@ -392,6 +557,29 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
+  const handleDeleteImage = async () => {
+    if (!imageModalProduct) return;
+    if (!confirm(`Tem a certeza que deseja remover a imagem do artigo #${imageModalProduct.codigo}?`)) return;
+    setIsUploadingImage(true);
+    try {
+      const res = await fetch(`/api/ementa-digital/delete-image/${imageModalProduct.codigo}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onSuccess('Imagem removida com sucesso!');
+        setImageModalProduct(null);
+        loadProducts();
+      } else {
+        alert(data.detail || data.message || 'Erro ao remover imagem.');
+      }
+    } catch (err) {
+      alert('Falha na comunicação ao remover imagem.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   // Translations
   const handleSelectProductForTranslation = async (prod: EmentaProductItem) => {
     setSelectedProductForTranslation(prod);
@@ -434,13 +622,19 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       });
       if (res.ok) {
         const data = await res.json();
-        const trs = data.translations;
+        const trs = data.translations || {};
+        const descs = data.descriptions || {};
         const updated = { ...translationsData };
 
         languages.forEach(l => {
           const c = l.code;
           const translatedName = trs[ptName]?.[c] || ptName;
-          const translatedDesc = ptDesc ? (trs[ptDesc]?.[c] || ptDesc) : '';
+          let translatedDesc = ptDesc ? (trs[ptDesc]?.[c] || ptDesc) : '';
+          
+          if ((!translatedDesc || translatedDesc === ptDesc) && descs[ptName]?.[c]) {
+            translatedDesc = descs[ptName][c];
+          }
+
           updated[c] = {
             produto: translatedName,
             descricao: translatedDesc
@@ -452,6 +646,77 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       }
     } catch (err) {
       alert('Erro ao traduzir.');
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const handleBatchAutoTranslate = async () => {
+    const selectedProds = products.filter(p => selectedCodes.has(p.codigo));
+    if (selectedProds.length === 0) return;
+
+    if (!confirm(`Deseja traduzir automaticamente os ${selectedProds.length} artigos selecionados para Inglês, Espanhol, Francês e Alemão com o assistente culinário?`)) return;
+
+    setIsTranslating(true);
+    let successCount = 0;
+    try {
+      for (const prod of selectedProds) {
+        const ptName = prod.produto || prod.pos_descricao;
+        const ptDesc = prod.descricao || '';
+        const textsToTranslate = [ptName];
+        if (ptDesc) textsToTranslate.push(ptDesc);
+
+        const res = await fetch('/api/ementa-digital/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            texts: textsToTranslate,
+            target_langs: languages.map(l => l.code),
+            source_lang: 'pt'
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const trs = data.translations || {};
+          const descs = data.descriptions || {};
+          const savePayload: Record<string, Record<string, string>> = {};
+
+          languages.forEach(l => {
+            const c = l.code;
+            const country = l.code.toUpperCase();
+            const translatedName = trs[ptName]?.[c] || ptName;
+            let translatedDesc = ptDesc ? (trs[ptDesc]?.[c] || ptDesc) : '';
+
+            if ((!translatedDesc || translatedDesc === ptDesc) && descs[ptName]?.[c]) {
+              translatedDesc = descs[ptName][c];
+            }
+
+            savePayload[country] = {
+              produto: translatedName,
+              descricao: translatedDesc
+            };
+          });
+
+          const saveRes = await fetch('/api/ementa-digital/translations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cod_produto: prod.codigo,
+              translations: savePayload
+            })
+          });
+
+          if (saveRes.ok) successCount++;
+        }
+      }
+
+      onSuccess(`Tradução em lote concluída com sucesso para ${successCount} artigo(s)!`);
+      if (selectedProductForTranslation) {
+        handleSelectProductForTranslation(selectedProductForTranslation);
+      }
+    } catch (err) {
+      alert('Erro durante a tradução em lote.');
     } finally {
       setIsTranslating(false);
     }
@@ -487,6 +752,20 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       alert('Falha na gravação.');
     } finally {
       setIsSavingTranslations(false);
+    }
+  };
+
+  const handleSwitchToTranslationsTab = () => {
+    setActiveTab('translations');
+    if (selectedCodes.size > 0) {
+      const firstSelected = products.find(p => selectedCodes.has(p.codigo));
+      if (firstSelected) {
+        handleSelectProductForTranslation(firstSelected);
+        return;
+      }
+    }
+    if (!selectedProductForTranslation && products.length > 0) {
+      handleSelectProductForTranslation(products[0]);
     }
   };
 
@@ -530,13 +809,18 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('translations')}
+                onClick={handleSwitchToTranslationsTab}
                 className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
                   activeTab === 'translations' ? 'bg-white text-indigo-900 shadow-xs' : 'hover:text-slate-900'
                 }`}
               >
                 <Languages className="w-3.5 h-3.5 text-indigo-600" />
                 Assistente de Tradução
+                {selectedCodes.size > 0 && (
+                  <span className="ml-1 bg-indigo-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {selectedCodes.size}
+                  </span>
+                )}
               </button>
               <button
                 type="button"
@@ -587,17 +871,36 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2 flex-wrap text-xs">
-                {/* Família */}
+                {/* Família POS */}
                 <select
                   value={selectedFamily}
                   onChange={(e) => { setSelectedFamily(e.target.value); setPage(1); }}
                   className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700"
                 >
-                  <option value="all">Todas as Famílias</option>
+                  <option value="all">Todas as Famílias POS</option>
                   {families.map(f => (
                     <option key={f.codigo} value={f.codigo}>{f.descricao} (#{f.codigo})</option>
                   ))}
                 </select>
+
+                {/* Família Ementa Digital */}
+                {digitalStructure?.available && digitalStructure.families.length > 0 && (
+                  <select
+                    value={selectedEmentaFamily}
+                    onChange={(e) => { setSelectedEmentaFamily(e.target.value); setPage(1); }}
+                    className="px-2.5 py-1.5 bg-teal-50 border border-teal-300 rounded-lg font-semibold text-teal-900"
+                  >
+                    <option value="all">Todas as Secções da Ementa</option>
+                    {digitalStructure.families.map(ef => {
+                      const sec = digitalStructure.sections.find(s => s.codigo === ef.seccao);
+                      return (
+                        <option key={ef.codigo} value={ef.codigo}>
+                          {sec ? `${sec.descricao} > ` : ''}{ef.descricao}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
 
                 {/* Presença na Ementa */}
                 <select
@@ -605,9 +908,9 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   onChange={(e) => { setHasEmentaFilter(e.target.value); setPage(1); }}
                   className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700"
                 >
-                  <option value="all">Todos os Artigos</option>
-                  <option value="with_ementa">Apenas com Registo na Ementa</option>
-                  <option value="without_ementa">Sem Registo na Ementa</option>
+                  <option value="with_ementa">Apenas Artigos da Ementa Digital</option>
+                  <option value="all">Todos os Artigos (POS + Ementa)</option>
+                  <option value="without_ementa">Apenas Sem Registo na Ementa</option>
                 </select>
 
                 {/* Visibilidade */}
@@ -791,7 +1094,14 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
                           <td className="p-3">
                             <div className="font-semibold text-slate-900">{p.pos_descricao}</div>
-                            <div className="text-[10px] text-slate-400">{p.familia_desc || 'Sem Família'} • {p.pvp1.toFixed(2)}€</div>
+                            <div className="text-[10px] text-slate-400 flex items-center flex-wrap gap-1 mt-0.5">
+                              <span>{p.familia_desc || 'Sem Família POS'} • {p.pvp1.toFixed(2)}€</span>
+                              {p.ementa_familia_desc && (
+                                <span className="px-1.5 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded font-semibold text-[9px] inline-flex items-center gap-0.5">
+                                  {p.ementa_seccao_desc ? `${p.ementa_seccao_desc} > ` : ''}{p.ementa_familia_desc}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="p-3 font-medium text-slate-800">
@@ -924,24 +1234,146 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         {/* TAB 2: Assistente de Tradução */}
         {activeTab === 'translations' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-6 gap-6">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+            {/* Seletor de Idiomas Ativos */}
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-4 flex-wrap shadow-2xs">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-bold text-slate-800">Idiomas Ativos para Tradução:</span>
+                <span className="text-[11px] text-slate-500 font-medium">(Marque os idiomas a utilizar na ementa)</span>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {languages.map(l => {
+                    const lower = l.code.toLowerCase();
+                    const isChecked = selectedLangCodes.has(lower);
+                    return (
+                      <button
+                        key={l.code}
+                        type="button"
+                        onClick={() => toggleLangCode(lower)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 border select-none ${
+                          isChecked
+                            ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-2xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          readOnly
+                          className="rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none w-3.5 h-3.5"
+                        />
+                        {l.name}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleActivateLanguagesInDb}
+                  disabled={isActivatingLangs}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-xl shadow-xs transition text-xs"
+                  title="Grava e ativa os idiomas selecionados na tabela dbo.ementa_digital_paises do ZoneSoft"
+                >
+                  {isActivatingLangs ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  Ativar no ZoneSoft (QR)
+                </button>
+              </div>
+            </div>
+
+            {/* Banner Traduções Gerais do Sistema */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between gap-4 flex-wrap shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg">
-                  <Languages className="w-5 h-5" />
+                <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm">
+                  <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Artigo Selecionado para Tradução</div>
-                  <div className="text-base font-bold text-slate-900">
-                    {selectedProductForTranslation ? (
-                      `${selectedProductForTranslation.pos_descricao} (#${selectedProductForTranslation.codigo})`
-                    ) : (
-                      'Nenhum artigo selecionado'
-                    )}
+                  <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    Traduções Gerais da Interface ZoneSoft
+                    <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-full">82 Termos</span>
+                  </div>
+                  <div className="text-xs text-slate-600">
+                    Preencha automaticamente todas as expressões do sistema (<i>"Sugestões", "Resumo de Pedido", "Sem glúten", "Finalizar"</i>, etc.) em Inglês, Espanhol, Francês e Alemão com 1 clique!
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAutoGeneralTranslations}
+                disabled={isAutoGeneralTranslating}
+                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl shadow-sm transition text-xs shrink-0"
+              >
+                {isAutoGeneralTranslating ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4" />
+                )}
+                Preencher 82 Termos Gerais (1-Clique)
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                  <Languages className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
+                    Artigo Selecionado para Tradução
+                    {selectedCodes.size > 0 && (
+                      <span className="bg-teal-100 text-teal-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                        {selectedCodes.size} selecionado(s) na tabela
+                      </span>
+                    )}
+                  </div>
+
+                  <select
+                    value={selectedProductForTranslation?.codigo || ''}
+                    onChange={(e) => {
+                      const code = parseInt(e.target.value, 10);
+                      const targetProd = products.find(p => p.codigo === code);
+                      if (targetProd) handleSelectProductForTranslation(targetProd);
+                    }}
+                    className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {!selectedProductForTranslation && <option value="">Nenhum artigo selecionado</option>}
+                    {selectedCodes.size > 0 ? (
+                      products.filter(p => selectedCodes.has(p.codigo)).map(p => (
+                        <option key={p.codigo} value={p.codigo}>
+                          #{p.codigo} - {p.produto || p.pos_descricao} ({p.pvp1.toFixed(2)}€)
+                        </option>
+                      ))
+                    ) : (
+                      products.map(p => (
+                        <option key={p.codigo} value={p.codigo}>
+                          #{p.codigo} - {p.produto || p.pos_descricao} ({p.pvp1.toFixed(2)}€)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedCodes.size > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleBatchAutoTranslate}
+                    disabled={isTranslating}
+                    className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl shadow-sm transition text-xs"
+                    title={`Traduzir todos os ${selectedCodes.size} artigos selecionados em lote`}
+                  >
+                    {isTranslating ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                    Traduzir {selectedCodes.size} Selecionados em Lote
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleAutoTranslate}
@@ -967,7 +1399,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  Gravar Traduções
+                  Gravar Tradução
                 </button>
               </div>
             </div>
@@ -1001,14 +1433,14 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 </div>
 
                 <div className="bg-white border border-indigo-100 rounded-2xl p-5 flex flex-col gap-4 shadow-sm">
-                  <div className="flex items-center gap-1 border-b border-slate-200 pb-2">
-                    {languages.map(l => (
+                  <div className="flex items-center gap-1 border-b border-slate-200 pb-2 overflow-x-auto">
+                    {languages.filter(l => selectedLangCodes.has(l.code.toLowerCase())).map(l => (
                       <button
                         key={l.code}
                         type="button"
-                        onClick={() => setActiveLangTab(l.code)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                          activeLangTab === l.code
+                        onClick={() => setActiveLangTab(l.code.toLowerCase())}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          activeLangTab.toLowerCase() === l.code.toLowerCase()
                             ? 'bg-indigo-600 text-white shadow-xs'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                         }`}
@@ -1140,7 +1572,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
         {/* MODAL DE EDIÇÃO INDIVIDUAL DE ARTIGO (NOME, DESCRIÇÃO, ALERGÉNIOS) */}
         {editModalProduct && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 animate-in fade-in">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 animate-in fade-in">
             <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 flex flex-col gap-4 border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
@@ -1333,7 +1765,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
         {/* Image Management Popup Modal */}
         {imageModalProduct && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-4 border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
@@ -1350,7 +1782,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
               </div>
 
               {/* Current Preview */}
-              <div className="w-full h-44 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
+              <div className="relative w-full h-44 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center group">
                 {imageModalProduct.has_image_bytes ? (
                   <img
                     src={`/api/ementa-digital/image/${imageModalProduct.codigo}`}
@@ -1368,6 +1800,19 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     <ImageIcon className="w-8 h-8 mx-auto mb-1 text-slate-300" />
                     Sem imagem associada
                   </div>
+                )}
+
+                {(imageModalProduct.has_image_bytes || imageModalProduct.image_url) && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteImage}
+                    disabled={isUploadingImage}
+                    className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg shadow-md transition flex items-center gap-1 text-xs font-bold"
+                    title="Remover Imagem"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remover Imagem
+                  </button>
                 )}
               </div>
 
@@ -1423,75 +1868,302 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         )}
 
         {/* Import from POS Popup Modal */}
-        {isImportModalOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-4 border border-slate-200 animate-in fade-in">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-teal-600" />
-                  Importar Artigos do ZoneSoft para a Ementa
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-700"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+        {isImportModalOpen && (() => {
+          const minCodeVal = importMinCode ? parseInt(importMinCode, 10) : null;
+          const maxCodeVal = importMaxCode ? parseInt(importMaxCode, 10) : null;
 
-              <p className="text-xs text-slate-500">
-                Esta função cria os registos necessários em <code className="font-mono text-slate-700">dbo.ementa_digital_produtos</code> com a designação, família e ordem do POS para que os artigos fiquem imediatamente disponíveis na ementa digital.
-              </p>
+          const importList = products.filter(p => {
+            if (minCodeVal !== null && !isNaN(minCodeVal) && p.codigo < minCodeVal) return false;
+            if (maxCodeVal !== null && !isNaN(maxCodeVal) && p.codigo > maxCodeVal) return false;
+            if (selectedCodes.size > 0 && !selectedCodes.has(p.codigo)) return false;
+            if (importFamily !== 'all' && p.familia !== parseInt(importFamily, 10)) return false;
+            if (!importOverwrite && p.exists_in_ementa) return false;
+            return true;
+          });
 
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Filtrar por Família do POS</label>
-                <select
-                  value={importFamily}
-                  onChange={(e) => setImportFamily(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl"
-                >
-                  <option value="all">Todas as Famílias</option>
-                  {families.map(f => (
-                    <option key={f.codigo} value={f.codigo}>{f.descricao} (#{f.codigo})</option>
-                  ))}
-                </select>
-              </div>
+          return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+              <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl p-6 flex flex-col gap-4 border border-slate-200 max-h-[90vh] animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      <Upload className="w-4 h-4 text-teal-600" />
+                      Importar Artigos para a Ementa Digital
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Importe artigos a partir do catálogo ZoneSoft ou diretamente através de texto/ficheiro CSV.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(false)}
+                    className="text-slate-400 hover:text-slate-700 p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
 
-              <div className="flex items-center gap-2 mt-2">
-                <input
-                  type="checkbox"
-                  id="importOverwrite"
-                  checked={importOverwrite}
-                  onChange={(e) => setImportOverwrite(e.target.checked)}
-                  className="rounded text-teal-600 focus:ring-teal-500"
-                />
-                <label htmlFor="importOverwrite" className="text-xs text-slate-700 select-none">
-                  Substituir registos que já existam na ementa digital
-                </label>
-              </div>
+                {/* Tabs */}
+                <div className="flex border-b border-slate-200 gap-4 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('pos')}
+                    className={`pb-2 text-xs font-bold border-b-2 transition-colors ${importMode === 'pos' ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Do Catálogo ZoneSoft (POS)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('csv')}
+                    className={`pb-2 text-xs font-bold border-b-2 transition-colors ${importMode === 'csv' ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Importar Ficheiro / Texto CSV
+                  </button>
+                </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleImportFromPos}
-                  disabled={isImporting}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                >
-                  {isImporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  Importar Artigos
-                </button>
+                {importMode === 'pos' ? (
+                  <>
+                {/* Filters grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Filtrar por Família do POS</label>
+                    <select
+                      value={importFamily}
+                      onChange={(e) => setImportFamily(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-medium"
+                    >
+                      <option value="all">Todas as Famílias POS</option>
+                      {families.map(f => (
+                        <option key={f.codigo} value={f.codigo}>{f.descricao} (#{f.codigo})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-teal-800 block mb-1">Filtro de Loja (BD Partilhada)</label>
+                    <select
+                      value={importStorePreset}
+                      onChange={(e) => handleStorePresetChange(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-teal-50 border border-teal-300 rounded-lg font-bold text-teal-900"
+                    >
+                      <option value="7">Loja 7 (Códigos 700001 - 799999)</option>
+                      <option value="1">Loja 1 (Códigos 100001 - 199999)</option>
+                      <option value="all">Todas as Lojas (Sem filtro)</option>
+                      <option value="custom">Personalizado</option>
+                    </select>
+                  </div>
+
+                  {digitalStructure?.available && digitalStructure.families.length > 0 ? (
+                    <div>
+                      <label className="text-xs font-bold text-teal-900 block mb-1">Atribuir à Secção/Família Ementa</label>
+                      <select
+                        value={importEmentaFamily}
+                        onChange={(e) => setImportEmentaFamily(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+                      >
+                        <option value="default">Primeira Família Disponível (Automático)</option>
+                        {digitalStructure.families.map(ef => {
+                          const sec = digitalStructure.sections.find(s => s.codigo === ef.seccao);
+                          return (
+                            <option key={ef.codigo} value={ef.codigo}>
+                              {sec ? `${sec.descricao} > ` : ''}{ef.descricao}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  ) : <div />}
+
+                  {/* Range inputs */}
+                  <div className="md:col-span-3 grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">Código Mínimo Artigo</label>
+                      <input
+                        type="number"
+                        value={importMinCode}
+                        onChange={(e) => {
+                          setImportMinCode(e.target.value);
+                          setImportStorePreset('custom');
+                        }}
+                        placeholder="Ex: 700001"
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">Código Máximo Artigo</label>
+                      <input
+                        type="number"
+                        value={importMaxCode}
+                        onChange={(e) => {
+                          setImportMaxCode(e.target.value);
+                          setImportStorePreset('custom');
+                        }}
+                        placeholder="Ex: 799999"
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-3 flex items-center gap-2 pt-1 border-t border-slate-200">
+                    <input
+                      type="checkbox"
+                      id="importOverwrite"
+                      checked={importOverwrite}
+                      onChange={(e) => setImportOverwrite(e.target.checked)}
+                      className="rounded text-teal-600 focus:ring-teal-500"
+                    />
+                    <label htmlFor="importOverwrite" className="text-xs font-medium text-slate-700 select-none">
+                      Substituir artigos que já existam na ementa digital
+                    </label>
+                  </div>
+                </div>
+
+                {/* Table Preview */}
+                <div className="flex-1 min-h-0 flex flex-col border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <span>📋</span> Pré-visualização ({importList.length} artigos para importar)
+                    </span>
+                    {selectedCodes.size > 0 && (
+                      <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full">
+                        {selectedCodes.size} selecionados manualmente
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto">
+                    {importList.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400 italic">
+                        Nenhum artigo encontrado com os filtros selecionados para importar.
+                      </div>
+                    ) : (
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0">
+                          <tr>
+                            <th className="p-2.5 pl-4">Código</th>
+                            <th className="p-2.5">Família POS</th>
+                            <th className="p-2.5">Artigo / Designação</th>
+                            <th className="p-2.5 text-right">Preço (PVP1)</th>
+                            <th className="p-2.5 pr-4 text-center">Estado Ementa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {importList.map(item => (
+                            <tr key={item.codigo} className="hover:bg-teal-50/50 transition">
+                              <td className="p-2.5 pl-4 font-mono font-bold text-slate-500">#{item.codigo}</td>
+                              <td className="p-2.5 font-medium text-slate-600">
+                                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[11px]">
+                                  {item.familia_desc || `Família #${item.familia || 0}`}
+                                </span>
+                              </td>
+                              <td className="p-2.5 font-semibold text-slate-900">
+                                {item.produto || item.pos_descricao}
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-emerald-700 whitespace-nowrap">
+                                {item.pvp1.toFixed(2)}€
+                              </td>
+                              <td className="p-2.5 pr-4 text-center whitespace-nowrap">
+                                {item.exists_in_ementa ? (
+                                  <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                    Já Existente
+                                  </span>
+                                ) : (
+                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                    Novo Artigo
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
+                  <span className="text-xs text-slate-500">
+                    Total: <strong className="text-slate-800">{importList.length}</strong> artigos a importar
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsImportModalOpen(false)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleImportFromPos}
+                      disabled={isImporting || importList.length === 0}
+                      className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      {isImporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      Importar {importList.length} Artigos
+                    </button>
+                  </div>
+                </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <label className="text-xs font-bold text-slate-800 block">Código Inicial dos Artigos</label>
+                          <span className="text-[11px] text-slate-500">Ex: 700001 para Loja 7, 100001 para Loja 1</span>
+                        </div>
+                        <input
+                          type="number"
+                          value={csvStartCode}
+                          onChange={(e) => setCsvStartCode(e.target.value)}
+                          className="w-36 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col min-h-[220px]">
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
+                        Colar CSV (Colunas: Família, Artigo, Descrição, Preço)
+                      </label>
+                      <textarea
+                        value={csvInput}
+                        onChange={(e) => setCsvInput(e.target.value)}
+                        placeholder={`Família,Artigo,Descrição,Preço\nBrunch Menu,Brunch Alice,"Ovos Benedict...",25,50 €`}
+                        className="w-full flex-1 p-3 text-xs font-mono border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
+                      <span className="text-xs text-slate-500">
+                        Os artigos serão registados em <strong className="text-slate-800">dbo.produtos</strong> e na <strong className="text-slate-800">Ementa Digital</strong>.
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsImportModalOpen(false)}
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleImportCsv}
+                          disabled={isImporting || !csvInput.trim()}
+                          className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                        >
+                          {isImporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          Importar do CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
       </div>
     </div>

@@ -40,7 +40,9 @@ config.json.tmp
 scratch/
 .idea/
 .vscode/
+ementa_images/
 *.log
 .DS_Store
 *.tmp
+
 

@@ -13,7 +13,7 @@ import time
 import uvicorn
 from backend.app import app
 
-def find_available_port(start_port=8000):
+def find_available_port(start_port=8002):
     for port in range(start_port, start_port + 20):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             if s.connect_ex(('127.0.0.1', port)) != 0:
@@ -30,7 +30,7 @@ def open_browser(port):
         print(f"Por favor abra manualmente no seu navegador: {url}")
 
 if __name__ == "__main__":
-    port = find_available_port(8000)
+    port = find_available_port(8002)
     
     print("=" * 65)
     print(" MassEdit POS - Edição em Massa Segura de Artigos v1.0 (Portátil)")

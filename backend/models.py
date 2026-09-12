@@ -324,8 +324,10 @@ class MenuExtractionResponse(BaseModel):
     secoes: List[MenuSectionItem] = Field(default_factory=list)
     rotulos_preco_encontrados: List[str] = Field(default_factory=list)
     avisos: List[str] = Field(default_factory=list)
+    proximo_codigo: int = 700001
 
 class MenuReviewedRow(BaseModel):
+    codigo: Optional[int] = None
     seccao: str
     subseccao: Optional[str] = ""
     nome: str
@@ -338,6 +340,7 @@ class MenuReviewedRow(BaseModel):
     selected_familia: Optional[int] = None
     selected_subfamilia: Optional[int] = None
     selected_iva: Optional[float] = None
+    selected: bool = True
 
 class MenuMatchItem(BaseModel):
     codigo: int
@@ -383,11 +386,15 @@ class EmentaProductItem(BaseModel):
     pessoas: int = 0
     calorias: int = 0
     tempo: int = 0
+    ementa_familia: Optional[int] = None
+    ementa_familia_desc: Optional[str] = ""
+    ementa_seccao_desc: Optional[str] = ""
 
 
 class EmentaProductFilter(BaseModel):
     search: Optional[str] = None
     familia: Optional[int] = None
+    ementa_familia: Optional[int] = None
     visivel_filter: Optional[str] = "all"  # "all", "visible", "hidden"
     has_ementa_filter: Optional[str] = "all"  # "all", "with_ementa", "without_ementa"
     page: int = 1
@@ -401,12 +408,42 @@ class EmentaProductResponse(BaseModel):
     total_pages: int = 1
 
 
+class EmentaDigitalSection(BaseModel):
+    codigo: int
+    descricao: str
+    visivel: int = 1
+    posicao: int = 0
+
+
+class EmentaDigitalFamily(BaseModel):
+    codigo: int
+    seccao: int
+    descricao: str
+    visivel: int = 1
+    posicao: int = 0
+
+
+class EmentaDigitalStructureResponse(BaseModel):
+    available: bool = True
+    sections: List[EmentaDigitalSection] = Field(default_factory=list)
+    families: List[EmentaDigitalFamily] = Field(default_factory=list)
+
+
 class EmentaImportFromPosRequest(BaseModel):
     codes: Optional[List[int]] = None
     familia: Optional[int] = None
+    ementa_familia: Optional[int] = None
     all_missing: bool = False
     overwrite: bool = False
     default_visivel: int = 1
+    min_code: Optional[int] = None
+    max_code: Optional[int] = None
+
+
+class EmentaImportCsvRequest(BaseModel):
+    csv_text: str
+    start_code: int = 700001
+    overwrite: bool = True
 
 
 class EmentaImportResponse(BaseModel):
@@ -428,6 +465,7 @@ class EmentaBulkEditAction(BaseModel):
     set_vegetariano: Optional[int] = None
     set_picante: Optional[int] = None
     set_dieta: Optional[int] = None
+    set_ementa_familia: Optional[int] = None
 
 
 class EmentaBulkEditRequest(BaseModel):
@@ -447,6 +485,7 @@ class EmentaSingleProductUpdate(BaseModel):
     sal: Optional[int] = None
     calorias: Optional[int] = None
     tempo: Optional[int] = None
+    ementa_familia: Optional[int] = None
 
 
 class EmentaSuggestDescRequest(BaseModel):
@@ -466,6 +505,7 @@ class EmentaTranslateRequest(BaseModel):
 
 class EmentaTranslateResponse(BaseModel):
     translations: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+    descriptions: Dict[str, Dict[str, str]] = Field(default_factory=dict)
 
 
 class EmentaSaveTranslationsRequest(BaseModel):

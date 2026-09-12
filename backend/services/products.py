@@ -561,6 +561,48 @@ def get_families() -> List[Dict[str, Any]]:
     return [{"codigo": row[0], "descricao": row[1] or ""} for row in rows]
 
 
+def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -> Dict[str, Any]:
+    """Cria uma nova família em dbo.familias se não existir e devolve {codigo, descricao}."""
+    desc_clean = (descricao or "").strip()
+    if not desc_clean:
+        raise ValueError("A descrição da família não pode ser vazia.")
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        fam_cols = schema.get("familias", {})
+
+        cursor.execute("SELECT codigo, ISNULL(descricao, '') FROM dbo.familias")
+        all_fam = cursor.fetchall()
+        norm_target = remove_accents(desc_clean).lower()
+        for code, desc in all_fam:
+            if remove_accents(desc or "").lower() == norm_target:
+                return {"codigo": int(code), "descricao": desc or ""}
+
+        cursor.execute("SELECT ISNULL(MAX(codigo), 0) + 1 FROM dbo.familias")
+        next_code = int(cursor.fetchone()[0])
+
+        has_posprint = "posicaoprint" in fam_cols
+        
+        cols = ["codigo", "descricao", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
+        vals = [next_code, desc_clean, 1, next_code, fundo, letra, 0]
+
+        if has_posprint:
+            cols.append("posicaoprint")
+            vals.append(0)
+
+        cols_sql = ", ".join(cols)
+        placeholders = ", ".join(["?"] * len(cols))
+
+        cursor.execute(f"INSERT INTO dbo.familias ({cols_sql}) VALUES ({placeholders})", vals)
+        conn.commit()
+        return {"codigo": next_code, "descricao": desc_clean}
+    finally:
+        conn.close()
+
+
+
 def get_families_detailed() -> List[DetailedFamilyItem]:
     """Obtém lista detalhada de famílias com cores (fundo/letra) e contagem de artigos."""
     conn = db_manager.get_connection()
@@ -849,9 +891,13 @@ def correct_pt_orthography(text: str) -> str:
 
 
 def remove_accents(text: str) -> str:
-    """Remove acentos e diacríticos mantendo maiúsculas/minúsculas."""
+    """Remove acentos e diacríticos mantendo maiúsculas/minúsculas com limpeza de Mojibake."""
     if not text:
         return ""
+    text = (text.replace("Ã\xad", "í").replace("Ã§", "ç").replace("Ã\xa3", "ã")
+            .replace("Ã\xa1", "á").replace("Ã©", "é").replace("Ã¢", "â")
+            .replace("Ã³", "ó").replace("Ãº", "ú").replace("Ãª", "ê")
+            .replace("\xad", "í"))
     nfd = unicodedata.normalize('NFD', text)
     return "".join(c for c in nfd if unicodedata.category(c) != 'Mn')
 
@@ -1735,7 +1781,7 @@ def update_family_colors(req: BulkFamilyColorUpdateRequest) -> Tuple[bool, str, 
 # ======================================================================
 
 def parse_import_csv(csv_text: str) -> List[ImportRow]:
-    """Parse de ficheiro CSV (separador ; ou ,) para lista de ImportRow com suporte a formato europeu."""
+    """Parse de ficheiro CSV (separador ; ou ,) para lista de ImportRow com suporte a formato europeu e auto-atribuição de códigos."""
     csv_text = (csv_text or "").lstrip("\ufeff")
     lines = csv_text.strip().splitlines()
     if not lines:
@@ -1752,7 +1798,7 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
     for idx, col_name in enumerate(header):
         if col_name in ("codigo", "cod", "code", "id"):
             col_map["codigo"] = idx
-        elif col_name in ("descricao", "designacao", "nome", "name"):
+        elif col_name in ("descricao", "designacao", "nome", "name", "artigo"):
             col_map["descricao"] = idx
         elif col_name in ("descricaocurta", "desccurta", "nomecurto", "shortdesc", "desccut", "descricaocut"):
             col_map["descricaocurta"] = idx
@@ -1762,9 +1808,9 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             col_map["codbarras"] = idx
         elif col_name in ("referencia", "ref"):
             col_map["referencia"] = idx
-        elif col_name in ("familia", "fam"):
+        elif col_name in ("familia", "fam", "família"):
             col_map["familia"] = idx
-        elif col_name in ("subfamilia", "subfam"):
+        elif col_name in ("subfamilia", "subfam", "subfamília"):
             col_map["subfam"] = idx
         elif col_name in ("iva", "taxaiva"):
             col_map["iva"] = idx
@@ -1774,24 +1820,57 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             col_map["letra_hex"] = idx
         else:
             for p_num in range(1, 11):
-                if col_name in (f"pvp{p_num}", f"pvp{p_num}(€)", f"precovenda{p_num}", f"preco{p_num}"):
+                if col_name in (f"pvp{p_num}", f"pvp{p_num}(€)", f"precovenda{p_num}", f"preco{p_num}", f"preço{p_num}"):
                     col_map[f"pvp{p_num}"] = idx
-                elif p_num == 1 and col_name in ("precovenda", "preco", "pvp"):
+                elif p_num == 1 and col_name in ("precovenda", "preco", "preço", "pvp"):
                     col_map["pvp1"] = idx
 
-    if "codigo" not in col_map:
-        return []
+    if "descricao" not in col_map:
+        if len(header) >= 2:
+            col_map["descricao"] = 1
+        elif len(header) >= 1:
+            col_map["descricao"] = 0
+
+    has_code_col = "codigo" in col_map
+    auto_code = 700001
+    family_map: Dict[str, int] = {}
+    max_fam_code = 0
+
+    try:
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT codigo, descricao FROM dbo.familias")
+        for code, desc in cursor.fetchall():
+            if desc:
+                family_map[desc.strip().lower()] = code
+        cursor.execute("SELECT ISNULL(MAX(codigo), 0) FROM dbo.familias")
+        max_fam_code = cursor.fetchone()[0] or 0
+
+        if not has_code_col:
+            cursor.execute("SELECT ISNULL(MAX(codigo), 700000) FROM dbo.produtos WHERE codigo >= 700000 AND codigo < 800000")
+            row = cursor.fetchone()
+            auto_code = (row[0] if row and row[0] >= 700000 else 700000) + 1
+            if auto_code < 700001:
+                auto_code = 700001
+        conn.close()
+    except Exception:
+        pass
 
     rows = []
     for row in reader:
-        if not row or len(row) <= col_map["codigo"]:
+        if not row or not any(row):
             continue
 
-        raw_cod = row[col_map["codigo"]].strip()
-        if not raw_cod or not raw_cod.isdigit():
-            continue
-
-        codigo = int(raw_cod)
+        if has_code_col and len(row) > col_map["codigo"]:
+            raw_cod = row[col_map["codigo"]].strip()
+            if raw_cod and raw_cod.isdigit():
+                codigo = int(raw_cod)
+            else:
+                codigo = auto_code
+                auto_code += 1
+        else:
+            codigo = auto_code
+            auto_code += 1
 
         def cell(key: str) -> Optional[str]:
             if key in col_map and len(row) > col_map[key]:
@@ -1820,6 +1899,26 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             except ValueError:
                 return None
 
+        fam_val = parse_int_val("familia")
+        if fam_val is None:
+            raw_fam = cell("familia")
+            if raw_fam:
+                k = raw_fam.strip().lower()
+                if k in family_map:
+                    fam_val = family_map[k]
+                else:
+                    max_fam_code += 1
+                    family_map[k] = max_fam_code
+                    fam_val = max_fam_code
+                    try:
+                        conn_f = db_manager.get_connection()
+                        cur_f = conn_f.cursor()
+                        cur_f.execute("INSERT INTO dbo.familias (codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, raw_fam.strip(), max_fam_code))
+                        conn_f.commit()
+                        conn_f.close()
+                    except Exception:
+                        pass
+
         fundo = cell("fundo_hex")
         letra = cell("letra_hex")
 
@@ -1830,7 +1929,7 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             plu=parse_int_val("plu"),
             codbarras=cell("codbarras"),
             referencia=cell("referencia"),
-            familia=parse_int_val("familia"),
+            familia=fam_val,
             subfam=parse_int_val("subfam"),
             iva=parse_float_val("iva"),
             pvp1=parse_float_val("pvp1"),
@@ -1923,7 +2022,20 @@ def preview_import(items: List[ImportRow]) -> ImportPreviewResponse:
     for imp in unique_items:
         p = prod_map.get(imp.codigo)
         if not p:
+            diff_list = [
+                FieldDiff(field_name="codigo", field_label="Código do Artigo", old_value="-", new_value=str(imp.codigo)),
+                FieldDiff(field_name="descricao", field_label="Designação / Nome", old_value="-", new_value=imp.descricao or ""),
+                FieldDiff(field_name="pvp1", field_label="Preço PVP 1", old_value="-", new_value=f"{imp.pvp1 or 0:.2f} €"),
+                FieldDiff(field_name="familia", field_label="Família", old_value="-", new_value=str(imp.familia or 1))
+            ]
+            previews.append(ProductDiff(
+                codigo=imp.codigo,
+                descricao=f"[NOVO ARTIGO] {imp.descricao or ''}",
+                has_sales=False,
+                diffs=diff_list
+            ))
             continue
+
         changes = _compute_import_changes(p, imp, schema, lookups)
         if not changes:
             continue
@@ -1933,14 +2045,14 @@ def preview_import(items: List[ImportRow]) -> ImportPreviewResponse:
 
     return ImportPreviewResponse(
         total_file_rows=len(items),
-        matched_products_count=len(prod_map),
+        matched_products_count=len(unique_items),
         blocked_descriptions_count=blocked_count,
         previews=previews
     )
 
 
 def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
-    """Aplica as alterações importadas do ficheiro Excel diretamente no SQL Server com transação atómica."""
+    """Aplica as alterações importadas do ficheiro Excel/CSV diretamente no SQL Server com transação atómica."""
     unique_items = _dedupe_import_items(items)
     conn = db_manager.get_connection()
     try:
@@ -1948,26 +2060,27 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
         schema = _schema(cursor)
         lookups = _Lookups(cursor)
         prod_map = {p.codigo: p for p in _fetch_products_by_codes(cursor, [i.codigo for i in unique_items])}
-        if not prod_map:
-            return False, "Nenhum artigo do ficheiro de importação foi encontrado na base de dados.", 0
 
         plan = []
+        new_items_to_create: List[ImportRow] = []
         blocked_total = 0
+
         for imp in unique_items:
             p = prod_map.get(imp.codigo)
             if not p:
+                new_items_to_create.append(imp)
                 continue
             changes = _compute_import_changes(p, imp, schema, lookups)
             blocked_total += sum(1 for c in changes if c.blocked)
             if _has_applicable(changes):
                 plan.append((p, changes))
 
-        if not plan:
+        if not plan and not new_items_to_create:
             return True, "Nenhuma alteração a aplicar a partir do ficheiro.", 0
 
         try:
             backup_name = create_backup_snapshot([p for p, _ in plan],
-                                                 f"Importação de ficheiro Excel ({len(plan)} artigos)")
+                                                 f"Importação de ficheiro CSV ({len(plan) + len(new_items_to_create)} artigos)")
         except Exception as e:
             return False, f"Não foi possível criar a cópia de segurança ({e}). Nenhuma alteração foi gravada.", 0
 
@@ -1976,12 +2089,43 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
             for p, changes in plan:
                 if _apply_changes(cursor, schema, p.codigo, changes, mark_sync=True):
                     affected += 1
+
+            for idx, imp in enumerate(new_items_to_create):
+                target_iva = imp.iva
+                if target_iva is not None and not lookups.vat_exists(target_iva):
+                    target_iva = lookups.vat_factors[0] if lookups.vat_factors else 0.0
+                elif target_iva is None:
+                    target_iva = lookups.vat_factors[0] if lookups.vat_factors else 0.0
+
+                fam_code = imp.familia or 1
+                cursor.execute("SELECT COUNT(*) FROM dbo.familias WHERE codigo = ?", (fam_code,))
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(
+                        "INSERT INTO dbo.familias (codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) "
+                        "VALUES (?, 'Geral', 1, ?, 0, 8421504, 16777215, 0)",
+                        (fam_code, fam_code)
+                    )
+
+                cursor.execute(
+                    "INSERT INTO dbo.produtos (codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, '0')",
+                    (
+                        imp.codigo,
+                        (imp.descricao or f"Artigo {imp.codigo}")[:250],
+                        (imp.descricaocurta or "")[:250],
+                        imp.pvp1 or 0.0,
+                        fam_code,
+                        target_iva,
+                        idx + 1
+                    )
+                )
+                affected += 1
+
             conn.commit()
         except Exception as e:
             conn.rollback()
             return False, f"Falha ao aplicar importação no SQL Server (transação revertida): {str(e)}", 0
 
-        msg = f"Importação concluída com sucesso! {affected} artigo(s) foram atualizados na base de dados. (Backup: {backup_name})"
+        msg = f"Importação concluída com sucesso! {affected} artigo(s) foram inseridos/atualizados na base de dados. (Backup: {backup_name})"
         if blocked_total:
             msg += f" {blocked_total} alteração(ões) bloqueada(s) não foram aplicadas."
         return True, msg, affected

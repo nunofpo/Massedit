@@ -320,9 +320,11 @@ export interface MenuExtractionResponse {
   secoes: MenuSectionItem[];
   rotulos_preco_encontrados: string[];
   avisos: string[];
+  proximo_codigo?: number;
 }
 
 export interface MenuReviewedRow {
+  codigo?: number | null;
   seccao: string;
   subseccao?: string;
   nome: string;
@@ -335,6 +337,7 @@ export interface MenuReviewedRow {
   selected_familia?: number | null;
   selected_subfamilia?: number | null;
   selected_iva?: number | null;
+  selected?: boolean;
 }
 
 export interface MenuMatchItem {
@@ -378,6 +381,30 @@ export interface EmentaProductItem {
   pessoas: number;
   calorias: number;
   tempo: number;
+  ementa_familia?: number;
+  ementa_familia_desc?: string;
+  ementa_seccao_desc?: string;
+}
+
+export interface EmentaDigitalSection {
+  codigo: number;
+  descricao: string;
+  visivel: number;
+  posicao: number;
+}
+
+export interface EmentaDigitalFamily {
+  codigo: number;
+  seccao: number;
+  descricao: string;
+  visivel: number;
+  posicao: number;
+}
+
+export interface EmentaDigitalStructureResponse {
+  available: boolean;
+  sections: EmentaDigitalSection[];
+  families: EmentaDigitalFamily[];
 }
 
 export interface EmentaProductResponse {

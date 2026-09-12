@@ -159,8 +159,11 @@ class DatabaseManager:
             return False, f"Falha de Conexão SQL Server ({self.config.server}:{self.config.port}): {str(e)}"
 
     def get_connection(self):
-        """Abre ligação em modo transacional (autocommit desligado)."""
+        """Abre ligação em modo transacional (autocommit desligado) com codificação correta para Latin1/UTF-8."""
         conn = pyodbc.connect(self.build_connection_string(), timeout=5)
+        conn.setdecoding(pyodbc.SQL_CHAR, encoding='latin1')
+        conn.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
+        conn.setencoding(encoding='utf-8')
         conn.autocommit = False
         return conn
 

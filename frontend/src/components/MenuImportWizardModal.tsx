@@ -48,6 +48,63 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
 
   const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [localFamilies, setLocalFamilies] = useState<Family[]>(families);
+  const [showNewFamilyInput, setShowNewFamilyInput] = useState<boolean>(false);
+  const [newFamilyName, setNewFamilyName] = useState<string>('');
+  const [isCreatingFamily, setIsCreatingFamily] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLocalFamilies(families);
+  }, [families]);
+
+  const removeAccents = (str: string) => {
+    return str ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim() : '';
+  };
+
+  const findFamilyCodeBySection = (sectionName: string, famList: Family[]): number | null => {
+    if (!sectionName || !sectionName.trim()) return null;
+    const normSec = removeAccents(sectionName);
+    const match = famList.find(f => removeAccents(f.descricao) === normSec);
+    return match ? match.codigo : -1;
+  };
+
+  const handleCreateNewFamilySubmit = async (nameToCreate?: string) => {
+    const targetName = (nameToCreate || newFamilyName).trim();
+    if (!targetName) return;
+    setIsCreatingFamily(true);
+    try {
+      const res = await fetch('/api/families/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao: targetName })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Falha ao criar família.');
+      }
+      const data = await res.json();
+      const newFam: Family = { codigo: data.family.codigo, descricao: data.family.descricao };
+      
+      setLocalFamilies(prev => {
+        if (prev.some(f => f.codigo === newFam.codigo)) return prev;
+        return [...prev, newFam];
+      });
+      
+      setReviewedRows(prev => prev.map(row => {
+        if (removeAccents(row.seccao) === removeAccents(newFam.descricao) || row.selected_familia === -1) {
+          return { ...row, selected_familia: newFam.codigo };
+        }
+        return row;
+      }));
+
+      setNewFamilyName('');
+      setShowNewFamilyInput(false);
+    } catch (err: any) {
+      alert(`Erro ao criar família: ${err.message}`);
+    } finally {
+      setIsCreatingFamily(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -97,6 +154,15 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     }
   };
 
+  const toggleSelectAll = () => {
+    const allSelected = reviewedRows.every(r => r.selected !== false);
+    setReviewedRows(reviewedRows.map(r => ({ ...r, selected: !allSelected })));
+  };
+
+  const toggleSelectRow = (index: number) => {
+    setReviewedRows(reviewedRows.map((r, i) => i === index ? { ...r, selected: !(r.selected !== false) } : r));
+  };
+
   // Step 1: Text extraction
   const handleExtractText = async () => {
     if (!rawText.trim()) {
@@ -114,6 +180,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       if (!res.ok) throw new Error('Falha ao processar texto.');
       const data: MenuExtractionResponse = await res.json();
       
+      let currentCode = data.proximo_codigo || 700001;
       const rows: MenuReviewedRow[] = [];
       data.secoes.forEach(sec => {
         sec.artigos.forEach(art => {
@@ -121,19 +188,22 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
           art.precos.forEach(p => {
             precosDict[p.rotulo] = p.valor;
           });
+          const matchedFam = findFamilyCodeBySection(sec.nome, localFamilies);
           rows.push({
+            codigo: currentCode++,
             seccao: sec.nome,
             subseccao: sec.subsecao || '',
             nome: art.nome,
-            descricaocurta: art.nome.slice(0, 20),
+            descricaocurta: '',
             precos: precosDict,
             confianca: art.confianca,
             notas: art.notas,
             matched_codigo: null,
             match_status: 'new',
-            selected_familia: families.length > 0 ? families[0].codigo : null,
+            selected_familia: matchedFam,
             selected_subfamilia: null,
-            selected_iva: 23.0
+            selected_iva: 23.0,
+            selected: true
           });
         });
       });
@@ -190,10 +260,16 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   // Step 4A: Export ZoneSoft CSV
   const handleExportZSTemplate = async () => {
     try {
+      const selectedRows = reviewedRows.filter(r => r.selected !== false);
+      if (selectedRows.length === 0) {
+        alert('Selecione pelo menos 1 artigo para descarregar.');
+        return;
+      }
+
       const res = await fetch('/api/menu-import/export-zs-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reviewedRows)
+        body: JSON.stringify(selectedRows)
       });
       if (!res.ok) throw new Error('Falha ao gerar ficheiro.');
       const blob = await res.blob();
@@ -210,14 +286,20 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
     }
   };
 
-  // Step 4B: Update existing products via PreviewModal and apply_import
+  // Step 4B: Update existing products & create new products via PreviewModal and apply_import
   const handleUpdateExisting = async () => {
     try {
+      const selectedRows = reviewedRows.filter(r => r.selected !== false);
+      if (selectedRows.length === 0) {
+        alert('Selecione pelo menos 1 artigo para importar.');
+        return;
+      }
+
       const res = await fetch('/api/menu-import/to-import-rows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          rows: reviewedRows.filter(r => r.matched_codigo),
+          rows: selectedRows,
           price_mapping: priceMapping
         })
       });
@@ -225,7 +307,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       const importRows: ImportRow[] = await res.json();
 
       if (importRows.length === 0) {
-        alert('Nenhum artigo da ementa foi associado a um artigo existente para atualização.');
+        alert('Nenhum artigo selecionado foi válido para importação.');
         return;
       }
 
@@ -391,7 +473,12 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Revisão dos Artigos Extraídos</h3>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    Revisão dos Artigos Extraídos
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 font-medium font-mono">
+                      {reviewedRows.filter(r => r.selected !== false).length} / {reviewedRows.length} selecionados
+                    </span>
+                  </h3>
                   <p className="text-xs text-slate-500">Confirme nomes, secções e preços antes de mapear com a base de dados.</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -405,8 +492,8 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   <button
                     type="button"
                     onClick={handleProceedToMatching}
-                    disabled={isMatching || reviewedRows.length === 0}
-                    className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg shadow-xs"
+                    disabled={isMatching || reviewedRows.length === 0 || reviewedRows.filter(r => r.selected !== false).length === 0}
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg shadow-xs disabled:opacity-50"
                   >
                     {isMatching ? 'A pesquisar correspondências...' : 'Avançar para Mapeamento'}
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -418,9 +505,19 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
-                      <th className="px-3 py-2">Secção</th>
-                      <th className="px-3 py-2">Nome / Designação</th>
-                      <th className="px-3 py-2">Desc. Curta</th>
+                      <th className="w-8 px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={reviewedRows.length > 0 && reviewedRows.every(r => r.selected !== false)}
+                          onChange={toggleSelectAll}
+                          title="Selecionar / Desselecionar Todos"
+                          className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                        />
+                      </th>
+                      <th className="px-3 py-2 w-24">Código</th>
+                      <th className="px-3 py-2">Família</th>
+                      <th className="px-3 py-2">Subfamília</th>
+                      <th className="px-3 py-2">Artigo</th>
                       <th className="px-3 py-2">Preço PVP</th>
                       <th className="px-3 py-2">Confiança</th>
                       <th className="px-3 py-2">Ações</th>
@@ -428,7 +525,29 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
                     {reviewedRows.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
+                      <tr key={idx} className={`hover:bg-slate-50 ${row.selected === false ? 'opacity-40 bg-slate-50/50' : ''}`}>
+                        <td className="px-2 py-1.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={row.selected !== false}
+                            onChange={() => toggleSelectRow(idx)}
+                            className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="number"
+                            value={row.codigo || ''}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                              const updated = [...reviewedRows];
+                              updated[idx].codigo = val;
+                              setReviewedRows(updated);
+                            }}
+                            placeholder="Novo"
+                            className="w-20 bg-slate-50 border border-slate-200 focus:border-violet-500 font-mono text-xs font-bold text-violet-900 rounded px-1.5 py-0.5"
+                          />
+                        </td>
                         <td className="px-3 py-1.5">
                           <input
                             type="text"
@@ -438,7 +557,20 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                               updated[idx].seccao = e.target.value;
                               setReviewedRows(updated);
                             }}
-                            className="bg-transparent border-b border-transparent focus:border-violet-500 text-xs font-semibold"
+                            className="bg-transparent border-b border-transparent focus:border-violet-500 text-xs font-semibold text-slate-800"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="text"
+                            value={row.subseccao || ''}
+                            onChange={(e) => {
+                              const updated = [...reviewedRows];
+                              updated[idx].subseccao = e.target.value;
+                              setReviewedRows(updated);
+                            }}
+                            placeholder="—"
+                            className="bg-transparent border-b border-transparent focus:border-violet-500 text-xs text-slate-500"
                           />
                         </td>
                         <td className="px-3 py-1.5">
@@ -451,19 +583,6 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                               setReviewedRows(updated);
                             }}
                             className="w-full bg-transparent border-b border-transparent focus:border-violet-500 text-xs font-bold text-slate-900"
-                          />
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <input
-                            type="text"
-                            maxLength={20}
-                            value={row.descricaocurta}
-                            onChange={(e) => {
-                              const updated = [...reviewedRows];
-                              updated[idx].descricaocurta = e.target.value;
-                              setReviewedRows(updated);
-                            }}
-                            className="w-full bg-transparent border-b border-transparent focus:border-violet-500 text-xs text-slate-600"
                           />
                         </td>
                         <td className="px-3 py-1.5">
@@ -513,7 +632,12 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Mapeamento de Famílias e Correspondências</h3>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    Mapeamento de Famílias e Correspondências
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 font-medium font-mono">
+                      {reviewedRows.filter(r => r.selected !== false).length} / {reviewedRows.length} selecionados
+                    </span>
+                  </h3>
                   <p className="text-xs text-slate-500">Associe as secções a famílias existentes e confirme artigos existentes vs novos.</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -527,10 +651,58 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setStep(4)}
-                    className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg shadow-xs"
+                    disabled={reviewedRows.filter(r => r.selected !== false).length === 0}
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg shadow-xs disabled:opacity-50"
                   >
                     Avançar para Resultado <ArrowRight className="w-3.5 h-3.5" />
                   </button>
+                </div>
+              </div>
+
+              {/* Informação & Criar Família Banner */}
+              <div className="flex items-center justify-between bg-violet-50/70 border border-violet-200 px-4 py-2.5 rounded-xl text-xs">
+                <div className="flex items-center gap-2 text-violet-900 font-semibold">
+                  <Layers className="w-4 h-4 text-violet-600 shrink-0" />
+                  <span>Famílias detetadas: As famílias não existentes na base de dados serão criadas automaticamente durante a importação.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {showNewFamilyInput ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={newFamilyName}
+                        onChange={(e) => setNewFamilyName(e.target.value)}
+                        placeholder="Nome da Família"
+                        className="bg-white border border-violet-300 rounded px-2 py-1 text-xs text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleCreateNewFamilySubmit();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCreateNewFamilySubmit()}
+                        disabled={isCreatingFamily || !newFamilyName.trim()}
+                        className="bg-violet-600 hover:bg-violet-700 text-white font-bold px-2.5 py-1 rounded text-xs transition disabled:opacity-50"
+                      >
+                        {isCreatingFamily ? 'A criar...' : 'Gravar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewFamilyInput(false)}
+                        className="text-slate-500 hover:text-slate-800 text-xs px-1"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewFamilyInput(true)}
+                      className="bg-white hover:bg-violet-100 text-violet-700 font-bold border border-violet-300 px-3 py-1 rounded-lg text-xs shadow-2xs transition flex items-center gap-1"
+                    >
+                      + Criar Nova Família
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -538,6 +710,16 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
+                      <th className="w-8 px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={reviewedRows.length > 0 && reviewedRows.every(r => r.selected !== false)}
+                          onChange={toggleSelectAll}
+                          title="Selecionar / Desselecionar Todos"
+                          className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                        />
+                      </th>
+                      <th className="px-3 py-2 w-24">Código</th>
                       <th className="px-3 py-2">Artigo da Ementa</th>
                       <th className="px-3 py-2">Família ZoneSoft</th>
                       <th className="px-3 py-2">Taxa de IVA</th>
@@ -549,7 +731,35 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                     {reviewedRows.map((row, idx) => {
                       const matchData = matchesByRow[idx];
                       return (
-                        <tr key={idx} className="hover:bg-slate-50">
+                        <tr key={idx} className={`hover:bg-slate-50 ${row.selected === false ? 'opacity-40 bg-slate-50/50' : ''}`}>
+                          <td className="px-2 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={row.selected !== false}
+                              onChange={() => toggleSelectRow(idx)}
+                              className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                            />
+                          </td>
+                          <td className="px-3 py-2 font-mono font-bold">
+                            <input
+                              type="number"
+                              value={row.matched_codigo || row.codigo || ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                                const updated = [...reviewedRows];
+                                if (row.matched_codigo) {
+                                  updated[idx].matched_codigo = val;
+                                } else {
+                                  updated[idx].codigo = val;
+                                }
+                                setReviewedRows(updated);
+                              }}
+                              title={row.matched_codigo ? "Código do artigo existente na base de dados" : "Código atribuído ao novo artigo (editável)"}
+                              className={`w-20 border rounded px-1.5 py-1 text-xs font-mono font-bold ${
+                                row.matched_codigo ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-slate-50 text-violet-900 border-slate-200 focus:border-violet-500'
+                              }`}
+                            />
+                          </td>
                           <td className="px-3 py-2 font-bold text-slate-900">
                             {row.nome}
                             <span className="block text-[10px] font-normal text-slate-400 font-sans">
@@ -557,21 +767,38 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            <select
-                              value={row.selected_familia || ''}
-                              onChange={(e) => {
-                                const val = e.target.value ? parseInt(e.target.value, 10) : null;
-                                const updated = [...reviewedRows];
-                                updated[idx].selected_familia = val;
-                                setReviewedRows(updated);
-                              }}
-                              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs"
-                            >
-                              <option value="">(Sem Família)</option>
-                              {families.map(f => (
-                                <option key={f.codigo} value={f.codigo}>{f.descricao}</option>
-                              ))}
-                            </select>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={row.selected_familia !== null && row.selected_familia !== undefined ? row.selected_familia : ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const val = raw !== '' ? parseInt(raw, 10) : null;
+                                  const updated = [...reviewedRows];
+                                  updated[idx].selected_familia = val;
+                                  setReviewedRows(updated);
+                                }}
+                                className={`bg-slate-50 border rounded px-2 py-1 text-xs max-w-[210px] truncate ${
+                                  row.selected_familia === -1 ? 'border-violet-400 bg-violet-50 text-violet-900 font-bold' : 'border-slate-200'
+                                }`}
+                              >
+                                {row.seccao?.trim() && (
+                                  <option value={-1} className="font-bold text-violet-700">
+                                    ✨ + Criar nova família "{row.seccao}"
+                                  </option>
+                                )}
+                                <option value="">(Sem Família)</option>
+                                {localFamilies.map(f => (
+                                  <option key={f.codigo} value={f.codigo}>
+                                    {f.descricao} (#{f.codigo})
+                                  </option>
+                                ))}
+                              </select>
+                              {row.selected_familia === -1 && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-800 border border-violet-200 shrink-0">
+                                  Nova
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             <select
@@ -605,28 +832,24 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            {matchData?.matches && matchData.matches.length > 0 ? (
-                              <select
-                                value={row.matched_codigo || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value ? parseInt(e.target.value, 10) : null;
-                                  const updated = [...reviewedRows];
-                                  updated[idx].matched_codigo = val;
-                                  updated[idx].match_status = val ? 'matched' : 'new';
-                                  setReviewedRows(updated);
-                                }}
-                                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs max-w-[200px] truncate"
-                              >
-                                <option value="">Criar como Novo Artigo</option>
-                                {matchData.matches.map(m => (
-                                  <option key={m.codigo} value={m.codigo}>
-                                    #{m.codigo} - {m.descricao} ({Math.round(m.similarity * 100)}%)
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="text-slate-400 text-xs">Novo</span>
-                            )}
+                            <select
+                              value={row.matched_codigo || ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                                const updated = [...reviewedRows];
+                                updated[idx].matched_codigo = val;
+                                updated[idx].match_status = val ? 'matched' : 'new';
+                                setReviewedRows(updated);
+                              }}
+                              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs max-w-[220px] truncate font-semibold"
+                            >
+                              <option value="">✨ Criar como Novo Artigo ({row.codigo ? `Código ${row.codigo}` : 'Novo'})</option>
+                              {matchData?.matches?.map(m => (
+                                <option key={m.codigo} value={m.codigo}>
+                                  #{m.codigo} - {m.descricao} ({Math.round(m.similarity * 100)}%)
+                                </option>
+                              ))}
+                            </select>
                           </td>
                         </tr>
                       );
@@ -643,7 +866,9 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
               <div className="text-center">
                 <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-2" />
                 <h3 className="text-lg font-bold text-slate-900">Ementa Pronta para Processamento</h3>
-                <p className="text-xs text-slate-500">Escolha como pretende aplicar os artigos da ementa:</p>
+                <p className="text-xs text-slate-500">
+                  {reviewedRows.filter(r => r.selected !== false).length} artigo(s) selecionado(s) para aplicação:
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -655,7 +880,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                       <FileSpreadsheet className="w-5 h-5" />
                       Opção A: Template ZoneSoft
                     </div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Para Artigos Novos</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Para Utilitário Oficial</span>
                     <p className="text-xs text-slate-600 leading-relaxed">
                       Gera o ficheiro CSV oficial pronto a importar através do utilitário oficial de importação da ZoneSoft (com colunas de código, designação, família, unidade, IVA e PVP).
                     </p>
@@ -670,16 +895,18 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   </button>
                 </div>
 
-                {/* Option B: Update Existing Database Products */}
-                <div className="bg-white border-2 border-slate-200 hover:border-violet-400 rounded-2xl p-5 shadow-xs flex flex-col justify-between transition">
+                {/* Option B: Direct SQL Server Import & Update */}
+                <div className="bg-white border-2 border-indigo-200 hover:border-indigo-500 rounded-2xl p-5 shadow-xs flex flex-col justify-between transition bg-indigo-50/10">
                   <div>
                     <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm mb-1">
                       <Layers className="w-5 h-5" />
-                      Opção B: Atualizar Existentes
+                      Opção B: Importar / Atualizar no SQL Server
                     </div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Para Artigos Associados</span>
+                    <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block mb-2">
+                      Para Todos os Artigos ({reviewedRows.filter(r => r.selected !== false).length} Selecionados)
+                    </span>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      Atualiza os preços, descrições curtas e famílias dos artigos existentes na base de dados, com simulação prévia (Dry-Run), cópia de segurança automática e gravação atómica.
+                      Insere os artigos novos (atribuindo códigos 700000+), atualiza os existentes e cria automaticamente as famílias em falta no SQL Server com simulação prévia (Dry-Run), cópia de segurança e gravação atómica.
                     </p>
                   </div>
                   <button
@@ -688,7 +915,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                     className="mt-6 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-md shadow-indigo-600/20"
                   >
                     <Sparkles className="w-4 h-4" />
-                    Simular & Atualizar Existentes
+                    Simular & Importar no SQL Server
                   </button>
                 </div>
 

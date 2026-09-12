@@ -15,7 +15,8 @@ from backend.models import (
     DataQualityCheck, PosLayoutProductItem, PosLayoutApplyRequest,
     MenuExtractionResponse, MenuReviewedRow, MenuMatchItem, MenuMatchResponse,
     EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
-    EmentaImportFromPosRequest, EmentaImportResponse,
+    EmentaDigitalStructureResponse,
+    EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
     EmentaBulkEditRequest, EmentaImageUrlRequest,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
@@ -29,7 +30,7 @@ from backend.services.customers import (
 from backend.db import db_manager
 from backend.services.products import (
     search_products, get_filtered_product_codes, get_selection_summary,
-    get_families, get_families_detailed, update_family_colors,
+    get_families, create_family, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
     get_vats, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers
@@ -43,12 +44,12 @@ from backend.services.menu_ai import (
     export_zs_import_template_csv, convert_matched_to_import_rows
 )
 from backend.services.ementa_digital import (
-    get_ementa_schema_info, search_ementa_products, import_products_to_ementa,
+    get_ementa_schema_info, get_ementa_digital_structure, search_ementa_products, import_products_to_ementa, import_csv_data,
     preview_ementa_bulk_edit, apply_ementa_bulk_edit,
-    save_product_image_data, set_product_image_url, get_product_image_bytes,
-    get_ementa_languages, get_product_translations, save_product_translations,
+    save_product_image_data, set_product_image_url, delete_product_image, get_product_image_bytes,
+    get_ementa_languages, set_ementa_active_languages, get_product_translations, save_product_translations,
     translate_menu_texts, update_single_ementa_product,
-    suggest_description_for_product, IMAGES_DIR
+    auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -57,10 +58,10 @@ app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Se
 # A interface é servida pelo próprio servidor (mesma origem). CORS só para o servidor de desenvolvimento Vite.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/api/config")
@@ -224,6 +225,15 @@ def update_customers_endpoint(req: BulkCustomerUpdateRequest):
 def list_families_endpoint():
     """Lista famílias disponíveis para filtragem e atribuição."""
     return get_families()
+
+@app.post("/api/families/create")
+def create_family_endpoint(descricao: str = Body(..., embed=True)):
+    """Cria uma nova família no SQL Server se não existir."""
+    try:
+        res = create_family(descricao)
+        return {"success": True, "family": res}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/subfamilies")
 def list_subfamilies_endpoint(familia: Optional[int] = None):
@@ -475,6 +485,12 @@ def get_ementa_schema_endpoint():
     return get_ementa_schema_info()
 
 
+@app.get("/api/ementa-digital/structure", response_model=EmentaDigitalStructureResponse)
+def get_ementa_structure_endpoint():
+    """Devolve as secções e famílias ativas da ementa digital."""
+    return get_ementa_digital_structure()
+
+
 @app.post("/api/ementa-digital/search", response_model=EmentaProductResponse)
 def search_ementa_products_endpoint(filter_req: EmentaProductFilter):
     """Pesquisa e lista artigos com os respetivos dados da ementa digital."""
@@ -485,6 +501,12 @@ def search_ementa_products_endpoint(filter_req: EmentaProductFilter):
 def import_products_to_ementa_endpoint(req: EmentaImportFromPosRequest):
     """Importa artigos de dbo.produtos para dbo.ementa_digital_produtos."""
     return import_products_to_ementa(req)
+
+
+@app.post("/api/ementa-digital/import-csv", response_model=EmentaImportResponse)
+def import_csv_endpoint(req: EmentaImportCsvRequest):
+    """Importa artigos a partir de um texto CSV para a ementa digital e catálogo."""
+    return import_csv_data(req)
 
 
 @app.post("/api/ementa-digital/preview", response_model=BulkEditPreviewResponse)
@@ -555,6 +577,19 @@ def set_product_image_url_endpoint(cod_produto: int, req: EmentaImageUrlRequest)
     }
 
 
+@app.delete("/api/ementa-digital/image/{cod_produto}")
+@app.post("/api/ementa-digital/delete-image/{cod_produto}")
+def delete_product_image_endpoint(cod_produto: int):
+    """Remove a imagem (binário e URL) de um artigo da ementa digital."""
+    success, message = delete_product_image(cod_produto)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message
+    }
+
+
 @app.get("/api/ementa-digital/image/{cod_produto}")
 def get_product_image_endpoint(cod_produto: int):
     """Devolve a imagem binária de um artigo da ementa digital."""
@@ -580,6 +615,18 @@ def get_ementa_languages_endpoint():
     return get_ementa_languages()
 
 
+@app.post("/api/ementa-digital/activate-languages")
+def activate_ementa_languages_endpoint(lang_codes: List[str]):
+    """Ativa/sincroniza os idiomas na tabela dbo.ementa_digital_paises da ZoneSoft ZSRest."""
+    success, message = set_ementa_active_languages(lang_codes)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message
+    }
+
+
 @app.get("/api/ementa-digital/translations/{cod_produto}")
 def get_product_translations_endpoint(cod_produto: int):
     """Obtém as traduções de um produto em todos os idiomas."""
@@ -602,6 +649,15 @@ def save_product_translations_endpoint(req: EmentaSaveTranslationsRequest):
 def translate_menu_texts_endpoint(req: EmentaTranslateRequest):
     """Assistente de tradução culinária para textos e descrições."""
     return translate_menu_texts(req)
+
+
+@app.post("/api/ementa-digital/auto-general-translations")
+def auto_general_translations_endpoint(target_langs: Optional[List[str]] = Body(default=None)):
+    """Preenche automaticamente as 82 Traduções Gerais da interface ZoneSoft (typeid=0) para GB, ES, FR, DE."""
+    success, message, count = auto_populate_general_translations(target_langs)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message, "count": count}
 
 
 # Servir Frontend estático se compilado (Suporte a PyInstaller bundle)
