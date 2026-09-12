@@ -1946,9 +1946,9 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
             else:
                 cursor.execute(
                     "INSERT INTO dbo.produtos ("
-                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, "
+                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
                     "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                    ") VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0', 1, 1, 0.0, GETDATE(), 23, 23, 23, 0.0, 0, 0, 0)",
+                    ") VALUES (?, ?, ?, '', ?, ?, 0, 23, ?, 8421504, 16777215, 1, '0', 1, 1, 1, 0.0, GETDATE(), 23, 23, 23, 0.0, 0, 0, 0)",
                     (code, code, artigo_nome, price_val, fam_code, idx + 1)
                 )
 

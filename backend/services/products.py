@@ -1949,7 +1949,12 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
                     try:
                         conn_f = db_manager.get_connection()
                         cur_f = conn_f.cursor()
-                        cur_f.execute("INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, raw_fam.strip(), max_fam_code))
+                        raw_desc = raw_fam.strip()
+                        try:
+                            hex_str = "0x" + raw_desc.encode('cp1252').hex()
+                            cur_f.execute(f"INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, CONVERT(VARCHAR(250), {hex_str}), 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, max_fam_code))
+                        except Exception:
+                            cur_f.execute("INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, raw_desc, max_fam_code))
                         conn_f.commit()
                         conn_f.close()
                     except Exception:
@@ -2148,26 +2153,56 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                     if not target_isencao or target_isencao == "0":
                         target_isencao = "M07"
 
-                cursor.execute(
-                    "INSERT INTO dbo.produtos ("
-                    "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, "
-                    "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
-                    ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
-                    (
-                        imp.codigo,
-                        imp.codigo,
-                        (imp.descricao or f"Artigo {imp.codigo}")[:250],
-                        (imp.descricaocurta or "")[:250],
-                        imp.pvp1 or 0.0,
-                        fam_code,
-                        target_iva,
-                        idx + 1,
-                        target_isencao,
-                        target_iva,
-                        target_iva,
-                        target_iva
+                prod_desc = (imp.descricao or f"Artigo {imp.codigo}")[:250]
+                prod_curta = (imp.descricaocurta or "")[:250]
+
+                try:
+                    desc_hex = "0x" + prod_desc.encode('cp1252').hex()
+                    sql_desc = f"CONVERT(VARCHAR(250), {desc_hex})"
+                except Exception:
+                    sql_desc = "?"
+
+                if sql_desc != "?":
+                    cursor.execute(
+                        f"INSERT INTO dbo.produtos ("
+                        f"id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
+                        f"unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                        f") VALUES (?, ?, {sql_desc}, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        (
+                            imp.codigo,
+                            imp.codigo,
+                            prod_curta,
+                            imp.pvp1 or 0.0,
+                            fam_code,
+                            target_iva,
+                            idx + 1,
+                            target_isencao,
+                            target_iva,
+                            target_iva,
+                            target_iva
+                        )
                     )
-                )
+                else:
+                    cursor.execute(
+                        "INSERT INTO dbo.produtos ("
+                        "id, codigo, descricao, descricaocurta, precovenda, familia, subfam, iva, ordem, fundo, letra, vendersemstock, isencao, restricted, "
+                        "unidade, fornecedor, precocompra, datacriacao, ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto"
+                        ") VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 8421504, 16777215, 1, ?, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 0.0, 0, 0, 0)",
+                        (
+                            imp.codigo,
+                            imp.codigo,
+                            prod_desc,
+                            prod_curta,
+                            imp.pvp1 or 0.0,
+                            fam_code,
+                            target_iva,
+                            idx + 1,
+                            target_isencao,
+                            target_iva,
+                            target_iva,
+                            target_iva
+                        )
+                    )
 
                 try:
                     cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (imp.codigo, fam_code, imp.codigo, fam_code))
