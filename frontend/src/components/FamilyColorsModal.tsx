@@ -228,6 +228,7 @@ export const FamilyColorsModal: React.FC<FamilyColorsModalProps> = ({
             />
           </div>
 
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
               className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs"
