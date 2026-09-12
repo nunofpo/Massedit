@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server } from 'lucide-react';
-import { DatabaseConfig } from '../types';
+import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server, Radar, Check, Sparkles } from 'lucide-react';
+import { DatabaseConfig, PortInfo, PortScanResponse } from '../types';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -25,9 +25,51 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [drivers, setDrivers] = useState<string[]>([]);
 
+  // Port Scan states
+  const [isScanningPorts, setIsScanningPorts] = useState(false);
+  const [portScanResults, setPortScanResults] = useState<PortInfo[] | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+
   useEffect(() => {
     setFormConfig(config);
+    setPortScanResults(null);
+    setScanMessage(null);
   }, [config, isOpen]);
+
+  const handleScanPorts = async () => {
+    if (!formConfig.server) {
+      alert('Introduza primeiro o IP ou nome do Servidor SQL Server.');
+      return;
+    }
+    setIsScanningPorts(true);
+    setScanMessage(null);
+    try {
+      const res = await fetch('/api/scan-ports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: formConfig.server })
+      });
+      if (res.ok) {
+        const data: PortScanResponse = await res.json();
+        setPortScanResults(data.results);
+        const openPorts = data.results.filter(r => r.open);
+        if (openPorts.length > 0) {
+          const firstOpen = data.recommended_port || openPorts[0].port;
+          setFormConfig(prev => ({ ...prev, port: firstOpen }));
+          setScanMessage(`Encontrada(s) ${openPorts.length} porta(s) aberta(s)! Porta ${firstOpen} selecionada automaticamente.`);
+        } else {
+          setScanMessage('Nenhuma porta SQL Server aberta foi detetada neste IP. Verifique se o SQL Server está iniciado e a firewall permite conexões.');
+        }
+      } else {
+        const err = await res.json();
+        setScanMessage(`Erro no scan: ${err.detail || 'Não foi possível verificar portas'}`);
+      }
+    } catch (e: any) {
+      setScanMessage(`Erro de ligação ao scan: ${e.message}`);
+    } finally {
+      setIsScanningPorts(false);
+    }
+  };
 
   // Drivers ODBC instalados neste computador
   useEffect(() => {
@@ -101,36 +143,101 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs bg-slate-50/30">
           
-          {/* Servidor & Porta */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <label className="text-slate-700 font-bold block mb-1 flex items-center gap-1">
-                <Server className="w-3.5 h-3.5 text-indigo-600" />
-                Servidor / Host SQL Server:
-              </label>
-              <input
-                type="text"
-                value={formConfig.server}
-                onChange={(e) => setFormConfig({ ...formConfig, server: e.target.value })}
-                placeholder="localhost, 127.0.0.1 ou SERVIDOR\SQLEXPRESS"
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Instância nomeada (SERVIDOR\INSTANCIA) com porta 1433: a porta é ignorada e usa-se o SQL Browser.</p>
+          {/* Servidor & Porta com Scan de Portas */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-slate-700 font-bold block mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Server className="w-3.5 h-3.5 text-indigo-600" />
+                    Servidor / IP SQL Server:
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={formConfig.server}
+                  onChange={(e) => setFormConfig({ ...formConfig, server: e.target.value })}
+                  placeholder="192.168.1.100, localhost ou SERVIDOR\SQLEXPRESS"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">
+                  Porta:
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formConfig.port}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setFormConfig({ ...formConfig, port: val ? Number(val) : 1433 });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">
-                Porta:
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formConfig.port}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, '');
-                  setFormConfig({ ...formConfig, port: val ? Number(val) : 1433 });
-                }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
-              />
+
+            {/* Scan de Portas Button & Results */}
+            <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-slate-600">
+                  <span className="font-semibold text-indigo-900">Verificação de Portas:</span> Testar se as portas do SQL Server estão abertas no IP indicado.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleScanPorts}
+                  disabled={isScanningPorts || !formConfig.server}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-xs disabled:opacity-50 shrink-0"
+                >
+                  <Radar className={`w-3.5 h-3.5 ${isScanningPorts ? 'animate-spin' : ''}`} />
+                  {isScanningPorts ? 'A verificar portas...' : 'Scan de Portas'}
+                </button>
+              </div>
+
+              {/* Scan Message feedback */}
+              {scanMessage && (
+                <p className={`text-[11px] font-medium mt-2 ${
+                  portScanResults?.some(r => r.open) ? 'text-emerald-700 font-bold' : 'text-amber-800'
+                }`}>
+                  {scanMessage}
+                </p>
+              )}
+
+              {/* Port Badges */}
+              {portScanResults && portScanResults.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-indigo-100 flex flex-wrap gap-1.5">
+                  {portScanResults.map((p) => {
+                    const isSelected = formConfig.port === p.port;
+                    return (
+                      <button
+                        key={p.port}
+                        type="button"
+                        onClick={() => {
+                          setFormConfig({ ...formConfig, port: p.port });
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                          p.open
+                            ? isSelected
+                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-300'
+                              : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                            : isSelected
+                              ? 'bg-slate-200 text-slate-800 border-slate-400'
+                              : 'bg-white/80 text-slate-400 border-slate-200 hover:bg-slate-50'
+                        }`}
+                        title={`${p.label} - ${p.open ? 'Porta Aberta' : 'Porta Fechada'}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${p.open ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                        <span>Porta {p.port}</span>
+                        {p.open && <span className="text-[10px] font-sans font-normal opacity-90">(Aberta)</span>}
+                        {p.port === 1433 && <span className="text-[9px] font-sans bg-indigo-100 text-indigo-800 px-1 rounded">Padrão</span>}
+                        {p.port === 65432 && <span className="text-[9px] font-sans bg-teal-100 text-teal-800 px-1 rounded">ZoneSoft</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

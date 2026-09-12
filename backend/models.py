@@ -11,6 +11,20 @@ class DatabaseConfig(BaseModel):
     driver: str = "ODBC Driver 17 for SQL Server"
     save_password: bool = False  # Se falso, a password não é gravada no config.json
 
+class PortInfo(BaseModel):
+    port: int
+    open: bool
+    label: str
+
+class PortScanRequest(BaseModel):
+    host: str
+    ports: Optional[List[int]] = None
+
+class PortScanResponse(BaseModel):
+    host: str
+    results: List[PortInfo]
+    recommended_port: Optional[int] = None
+
 class ProductFilter(BaseModel):
     search: Optional[str] = None
     codes: Optional[List[int]] = None

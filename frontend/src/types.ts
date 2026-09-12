@@ -9,6 +9,18 @@ export interface DatabaseConfig {
   save_password?: boolean;
 }
 
+export interface PortInfo {
+  port: number;
+  open: boolean;
+  label: string;
+}
+
+export interface PortScanResponse {
+  host: string;
+  results: PortInfo[];
+  recommended_port?: number | null;
+}
+
 export interface ProductItem {
   codigo: number;
   plu?: number;

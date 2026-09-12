@@ -19,7 +19,8 @@ from backend.models import (
     EmentaBulkEditRequest, EmentaImageUrlRequest,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
-    EmentaSuggestDescRequest
+    EmentaSuggestDescRequest,
+    PortInfo, PortScanRequest, PortScanResponse
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -91,6 +92,75 @@ def list_odbc_drivers():
         return [d for d in pyodbc.drivers() if "SQL Server" in d]
     except Exception:
         return []
+
+@app.post("/api/scan-ports", response_model=PortScanResponse)
+def scan_sql_ports(req: PortScanRequest):
+    """Verifica portas abertas num dado host (IP/hostname) com prioridade a 1433 e 65432."""
+    import socket
+    
+    # Extrair host limpo caso venha no formato IP\INSTANCIA ou IP:PORTA
+    raw_host = (req.host or "127.0.0.1").strip()
+    if "\\" in raw_host:
+        host = raw_host.split("\\")[0].strip()
+    elif ":" in raw_host:
+        host = raw_host.split(":")[0].strip()
+    else:
+        host = raw_host
+    if not host:
+        host = "127.0.0.1"
+
+    # Prioridade obrigatória: 1433, 65432 e outras portas frequentes do SQL Server / ZoneSoft
+    priority_ports = [1433, 65432]
+    other_ports = [1434, 14333, 49152, 49153, 49154, 49155]
+    
+    candidate_ports = []
+    if req.ports:
+        for p in req.ports:
+            if p not in candidate_ports:
+                candidate_ports.append(p)
+    else:
+        candidate_ports = priority_ports + [p for p in other_ports if p not in priority_ports]
+
+    labels = {
+        1433: "SQL Server (Porta Padrão TCP)",
+        65432: "SQL Server (Porta ZoneSoft Alternativa)",
+        1434: "SQL Server Browser / Admin",
+        14333: "SQL Server Secundária",
+        49152: "Porta Dinâmica SQL Server (RPC)",
+        49153: "Porta Dinâmica SQL Server",
+        49154: "Porta Dinâmica SQL Server",
+        49155: "Porta Dinâmica SQL Server",
+    }
+
+    results: List[PortInfo] = []
+    recommended_port: Optional[int] = None
+
+    for port in candidate_ports:
+        is_open = False
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.7)  # timeout rápido de 700ms por porta
+        try:
+            res = s.connect_ex((host, port))
+            if res == 0:
+                is_open = True
+                if recommended_port is None:
+                    recommended_port = port
+        except Exception:
+            is_open = False
+        finally:
+            s.close()
+            
+        results.append(PortInfo(
+            port=port,
+            open=is_open,
+            label=labels.get(port, f"Porta {port}")
+        ))
+
+    return PortScanResponse(
+        host=host,
+        results=results,
+        recommended_port=recommended_port
+    )
 
 @app.get("/api/families")
 def list_families_endpoint():
