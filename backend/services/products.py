@@ -580,8 +580,9 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215) -
             if remove_accents(desc or "").lower() == norm_target:
                 return {"codigo": int(code), "descricao": desc or ""}
 
-        cursor.execute("SELECT ISNULL(MAX(codigo), 0) + 1 FROM dbo.familias")
-        next_code = int(cursor.fetchone()[0])
+        cursor.execute("SELECT ISNULL(MAX(codigo), 100) FROM dbo.familias")
+        max_c = cursor.fetchone()[0] or 100
+        next_code = max(101, int(max_c) + 1)
 
         has_posprint = "posicaoprint" in fam_cols
         
