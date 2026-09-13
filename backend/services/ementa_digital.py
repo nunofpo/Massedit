@@ -3,6 +3,8 @@ import io
 import os
 import re
 import json
+import urllib.request
+import urllib.parse
 import mimetypes
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -1888,6 +1890,9 @@ def _build_accent_regex(term: str) -> str:
     return r'\b' + ''.join(pattern) + r'\b'
 
 
+TRANSLATION_CACHE: Dict[Tuple[str, str, str], str] = {}
+
+
 def _get_lang_val(dic: Dict[str, Any], lang: str) -> Optional[str]:
     """Obtém o valor de tradução do dicionário gastronómico normalizando 'gb' <-> 'en'."""
     val = dic.get(lang)
@@ -1897,8 +1902,59 @@ def _get_lang_val(dic: Dict[str, Any], lang: str) -> Optional[str]:
     return val if isinstance(val, str) else None
 
 
+def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "pt") -> Optional[str]:
+    """Obtém tradução fluida e natural via APIs de tradução (Google Translate GTX / MyMemory) com cache e timeout."""
+    if not text or not text.strip():
+        return ""
+
+    t_lang = "en" if target_lang.lower() in ("gb", "en") else target_lang.lower()
+    s_lang = "pt" if source_lang.lower() in ("pt", "por") else source_lang.lower()
+
+    if s_lang == t_lang:
+        return text.strip()
+
+    cache_key = (text.strip(), s_lang, t_lang)
+    if cache_key in TRANSLATION_CACHE:
+        return TRANSLATION_CACHE[cache_key]
+
+    # 1. Google Translate GTX Endpoint
+    try:
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={s_lang}&tl={t_lang}&dt=t&q=" + urllib.parse.quote(text)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                raw_bytes = resp.read()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                if data and isinstance(data, list) and data[0]:
+                    res_text = "".join([item[0] for item in data[0] if item and item[0]])
+                    if res_text and res_text.strip():
+                        res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        TRANSLATION_CACHE[cache_key] = res_clean
+                        return res_clean
+    except Exception:
+        pass
+
+    # 2. MyMemory Translation API
+    try:
+        url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode({"q": text, "langpair": f"{s_lang}|{t_lang}"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data and "responseData" in data and "translatedText" in data["responseData"]:
+                    res_text = data["responseData"]["translatedText"]
+                    if res_text and res_text.strip() and not res_text.startswith("MYMEMORY WARNING"):
+                        res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        TRANSLATION_CACHE[cache_key] = res_clean
+                        return res_clean
+    except Exception:
+        pass
+
+    return None
+
+
 def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse:
-    """Gera traduções automáticas para artigos e descrições gastronómicas."""
+    """Gera traduções automáticas para artigos e descrições gastronómicas utilizando motor de tradução online + dicionário local."""
     results: Dict[str, Dict[str, str]] = {}
     descriptions: Dict[str, Dict[str, str]] = {}
 
@@ -1918,18 +1974,29 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
         tr_map: Dict[str, str] = {}
         desc_map: Dict[str, str] = {}
 
-        # 1. Correspondência direta ou exata no dicionário gastronómico
-        if cleaned in CULINARY_DICTIONARY:
-            entry = CULINARY_DICTIONARY[cleaned]
-            for lang in target_langs:
-                tr_map[lang] = _get_lang_val(entry, lang) or raw
-                if "desc" in entry and isinstance(entry["desc"], dict):
-                    d_val = _get_lang_val(entry["desc"], lang)
+        # 1. Verificar correspondência exata no dicionário gastronómico local
+        dict_entry = CULINARY_DICTIONARY.get(cleaned)
+
+        for lang in target_langs:
+            translated_val = None
+
+            # Tentar obter do dicionário gastronómico se for um termo/prato fixo bem definido
+            if dict_entry:
+                translated_val = _get_lang_val(dict_entry, lang)
+                if "desc" in dict_entry and isinstance(dict_entry["desc"], dict):
+                    d_val = _get_lang_val(dict_entry["desc"], lang)
                     if d_val:
                         desc_map[lang] = d_val
-        else:
-            # 2. Heurística composta por substituição num único passo (evita re-substituições)
-            for lang in target_langs:
+                        if lang in ("en", "gb"):
+                            desc_map["gb"] = d_val
+                            desc_map["en"] = d_val
+
+            # Se não houver tradução estática exata no dicionário, obter via motor de tradução online (Google Translate / MyMemory)
+            if not translated_val:
+                translated_val = _fetch_online_translation(raw, lang, source_lang=req.source_lang or "pt")
+
+            # Fallback final: heurística local com substituição por regex usando CULINARY_DICTIONARY
+            if not translated_val:
                 def replacer(match, target_lang=lang):
                     m_text = match.group(0)
                     k = _clean_key(m_text)
@@ -1942,8 +2009,13 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
                         return val.capitalize()
                     return val
 
-                translated_phrase = combined_pattern.sub(replacer, raw)
-                tr_map[lang] = translated_phrase
+                translated_val = combined_pattern.sub(replacer, raw)
+
+            final_text = translated_val or raw
+            tr_map[lang] = final_text
+            if lang in ("en", "gb"):
+                tr_map["gb"] = final_text
+                tr_map["en"] = final_text
 
         results[raw] = tr_map
         if desc_map:
