@@ -646,3 +646,40 @@ class CustomerUpdateItem(BaseModel):
 class BulkCustomerUpdateRequest(BaseModel):
     customers: List[CustomerUpdateItem]
 
+
+# ======================================================================
+# Modelos de Temas ZSRest (.zstheme)
+# ======================================================================
+
+class ZSThemeColorRule(BaseModel):
+    element_type: str
+    color: Optional[str] = None
+    color_to: Optional[str] = None
+    font_color: Optional[str] = None
+    new_color: Optional[str] = None
+    new_color_to: Optional[str] = None
+    new_font_color: Optional[str] = None
+
+class ZSThemeTransformRequest(BaseModel):
+    color_rules: List[ZSThemeColorRule] = Field(default_factory=list)
+    rounding: Optional[int] = None
+
+
+# ======================================================================
+# Modelos de Mapa de Mesas
+# ======================================================================
+
+class MesaPosicaoUpdate(BaseModel):
+    id: int
+    posx: int
+    posy: int
+
+class MesasPosicoesRequest(BaseModel):
+    updates: List[MesaPosicaoUpdate] = Field(default_factory=list)
+
+class MesaObjetoPropsRequest(BaseModel):
+    lugares: Optional[int] = None
+    cor_hex: Optional[str] = None
+    largura: Optional[int] = None
+    altura: Optional[int] = None
+

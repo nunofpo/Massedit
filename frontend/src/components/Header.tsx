@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -12,6 +12,8 @@ interface HeaderProps {
   onOpenDataQuality: () => void;
   onOpenPosLayout: () => void;
   onOpenEmentaDigital: () => void;
+  onOpenZsTheme: () => void;
+  onOpenMesasMap: () => void;
   onOpenMenuImport: () => void;
   onOpenCustomers: () => void;
   onRefresh: () => void;
@@ -29,6 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDataQuality,
   onOpenPosLayout,
   onOpenEmentaDigital,
+  onOpenZsTheme,
+  onOpenMesasMap,
   onOpenMenuImport,
   onOpenCustomers,
   onRefresh,
@@ -123,6 +127,24 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Sparkles className="w-3.5 h-3.5 text-violet-600" />
           Importar Ementa
+        </button>
+
+        <button
+          onClick={onOpenZsTheme}
+          className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-violet-200 transition shadow-sm"
+          title="Editor de Temas ZSRest (.zstheme) — recolorir e arredondar botões"
+        >
+          <Palette className="w-3.5 h-3.5 text-violet-600" />
+          Temas ZSRest
+        </button>
+
+        <button
+          onClick={onOpenMesasMap}
+          className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition shadow-sm"
+          title="Editor de Mapa de Mesas — modernizar fundo e ícones das mesas"
+        >
+          <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+          Mapa de Mesas
         </button>
 
         <button

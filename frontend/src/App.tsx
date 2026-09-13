@@ -13,6 +13,8 @@ import { PosLayoutModal } from './components/PosLayoutModal';
 import { MenuImportWizardModal } from './components/MenuImportWizardModal';
 import { EmentaDigitalModal } from './components/EmentaDigitalModal';
 import { CustomersModal } from './components/CustomersModal';
+import { ZSThemeModal } from './components/ZSThemeModal';
+import { MesasMapModal } from './components/MesasMapModal';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -66,6 +68,8 @@ export const App: React.FC = () => {
   const [isMenuImportOpen, setIsMenuImportOpen] = useState(false);
   const [isEmentaDigitalOpen, setIsEmentaDigitalOpen] = useState(false);
   const [isCustomersOpen, setIsCustomersOpen] = useState(false);
+  const [isZsThemeOpen, setIsZsThemeOpen] = useState(false);
+  const [isMesasMapOpen, setIsMesasMapOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
@@ -450,6 +454,8 @@ export const App: React.FC = () => {
         onOpenEmentaDigital={() => setIsEmentaDigitalOpen(true)}
         onOpenMenuImport={() => setIsMenuImportOpen(true)}
         onOpenCustomers={() => setIsCustomersOpen(true)}
+        onOpenZsTheme={() => setIsZsThemeOpen(true)}
+        onOpenMesasMap={() => setIsMesasMapOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
         onRefresh={() => {
           fetchAuxData();
@@ -617,6 +623,22 @@ export const App: React.FC = () => {
       <CustomersModal
         isOpen={isCustomersOpen}
         onClose={() => setIsCustomersOpen(false)}
+        onSuccess={(msg) => {
+          setNotification({ type: 'success', text: msg });
+        }}
+      />
+
+      <ZSThemeModal
+        isOpen={isZsThemeOpen}
+        onClose={() => setIsZsThemeOpen(false)}
+        onSuccess={(msg) => {
+          setNotification({ type: 'success', text: msg });
+        }}
+      />
+
+      <MesasMapModal
+        isOpen={isMesasMapOpen}
+        onClose={() => setIsMesasMapOpen(false)}
         onSuccess={(msg) => {
           setNotification({ type: 'success', text: msg });
         }}

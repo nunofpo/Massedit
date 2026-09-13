@@ -13,6 +13,7 @@ a = Analysis(
         'python_multipart',
         'multipart',
         'pypdf',
+        'PIL',
     ],
     hookspath=[],
     hooksconfig={},

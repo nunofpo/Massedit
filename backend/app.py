@@ -1,6 +1,6 @@
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -22,7 +22,8 @@ from backend.models import (
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
     EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
-    CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest
+    CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest,
+    ZSThemeTransformRequest, MesasPosicoesRequest, MesaObjetoPropsRequest
 )
 from backend.services.customers import (
     get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
@@ -37,6 +38,12 @@ from backend.services.products import (
 
 )
 from backend.services.reports import run_data_quality_report
+from backend.services.zstheme import analyze_zstheme, transform_zstheme
+from backend.services.mesas_map import (
+    get_mesas_zonas, get_zona_detail, preview_preset as preview_mesas_preset, apply_preset as apply_mesas_preset,
+    update_posicoes as update_mesas_posicoes, update_objeto_props as update_mesas_objeto_props,
+    upload_objeto_imagem as upload_mesas_objeto_imagem, upload_zona_background as upload_mesas_zona_background
+)
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
@@ -272,6 +279,104 @@ def list_printers_endpoint():
 def zonesoft_sync_status_endpoint():
     """Estado da sincronização cloud do ZoneSoft (dbo.fullsync)."""
     return get_zonesoft_sync_status()
+
+
+@app.post("/api/zstheme/analyze")
+async def zstheme_analyze_endpoint(file: UploadFile = File(...)):
+    """Lê um ficheiro .zstheme (ZS FrontOffice Designer) e devolve os grupos de cor detetados."""
+    file_bytes = await file.read()
+    try:
+        return analyze_zstheme(file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Não foi possível ler o ficheiro .zstheme: {str(e)}")
+
+
+@app.post("/api/zstheme/transform")
+async def zstheme_transform_endpoint(file: UploadFile = File(...), rules: str = Form(...)):
+    """Aplica alterações de cor e/ou arredondamento a um .zstheme e devolve o ficheiro novo."""
+    import json
+    file_bytes = await file.read()
+    try:
+        req = ZSThemeTransformRequest.model_validate(json.loads(rules))
+        new_bytes = transform_zstheme(
+            file_bytes,
+            [r.model_dump() for r in req.color_rules],
+            req.rounding
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Não foi possível transformar o ficheiro .zstheme: {str(e)}")
+
+    out_name = file.filename.rsplit(".", 1)[0] + "_novo.zstheme" if file.filename else "tema_novo.zstheme"
+    return Response(
+        content=new_bytes,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
+    )
+
+
+@app.get("/api/mesas-map/zonas")
+def mesas_map_zonas_endpoint():
+    """Lista as zonas do mapa de mesas (dbo.zonas)."""
+    return get_mesas_zonas()
+
+
+@app.get("/api/mesas-map/zona/{codigo}")
+def mesas_map_zona_endpoint(codigo: int):
+    """Detalhe de uma zona: fundo e objetos (mesas/decoração) com as imagens atuais."""
+    return get_zona_detail(codigo)
+
+
+@app.post("/api/mesas-map/zona/{codigo}/preview-preset")
+def mesas_map_preview_preset_endpoint(codigo: int):
+    """Gera as imagens 'antes' e 'depois' do preset Claro Moderno, sem gravar nada."""
+    return preview_mesas_preset(codigo)
+
+
+@app.post("/api/mesas-map/zona/{codigo}/apply-preset")
+def mesas_map_apply_preset_endpoint(codigo: int):
+    """Aplica o preset Claro Moderno à zona (com cópia de segurança e transação)."""
+    success, message = apply_mesas_preset(codigo)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.post("/api/mesas-map/zona/{codigo}/posicoes")
+def mesas_map_posicoes_endpoint(codigo: int, req: MesasPosicoesRequest):
+    """Grava novas posições (posx/posy) de vários objetos de uma zona, em lote."""
+    success, message = update_mesas_posicoes(codigo, [u.model_dump() for u in req.updates])
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/props")
+def mesas_map_objeto_props_endpoint(codigo: int, objeto_id: int, req: MesaObjetoPropsRequest):
+    """Atualiza lugares/cor/tamanho de uma mesa e regenera o seu ícone."""
+    success, message = update_mesas_objeto_props(codigo, objeto_id, req.lugares, req.cor_hex, req.largura, req.altura)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/imagem")
+async def mesas_map_objeto_imagem_endpoint(codigo: int, objeto_id: int, file: UploadFile = File(...)):
+    """Substitui o ícone de um objeto por uma imagem própria."""
+    image_bytes = await file.read()
+    success, message = upload_mesas_objeto_imagem(codigo, objeto_id, image_bytes)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.post("/api/mesas-map/zona/{codigo}/background")
+async def mesas_map_background_endpoint(codigo: int, file: UploadFile = File(...), tile: bool = Form(False)):
+    """Substitui o fundo de uma zona por uma imagem própria."""
+    image_bytes = await file.read()
+    success, message = upload_mesas_zona_background(codigo, image_bytes, tile)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
 
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
