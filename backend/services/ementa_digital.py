@@ -2233,14 +2233,18 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             )
         except Exception:
             pass
+        sync_triggered = False
         try:
             cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+            sync_triggered = cursor.rowcount > 0
         except Exception:
             pass
 
         conn.commit()
         print(f"[SAVE_TRANSLATIONS] Sucesso: {written_count} registos atualizados/inseridos para o produto #{req.cod_produto} (família={prod_familia}).")
-        return True, "Traduções gravadas com sucesso."
+        if sync_triggered:
+            return True, "Traduções gravadas com sucesso. Sincronização com o ZoneSoft acionada."
+        return True, "Traduções gravadas com sucesso, mas não foi possível acionar a sincronização automática com o ZoneSoft (tabela dbo.fullsync indisponível)."
     except Exception as e:
         conn.rollback()
         print(f"[SAVE_TRANSLATIONS] Erro ao gravar traduções do produto #{req.cod_produto}: {e}")
@@ -2370,13 +2374,16 @@ def auto_populate_general_translations(target_langs: Optional[List[str]] = None)
                     """, (c_code, field, val))
                     inserted_or_updated += 1
 
+        sync_triggered = False
         try:
             cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+            sync_triggered = cursor.rowcount > 0
         except Exception:
             pass
 
         conn.commit()
-        return True, f"Preenchidas {inserted_or_updated} traduções gerais com sucesso para os idiomas {', '.join(langs)}.", inserted_or_updated
+        sync_msg = "Sincronização com o ZoneSoft acionada." if sync_triggered else "Não foi possível acionar a sincronização automática com o ZoneSoft (tabela dbo.fullsync indisponível)."
+        return True, f"Preenchidas {inserted_or_updated} traduções gerais com sucesso para os idiomas {', '.join(langs)}. {sync_msg}", inserted_or_updated
     except Exception as e:
         conn.rollback()
         return False, f"Erro ao preencher traduções gerais: {str(e)}", 0

@@ -432,7 +432,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       const data = await res.json();
       if (data.success) {
-        onSuccess(`Traduções do artigo #${selectedProductForTranslation.codigo} gravadas no ZoneSoft com sucesso!`);
+        onSuccess(data.message || `Traduções do artigo #${selectedProductForTranslation.codigo} gravadas no ZoneSoft com sucesso!`);
       } else {
         alert(data.detail || data.message || 'Erro ao gravar traduções.');
       }
