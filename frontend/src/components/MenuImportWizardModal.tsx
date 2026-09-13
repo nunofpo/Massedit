@@ -39,6 +39,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   // Extracted rows state
   const [startCode, setStartCode] = useState<number>(700001);
   const [startFamilyCode, setStartFamilyCode] = useState<number>(101);
+  const [startSubfamilyCode, setStartSubfamilyCode] = useState<number>(1);
   const [reviewedRows, setReviewedRows] = useState<MenuReviewedRow[]>([]);
   const [priceLabels, setPriceLabels] = useState<string[]>(['PVP']);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -54,6 +55,10 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
 
   const handleStartFamilyCodeChange = (newFamStart: number) => {
     setStartFamilyCode(newFamStart);
+  };
+
+  const handleStartSubfamilyCodeChange = (newSubfamStart: number) => {
+    setStartSubfamilyCode(newSubfamStart);
   };
 
   const getNextAvailableFamilyCode = (baseStart: number, currentFams: Family[]) => {
@@ -644,6 +649,22 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                         }}
                         placeholder="Ex: 101"
                         className="w-16 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                      />
+                    </div>
+                    <div className="w-[1px] h-4 bg-violet-200" />
+                    <div className="flex items-center gap-1">
+                      <label className="text-[11px] font-bold text-violet-900 whitespace-nowrap">
+                        Cód. Subfamílias Inicial:
+                      </label>
+                      <input
+                        type="number"
+                        value={startSubfamilyCode || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          handleStartSubfamilyCodeChange(isNaN(val) ? 1 : val);
+                        }}
+                        placeholder="Ex: 1"
+                        className="w-14 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
                       />
                     </div>
                   </div>
