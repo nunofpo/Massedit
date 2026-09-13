@@ -242,8 +242,14 @@ def _generate_icon_for_object(tipoobjecto: int, lugares: Optional[int], largura:
     return _round_table_icon(size, seats, fill_rgb, theme_key)
 
 
-def _bmp_bytes(im: Image.Image) -> bytes:
+def _bmp_bytes(im: Image.Image, bg_rgb: Tuple[int, int, int] = (243, 241, 236)) -> bytes:
     buf = io.BytesIO()
+    if im.mode == "RGBA":
+        # Compõe a transparência sobre a cor do fundo da zona em vez de fundo preto
+        canvas = Image.new("RGB", im.size, bg_rgb)
+        canvas.paste(im, mask=im.split()[3])
+        canvas.save(buf, format="BMP")
+        return buf.getvalue()
     im.convert("RGB").save(buf, format="BMP")
     return buf.getvalue()
 

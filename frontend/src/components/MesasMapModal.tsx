@@ -3,7 +3,7 @@ import {
   X, RefreshCw, MapPin, AlertCircle, Sparkles, Check, Upload, Move, Palette,
   Plus, Copy, Trash2, Grid, ZoomIn, ZoomOut, Settings, Layers, Square, Circle,
   LayoutGrid, Armchair, TreePine, Store, AlignLeft, AlignCenter, AlignRight,
-  MousePointer, Hand, ShieldAlert, Sparkle, Maximize2, Compass, Hash, Type
+  MousePointer, Hand, ShieldAlert, Sparkle, Maximize2, Compass, Hash, Type, Utensils
 } from 'lucide-react';
 
 interface MesasMapModalProps {
@@ -60,6 +60,196 @@ const COLOR_PRESETS = [
   '#8B5CF6', '#EC4899', '#64748B', '#1E293B', '#D4AF37'
 ];
 
+// --- Componente de Renderização Vetorial de Detalhe Máximo (Zero Caixas Pretas) ---
+const TableVectorRender: React.FC<{ obj: ObjetoMesa; isSelected: boolean }> = ({ obj, isSelected }) => {
+  const w = obj.largura || 100;
+  const h = obj.altura || 100;
+  const seats = obj.lugares || 4;
+  const isDecorative = obj.tipoobjecto === 1;
+
+  // Determinar forma
+  let forma = 'round';
+  if (w !== h && Math.abs(w - h) > 30) forma = 'rectangle';
+  if (w === h && seats <= 4) forma = 'square';
+
+  const fillHex = obj.cor_hex && obj.cor_hex !== '#000000' ? obj.cor_hex : '#2d3748';
+
+  // Se o objeto for decorativo (planta, parede, balcão)
+  if (isDecorative) {
+    return (
+      <div className="w-full h-full relative flex items-center justify-center pointer-events-none select-none">
+        <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+          <defs>
+            <linearGradient id={`grad-plant-${obj.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#34d399" />
+              <stop offset="100%" stopColor="#059669" />
+            </linearGradient>
+            <filter id={`shadow-${obj.id}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.3" />
+            </filter>
+          </defs>
+          <rect width={w} height={h} rx={w * 0.15} fill={`url(#grad-plant-${obj.id})`} stroke="#047857" strokeWidth="2" filter={`url(#shadow-${obj.id})`} />
+          <circle cx={w / 2} cy={h / 2} r={minSize(w, h) * 0.25} fill="#065f46" />
+          <path d={`M ${w*0.2} ${h*0.5} Q ${w*0.5} ${h*0.2} ${w*0.8} ${h*0.5} Q ${w*0.5} ${h*0.8} ${w*0.2} ${h*0.5}`} fill="#a7f3d0" opacity="0.6" />
+        </svg>
+        <span className="absolute text-[10px] font-bold text-white drop-shadow-md">
+          {obj.nome}
+        </span>
+      </div>
+    );
+  }
+
+  // Se for Mesa Normal (Redonda, Quadrada, Retangular)
+  const isRound = forma === 'round';
+  const isSquare = forma === 'square';
+  const size = Math.min(w, h);
+  const pad = size * 0.18;
+  const tableW = w - 2 * pad;
+  const tableH = h - 2 * pad;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  // Gerar coordenadas das cadeiras e pratos
+  const seatElements: React.ReactNode[] = [];
+  const plateElements: React.ReactNode[] = [];
+
+  if (isRound) {
+    const radius = tableW / 2;
+    const angles = seats === 1 ? [270] : seats === 2 ? [270, 90] : seats === 3 ? [270, 30, 150] : seats === 6 ? [270, 330, 30, 90, 150, 210] : seats === 8 ? [0, 45, 90, 135, 180, 225, 270, 315] : [270, 90, 0, 180];
+    angles.forEach((deg, idx) => {
+      const rad = (deg * Math.PI) / 180;
+      const chairDist = radius + 12;
+      const plateDist = radius - 14;
+      const sx = cx + chairDist * Math.cos(rad);
+      const sy = cy + chairDist * Math.sin(rad);
+      const px = cx + plateDist * Math.cos(rad);
+      const py = cy + plateDist * Math.sin(rad);
+
+      // Encosto e Assento da Cadeira
+      seatElements.push(
+        <g key={`seat-${idx}`} transform={`translate(${sx}, ${sy}) rotate(${deg + 90})`}>
+          {/* Encosto Curvo */}
+          <rect x="-10" y="-12" width="20" height="7" rx="3.5" fill="#475569" stroke="#1e293b" strokeWidth="1.5" />
+          {/* Assento Almofadado */}
+          <rect x="-9" y="-4" width="18" height="12" rx="4" fill="#cbd5e1" stroke="#64748B" strokeWidth="1.5" />
+        </g>
+      );
+
+      // Prato de Cerâmica & Copo
+      plateElements.push(
+        <g key={`plate-${idx}`}>
+          <circle cx={px} cy={py} r="5.5" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.5" />
+          <circle cx={px} cy={py} r="3" fill="#f8fafc" />
+          <circle cx={px + 7 * Math.cos(rad + 0.4)} cy={py + 7 * Math.sin(rad + 0.4)} r="2" fill="rgba(255,255,255,0.8)" stroke="#94a3b8" strokeWidth="0.8" />
+        </g>
+      );
+    });
+  } else {
+    // Mesas Quadradas e Retangulares
+    const sideSeats = Math.max(1, Math.floor(seats / 2));
+    const seatW = (tableW - 12) / sideSeats;
+    for (let i = 0; i < sideSeats; i++) {
+      const sx = pad + 6 + i * seatW + seatW / 2;
+      // Top seat
+      seatElements.push(
+        <g key={`seat-top-${i}`} transform={`translate(${sx}, ${pad - 10})`}>
+          <rect x="-10" y="-7" width="20" height="6" rx="3" fill="#475569" stroke="#1e293b" strokeWidth="1.5" />
+          <rect x="-9" y="0" width="18" height="11" rx="3.5" fill="#cbd5e1" stroke="#64748b" strokeWidth="1.5" />
+        </g>
+      );
+      plateElements.push(
+        <g key={`plate-top-${i}`}>
+          <circle cx={sx} cy={pad + 12} r="5.5" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.5" />
+          <circle cx={sx + 8} cy={pad + 10} r="2" fill="rgba(255,255,255,0.8)" stroke="#94a3b8" strokeWidth="0.8" />
+        </g>
+      );
+
+      // Bottom seat
+      if (seats >= 2) {
+        seatElements.push(
+          <g key={`seat-bot-${i}`} transform={`translate(${sx}, ${h - pad + 10}) rotate(180)`}>
+            <rect x="-10" y="-7" width="20" height="6" rx="3" fill="#475569" stroke="#1e293b" strokeWidth="1.5" />
+            <rect x="-9" y="0" width="18" height="11" rx="3.5" fill="#cbd5e1" stroke="#64748b" strokeWidth="1.5" />
+          </g>
+        );
+        plateElements.push(
+          <g key={`plate-bot-${i}`}>
+            <circle cx={sx} cy={h - pad - 12} r="5.5" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.5" />
+            <circle cx={sx + 8} cy={h - pad - 10} r="2" fill="rgba(255,255,255,0.8)" stroke="#94a3b8" strokeWidth="0.8" />
+          </g>
+        );
+      }
+    }
+  }
+
+  return (
+    <div className="w-full h-full relative flex items-center justify-center pointer-events-none select-none">
+      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+        <defs>
+          <linearGradient id={`table-wood-${obj.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#334155" />
+            <stop offset="50%" stopColor="#1e293b" />
+            <stop offset="100%" stopColor="#0f172a" />
+          </linearGradient>
+          <linearGradient id={`gold-trim-${obj.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#fbbf24" />
+            <stop offset="50%" stopColor="#d97706" />
+            <stop offset="100%" stopColor="#fbbf24" />
+          </linearGradient>
+          <filter id={`drop-shadow-${obj.id}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="6" floodOpacity="0.45" />
+          </filter>
+        </defs>
+
+        {/* Cadeiras à Volta */}
+        {seatElements}
+
+        {/* Tampo Principal da Mesa */}
+        {isRound ? (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={tableW / 2}
+            fill={`url(#table-wood-${obj.id})`}
+            stroke={`url(#gold-trim-${obj.id})`}
+            strokeWidth="3.5"
+            filter={`url(#drop-shadow-${obj.id})`}
+          />
+        ) : (
+          <rect
+            x={pad}
+            y={pad}
+            width={tableW}
+            height={tableH}
+            rx={minSize(tableW, tableH) * 0.12}
+            fill={`url(#table-wood-${obj.id})`}
+            stroke={`url(#gold-trim-${obj.id})`}
+            strokeWidth="3.5"
+            filter={`url(#drop-shadow-${obj.id})`}
+          />
+        )}
+
+        {/* Louça & Pratos nas Posições dos Clientes */}
+        {plateElements}
+
+        {/* Arranjo Central / Vaso de Flores para Mesas de 4+ lugares */}
+        {seats >= 4 && (
+          <g transform={`translate(${cx}, ${cy})`}>
+            <circle cx="0" cy="0" r="4.5" fill="#f59e0b" opacity="0.9" />
+            <circle cx="-2" cy="-2" r="2.5" fill="#f43f5e" opacity="0.8" />
+            <circle cx="2.5" cy="-1.5" r="2.5" fill="#a855f7" opacity="0.8" />
+            <circle cx="1" cy="2.5" r="2.5" fill="#3b82f6" opacity="0.8" />
+          </g>
+        )}
+      </svg>
+    </div>
+  );
+};
+
+function minSize(w: number, h: number): number {
+  return Math.min(w, h);
+}
+
 export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [zonas, setZonas] = useState<ZonaSummary[]>([]);
   const [selectedZona, setSelectedZona] = useState<number | null>(null);
@@ -80,7 +270,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
   // Modal de Criar Mesa/Decorativo
   const [showCreateObjModal, setShowCreateObjModal] = useState(false);
   const [createObjForm, setCreateObjForm] = useState({
-    nome: '', tipoobjecto: 0, lugares: 4, forma: 'round', largura: 100, altura: 100, cor_hex: '#8B8578'
+    nome: '', tipoobjecto: 0, lugares: 4, forma: 'round', largura: 110, altura: 110, cor_hex: '#8B8578'
   });
   const [isCreatingObj, setIsCreatingObj] = useState(false);
 
@@ -466,8 +656,8 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
     const dx = (e.clientX - r.startX) / scale;
     const dy = (e.clientY - r.startY) / scale;
 
-    let newW = Math.max(40, r.origW + dx);
-    let newH = Math.max(40, r.origH + dy);
+    let newW = Math.max(50, r.origW + dx);
+    let newH = Math.max(50, r.origH + dy);
 
     if (snapGrid > 0) {
       newW = Math.round(newW / snapGrid) * snapGrid;
@@ -679,9 +869,9 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
               <Compass className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-wide">Estúdio Profissional de Mapa de Mesas</h2>
+              <h2 className="text-base font-bold text-white tracking-wide">Estúdio Profissional de Mapa de Mesas HD</h2>
               <p className="text-[11px] text-slate-400 font-medium">
-                Edição de Mesas, Tamanho da Sala (Chão), Nomes & Números — ZoneSoft
+                Desenho Vetorial de Alta Fidelidade (Zero Caixas Pretas) & Sincronização ZoneSoft
               </p>
             </div>
           </div>
@@ -859,7 +1049,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                   type="button"
                   onClick={() => {
                     const nextNum = zonaDetail?.objetos.length ? zonaDetail.objetos.length + 1 : 1;
-                    setCreateObjForm({ nome: String(nextNum), tipoobjecto: 0, lugares: 4, forma: 'round', largura: 100, altura: 100, cor_hex: '#8B8578' });
+                    setCreateObjForm({ nome: String(nextNum), tipoobjecto: 0, lugares: 4, forma: 'round', largura: 110, altura: 110, cor_hex: '#8B8578' });
                     setShowCreateObjModal(true);
                   }}
                   className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition shadow-md"
@@ -943,7 +1133,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                       transform: `scale(${zoomLevel / 100})`,
                       backgroundImage: zonaDetail.background_base64 ? `url(data:image/bmp;base64,${zonaDetail.background_base64})` : undefined,
                       backgroundRepeat: 'repeat',
-                      backgroundColor: '#1e293b'
+                      backgroundColor: '#0f172a'
                     }}
                   >
                     {/* Linha Guias Inteligentes de Alinhamento */}
@@ -971,7 +1161,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                       />
                     )}
 
-                    {/* Renderização Vetorial Interativa dos Objetos */}
+                    {/* Renderização Vetorial Interativa de Detalhe Máximo (Sem Caixas Pretas) */}
                     {zonaDetail.objetos.map(obj => {
                       const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy, width: obj.largura, height: obj.altura };
                       if (pos.posx === 0 && pos.posy === 0) return null;
@@ -984,35 +1174,31 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                         <div
                           key={obj.id}
                           onPointerDown={(e) => handlePointerDown(obj, e)}
-                          className={`absolute cursor-move select-none flex items-center justify-center transition-shadow rounded-xl ${isSelected ? 'ring-4 ring-emerald-400 z-20 shadow-2xl' : isDirty ? 'ring-2 ring-amber-400 z-10' : 'hover:ring-2 hover:ring-slate-400'}`}
+                          className={`absolute cursor-move select-none flex items-center justify-center transition-all rounded-2xl ${isSelected ? 'ring-4 ring-emerald-400 z-20 shadow-2xl' : isDirty ? 'ring-2 ring-amber-400 z-10' : 'hover:ring-2 hover:ring-slate-500'}`}
                           style={{
                             left: pos.posx,
                             top: pos.posy,
                             width: currentW,
-                            height: currentH
+                            height: currentH,
+                            backgroundColor: 'transparent'
                           }}
                         >
-                          {obj.imagem_base64 ? (
-                            <img src={`data:image/bmp;base64,${obj.imagem_base64}`} alt={obj.nome} className="w-full h-full pointer-events-none" draggable={false} />
-                          ) : (
-                            <div className="w-full h-full bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center justify-center text-xs font-bold text-white pointer-events-none p-1 text-center shadow-lg">
-                              <span>{obj.nome}</span>
-                              {obj.lugares > 0 && <span className="text-[10px] text-slate-400 font-normal">{obj.lugares} lug.</span>}
-                            </div>
-                          )}
-                          <span className="absolute -top-2.5 -left-2 bg-slate-950/90 text-emerald-400 border border-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-md">
-                            Mesa #{obj.id} ({obj.nome})
-                          </span>
+                          {/* Desenho Vetorial NATIVO de Detalhe Máximo em SVG (Sem imagem raster preta) */}
+                          <TableVectorRender obj={{ ...obj, largura: currentW, altura: currentH }} isSelected={isSelected} />
+
+                          {/* Emblema com Número e Nome da Mesa */}
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-950/90 text-emerald-400 border border-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap backdrop-blur-xs flex items-center gap-1">
+                            <span>#{obj.id}</span>
+                            <span className="text-slate-300 font-semibold">({obj.nome})</span>
+                          </div>
 
                           {/* Manipuladores Visuais de Redimensionamento nos Cantos da Mesa (Resize Handles) */}
                           {isSelected && (
-                            <>
-                              <div
-                                onPointerDown={(e) => handleResizeStart(obj, 'br', e)}
-                                className="absolute -bottom-2 -right-2 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:scale-125 transition-transform z-30"
-                                title="Arrastar para Redimensionar Mesa"
-                              />
-                            </>
+                            <div
+                              onPointerDown={(e) => handleResizeStart(obj, 'br', e)}
+                              className="absolute -bottom-2 -right-2 w-4 h-4 bg-emerald-400 border-2 border-slate-950 rounded-full cursor-se-resize shadow-lg hover:scale-125 transition-transform z-30 ring-2 ring-emerald-300"
+                              title="Arrastar para Redimensionar Mesa"
+                            />
                           )}
                         </div>
                       );
@@ -1044,7 +1230,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                 <div className="space-y-5">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                     <div>
-                      <h3 className="text-sm font-bold text-white">Editar Objeto</h3>
+                      <h3 className="text-sm font-bold text-white">Editar Mesa / Objeto</h3>
                       <p className="text-[10px] text-slate-400">Registo oficial em dbo.mesas & mapamesas</p>
                     </div>
                     <span className="text-[10px] font-bold bg-slate-800 text-emerald-400 px-2 py-1 rounded-lg">ID #{selectedObj.id}</span>
