@@ -1347,6 +1347,14 @@ def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change
         sets.append("sync = 1")
     if sets:
         cursor.execute(f"UPDATE dbo.produtos SET {', '.join(sets)} WHERE codigo = ?", params + [codigo])
+        try:
+            cursor.execute(
+                "INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) "
+                "VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 2, 0)",
+                (codigo,)
+            )
+        except Exception:
+            pass
     return True
 
 
@@ -1430,6 +1438,11 @@ def apply_bulk_edit(req: BulkEditRequest) -> Tuple[bool, str, int]:
             for p, changes in plan:
                 if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync):
                     affected += 1
+            if affected > 0:
+                try:
+                    cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+                except Exception:
+                    pass
             conn.commit()
         except Exception as e:
             conn.rollback()
