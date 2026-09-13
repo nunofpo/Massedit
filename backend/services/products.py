@@ -2153,6 +2153,8 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                     target_isencao = ""
                 else:
                     target_isencao = (imp.isencao or "M07").strip()
+                    if target_isencao in ("", "0"):
+                        target_isencao = "M07"
 
                 prod_desc = (imp.descricao or f"Artigo {imp.codigo}")[:250]
                 prod_curta = (imp.descricaocurta or "")[:250]

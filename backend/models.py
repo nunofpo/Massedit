@@ -251,7 +251,7 @@ class ImportRow(BaseModel):
     familia: Optional[int] = None
     subfam: Optional[int] = None
     iva: Optional[float] = None
-    isencao: Optional[str] = "0"
+    isencao: Optional[str] = ""
     pvp1: Optional[float] = None
 
     pvp2: Optional[float] = None
