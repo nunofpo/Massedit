@@ -64,9 +64,8 @@ class ProductItem(BaseModel):
     iva: Optional[float] = None
     iva_desc: Optional[str] = ""
     isencao: Optional[str] = ""
-    centro_prod: Optional[int] = None
+    centro_prod: Optional[int] = None  # Centro de Produção Primário (dbo.produtos.cozinha)
     centro_prod_desc: Optional[str] = ""
-    centro_prod_info: Optional[int] = 0
     pvp1: float = 0.0
     pvp2: float = 0.0
     pvp3: float = 0.0
@@ -152,10 +151,17 @@ class BulkEditRequest(BaseModel):
     apply_subfamilia: bool = False
     new_subfamilia: Optional[int] = None
 
-    # Centro de Produção (Cozinha, Bar, Bebidas, etc.)
-    apply_centro_prod: bool = False
-    new_centro_prod: Optional[int] = None  # Código do centrosprod (ou None/0 para remover)
-    centro_prod_info: int = 0  # 0=Preparação, 1=Informativo
+    # Centro de Produção Primário (dbo.produtos.cozinha) - para onde o pedido é encaminhado por omissão
+    apply_centro_primario: bool = False
+    new_centro_primario: Optional[int] = None  # Código do centrosprod (ou None/0 para remover)
+
+    # Centros de Produção Secundários (dbo.produtoscentrosprod, informativo=0) - saem também nestes centros
+    apply_centros_secundarios: bool = False
+    new_centros_secundarios: List[int] = Field(default_factory=list)
+
+    # Centros de Produção Informativos (dbo.produtoscentrosprod, informativo=1) - aparecem só no ecrã
+    apply_centros_informativos: bool = False
+    new_centros_informativos: List[int] = Field(default_factory=list)
     
     # Imposto / IVA
     apply_iva: bool = False
@@ -581,6 +587,11 @@ class EmentaTranslateResponse(BaseModel):
 class EmentaSaveTranslationsRequest(BaseModel):
     cod_produto: int
     translations: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+
+
+class EmentaSaveFamilyTranslationsRequest(BaseModel):
+    cod_familia: int
+    translations: Dict[str, str] = Field(default_factory=dict)
 
 
 # ======================================================================

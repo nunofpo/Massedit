@@ -37,7 +37,6 @@ export interface ProductItem {
   iva_desc?: string;
   centro_prod?: number;
   centro_prod_desc?: string;
-  centro_prod_info?: number;
   pvp1: number;
   pvp2: number;
   pvp3: number;
@@ -201,9 +200,12 @@ export interface BulkEditRequest {
   new_familia?: number;
   apply_subfamilia?: boolean;
   new_subfamilia?: number;
-  apply_centro_prod?: boolean;
-  new_centro_prod?: number | null;
-  centro_prod_info?: number;
+  apply_centro_primario?: boolean;
+  new_centro_primario?: number | null;
+  apply_centros_secundarios?: boolean;
+  new_centros_secundarios?: number[];
+  apply_centros_informativos?: boolean;
+  new_centros_informativos?: number[];
   apply_iva: boolean;
   new_iva?: number;
   apply_bloqueado: boolean;

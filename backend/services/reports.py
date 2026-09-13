@@ -222,7 +222,7 @@ def check_invalid_vat(cursor, schema: SchemaInfo) -> DataQualityCheck:
 def check_no_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
     check_id = "no_production_center"
     title = "Sem centro de produção atribuído"
-    desc = "Artigos sem qualquer encaminhamento para Centro de Produção (Cozinha/Bar). Agrupado por família."
+    desc = "Artigos sem centro de produção primário (dbo.produtos.cozinha) nem secundário/informativo. Agrupado por família."
     if not _has_table(schema, "produtoscentrosprod"):
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
@@ -234,7 +234,8 @@ def check_no_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
         SELECT p.codigo, ISNULL(f.descricao, 'Sem Família') AS fam_desc
         FROM dbo.produtos p
         LEFT JOIN dbo.familias f ON p.familia = f.codigo
-        WHERE NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod pcp WHERE pcp.codigo = p.codigo)
+        WHERE ISNULL(p.cozinha, 0) = 0
+          AND NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod pcp WHERE pcp.codigo = p.codigo)
         ORDER BY f.descricao, p.codigo
     """
     cursor.execute(sql)
@@ -260,7 +261,7 @@ def check_no_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
 def check_invalid_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
     check_id = "invalid_production_center"
     title = "Centro de produção inexistente"
-    desc = "Associação em produtoscentrosprod a um centro que não existe na tabela dbo.centrosprod."
+    desc = "Artigo com centro primário (dbo.produtos.cozinha) ou secundário/informativo (produtoscentrosprod) que não existe em dbo.centrosprod."
     if not _has_table(schema, "produtoscentrosprod") or not _has_table(schema, "centrosprod"):
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="warning",
@@ -273,7 +274,12 @@ def check_invalid_production_center(cursor, schema: SchemaInfo) -> DataQualityCh
         FROM dbo.produtoscentrosprod pcp
         WHERE pcp.centro IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM dbo.centrosprod cp WHERE cp.codigo = pcp.centro)
-        ORDER BY pcp.codigo
+        UNION
+        SELECT DISTINCT p.codigo
+        FROM dbo.produtos p
+        WHERE ISNULL(p.cozinha, 0) <> 0
+          AND NOT EXISTS (SELECT 1 FROM dbo.centrosprod cp WHERE cp.codigo = p.cozinha)
+        ORDER BY 1
     """
     cursor.execute(sql)
     codes = [int(r[0]) for r in cursor.fetchall()]

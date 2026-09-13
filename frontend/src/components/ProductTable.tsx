@@ -257,11 +257,10 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       {product.centro_prod_desc && (
                         <div
                           className="text-[10px] text-amber-900 font-semibold truncate flex items-center gap-1 mt-0.5"
-                          title={`Centro de Produção: ${product.centro_prod_desc} (${product.centro_prod_info ? 'Informativo' : 'Preparação'})`}
+                          title={`Centro de Produção Primário: ${product.centro_prod_desc}`}
                         >
                           <span className="bg-amber-100 text-amber-950 px-1.5 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 font-bold shadow-xs">
                             🍳 {product.centro_prod_desc}
-                            {product.centro_prod_info === 1 && <span className="text-[8px] uppercase tracking-wider text-amber-800 font-extrabold">(Info)</span>}
                           </span>
                         </div>
                       )}

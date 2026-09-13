@@ -183,12 +183,7 @@ PRODUCT_FROM_SQL = """
     FROM dbo.produtos p
     LEFT JOIN dbo.familias f ON p.familia = f.codigo
     LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
-    LEFT JOIN (
-        SELECT codigo, MAX(centro) AS centro, MAX(CAST(informativo AS INT)) AS informativo
-        FROM dbo.produtoscentrosprod
-        GROUP BY codigo
-    ) pcp ON p.codigo = pcp.codigo
-    LEFT JOIN dbo.centrosprod cp ON pcp.centro = cp.codigo
+    LEFT JOIN dbo.centrosprod cp ON p.cozinha = cp.codigo
 """
 
 
@@ -205,7 +200,7 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         ISNULL(p.pvp6, 0), ISNULL(p.pvp7, 0), ISNULL(p.pvp8, 0), ISNULL(p.pvp9, 0), ISNULL(p.pvp10, 0),
         ISNULL(p.fundo, 0), ISNULL(p.letra, 16777215), ISNULL(p.ordem, 0), ISNULL(p.codigo_alf, 0),
         ISNULL(p.codbarras, ''), ISNULL(p.referencia, ''),
-        pcp.centro, cp.descricao, ISNULL(pcp.informativo, 0),
+        ISNULL(p.cozinha, 0), cp.descricao,
         {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)},
         {isencao_col}
     """
@@ -223,8 +218,8 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         has_sales, sales_ok = code in sales_codes, True
     fundo = _int_or(r[18], 0)
     letra = _int_or(r[19], 16777215)
-    cor = _int_or(r[29], 0)
-    isencao_val = str(r[31] or "") if len(r) > 31 and r[31] is not None else ""
+    cor = _int_or(r[28], 0)
+    isencao_val = str(r[30] or "") if len(r) > 30 and r[30] is not None else ""
     return ProductItem(
         codigo=code,
         descricao=r[1] or "",
@@ -246,14 +241,13 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         plu=_int_or(r[21], 0),
         codbarras=r[22] or "",
         referencia=r[23] or "",
-        centro_prod=r[24],
+        centro_prod=r[24] if r[24] else None,
         centro_prod_desc=r[25] or "",
-        centro_prod_info=_int_or(r[26], 0),
-        bloqueado=_int_or(r[27], 0),
-        frontoffice=_int_or(r[28], 1),
+        bloqueado=_int_or(r[26], 0),
+        frontoffice=_int_or(r[27], 1),
         cor=cor,
         cor_hex=int_color_to_hex(cor),
-        sync=_int_or(r[30], 0),
+        sync=_int_or(r[29], 0),
         isencao=isencao_val,
         has_sales=has_sales,
         sales_check_ok=sales_ok,
@@ -357,9 +351,10 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
         params.append(float(filters.iva))
     if filters.centro_prod is not None:
         if filters.centro_prod == 0:
-            where.append("NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo)")
+            where.append("(ISNULL(p.cozinha, 0) = 0 AND NOT EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo))")
         else:
-            where.append("EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo AND x.centro = ?)")
+            where.append("(p.cozinha = ? OR EXISTS (SELECT 1 FROM dbo.produtoscentrosprod x WHERE x.codigo = p.codigo AND x.centro = ?))")
+            params.append(filters.centro_prod)
             params.append(filters.centro_prod)
 
     if filters.bloqueado is not None:
@@ -522,6 +517,35 @@ def get_selection_summary(product_codes: List[int]) -> Dict[str, Any]:
             "sales_check_ok": sales_check_ok,
             "sample": sample_item.model_dump() if sample_item else None
         }
+    finally:
+        conn.close()
+
+
+# ======================================================================
+# Estado de Sincronização Cloud ZoneSoft
+# ======================================================================
+
+def get_zonesoft_sync_status() -> Dict[str, Any]:
+    """Obtém o estado da sincronização cloud do ZoneSoft (dbo.fullsync)."""
+    try:
+        conn = db_manager.get_connection()
+    except Exception as e:
+        return {"available": False, "pending": False, "sync": None, "finished": None, "message": str(e)}
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "fullsync" not in schema:
+            return {"available": False, "pending": False, "sync": None, "finished": None,
+                    "message": "Tabela dbo.fullsync não existe nesta base de dados."}
+        cursor.execute("SELECT TOP 1 sync, finished FROM dbo.fullsync")
+        row = cursor.fetchone()
+        if not row:
+            return {"available": True, "pending": False, "sync": None, "finished": None,
+                    "message": "Tabela dbo.fullsync está vazia."}
+        sync_val = int(row[0]) if row[0] is not None else 0
+        finished_val = int(row[1]) if row[1] is not None else 1
+        pending = sync_val == 1 and finished_val == 0
+        return {"available": True, "pending": pending, "sync": sync_val, "finished": finished_val, "message": ""}
     finally:
         conn.close()
 
@@ -1009,6 +1033,7 @@ class Change:
                  column: Optional[str] = None, value: Any = None,
                  blocked: bool = False, reason: Optional[str] = None,
                  centros: Optional[List[Tuple[int, int]]] = None,
+                 centros_informativo: Optional[int] = None,
                  price_idx: Optional[int] = None):
         self.field_name = field_name
         self.label = label
@@ -1019,6 +1044,7 @@ class Change:
         self.blocked = blocked
         self.reason = reason
         self.centros = centros
+        self.centros_informativo = centros_informativo
         self.price_idx = price_idx
 
     def to_diff(self) -> FieldDiff:
@@ -1282,23 +1308,51 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
             if (p.isencao or "") != new_isencao:
                 changes.append(Change("isencao", "Motivo de Isenção", p.isencao or "(Nenhum)", new_isencao or "(Nenhum)", column="isencao", value=new_isencao))
 
-    # 6. Centro de produção
-    if req.apply_centro_prod:
-        new_center = req.new_centro_prod if (req.new_centro_prod and req.new_centro_prod > 0) else None
-        new_rows = [(int(new_center), int(req.centro_prod_info or 0))] if new_center else []
-        old_rows = sorted((c["centro"], c["informativo"]) for c in (p.centros_prod or []))
-        if sorted(new_rows) != old_rows:
-            old_disp = p.centro_prod_desc or "(Sem Centro)"
-            if len(old_rows) > 1:
-                old_disp += f" (+{len(old_rows) - 1})"
-            label = "Centro de Produção"
-            if new_center and new_center not in lookups.centers:
-                changes.append(_blocked("centro_prod", label, old_disp, f"#{new_center}",
-                                        f"O centro de produção {new_center} não existe."))
+    # 6. Centro de Produção Primário (dbo.produtos.cozinha)
+    if req.apply_centro_primario:
+        new_primary = req.new_centro_primario if (req.new_centro_primario and req.new_centro_primario > 0) else 0
+        cur_primary = p.centro_prod or 0
+        if new_primary != cur_primary:
+            label = "Centro de Produção Primário"
+            old_disp = p.centro_prod_desc or "(Nenhum)"
+            if new_primary and new_primary not in lookups.centers:
+                changes.append(_blocked("centro_primario", label, old_disp, f"#{new_primary}",
+                                        f"O centro de produção {new_primary} não existe."))
             else:
-                new_disp = (f"{lookups.centers[new_center]} ({'Informativo' if req.centro_prod_info else 'Preparação'})"
-                            if new_center else "(Remover / Nenhum)")
-                changes.append(Change("centro_prod", label, old_disp, new_disp, centros=new_rows))
+                new_disp = lookups.centers[new_primary] if new_primary else "(Remover / Nenhum)"
+                changes.append(Change("centro_primario", label, old_disp, new_disp, column="cozinha", value=new_primary))
+
+    # 6.1 Centros de Produção Secundários (dbo.produtoscentrosprod, informativo=0)
+    if req.apply_centros_secundarios:
+        new_secs = sorted(set(int(c) for c in (req.new_centros_secundarios or []) if c))
+        cur_secs = sorted(set(int(c["centro"]) for c in (p.centros_prod or []) if c["informativo"] == 0))
+        invalid = [c for c in new_secs if c not in lookups.centers]
+        label = "Centros de Produção Secundários"
+        old_disp = ", ".join(lookups.centers.get(c, f"#{c}") for c in cur_secs) or "(Nenhum)"
+        if invalid:
+            changes.append(_blocked("centros_secundarios", label, old_disp,
+                                    ", ".join(f"#{c}" for c in invalid),
+                                    f"Centro(s) de produção inexistente(s): {', '.join(str(c) for c in invalid)}."))
+        elif new_secs != cur_secs:
+            new_disp = ", ".join(lookups.centers.get(c, f"#{c}") for c in new_secs) or "(Remover / Nenhum)"
+            changes.append(Change("centros_secundarios", label, old_disp, new_disp,
+                                  centros=[(c, 0) for c in new_secs], centros_informativo=0))
+
+    # 6.2 Centros de Produção Informativos (dbo.produtoscentrosprod, informativo=1)
+    if req.apply_centros_informativos:
+        new_infos = sorted(set(int(c) for c in (req.new_centros_informativos or []) if c))
+        cur_infos = sorted(set(int(c["centro"]) for c in (p.centros_prod or []) if c["informativo"] == 1))
+        invalid = [c for c in new_infos if c not in lookups.centers]
+        label = "Centros de Produção Informativos"
+        old_disp = ", ".join(lookups.centers.get(c, f"#{c}") for c in cur_infos) or "(Nenhum)"
+        if invalid:
+            changes.append(_blocked("centros_informativos", label, old_disp,
+                                    ", ".join(f"#{c}" for c in invalid),
+                                    f"Centro(s) de produção inexistente(s): {', '.join(str(c) for c in invalid)}."))
+        elif new_infos != cur_infos:
+            new_disp = ", ".join(lookups.centers.get(c, f"#{c}") for c in new_infos) or "(Remover / Nenhum)"
+            changes.append(Change("centros_informativos", label, old_disp, new_disp,
+                                  centros=[(c, 1) for c in new_infos], centros_informativo=1))
 
     # 7. Estado, visibilidade e posição
     if req.apply_bloqueado:
@@ -1338,7 +1392,13 @@ def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change
             new_iva_val = float(ch.value) if ch.value is not None else 0.0
 
         if ch.centros is not None:
-            cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (codigo,))
+            if ch.centros_informativo is None:
+                cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (codigo,))
+            else:
+                cursor.execute(
+                    "DELETE FROM dbo.produtoscentrosprod WHERE codigo = ? AND ISNULL(CAST(informativo AS INT), 0) = ?",
+                    (codigo, ch.centros_informativo)
+                )
             for centro, info in ch.centros:
                 cursor.execute(
                     "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, ?)",

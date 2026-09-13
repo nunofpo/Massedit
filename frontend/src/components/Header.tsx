@@ -5,6 +5,7 @@ interface HeaderProps {
   isConnected: boolean;
   useMock: boolean;
   connectionMsg: string;
+  zsSyncStatus?: { available: boolean; pending: boolean } | null;
   onOpenConfig: () => void;
   onOpenBackups: () => void;
   onOpenFamilyColors: () => void;
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   isConnected,
   useMock,
   connectionMsg,
+  zsSyncStatus,
   onOpenConfig,
   onOpenBackups,
   onOpenFamilyColors,
@@ -59,6 +61,23 @@ export const Header: React.FC<HeaderProps> = ({
           <span className={`w-2.5 h-2.5 rounded-full ${isConnected && !useMock ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
           {isConnected && !useMock ? 'SQL Server Ligado' : 'Modo Demo / Mock Interativo'}
         </div>
+
+        {/* ZoneSoft Cloud Sync Status Badge */}
+        {zsSyncStatus && zsSyncStatus.available && (
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${
+              zsSyncStatus.pending
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}
+            title={zsSyncStatus.pending
+              ? 'Há alterações a aguardar sincronização com a cloud do ZoneSoft (dbo.fullsync)'
+              : 'Todas as alterações já foram sincronizadas com a cloud do ZoneSoft'}
+          >
+            <RefreshCw className={`w-3 h-3 ${zsSyncStatus.pending ? 'animate-spin' : ''}`} />
+            {zsSyncStatus.pending ? 'ZoneSoft: a sincronizar...' : 'ZoneSoft: sincronizado'}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <button

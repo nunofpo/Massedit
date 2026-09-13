@@ -145,9 +145,14 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [newSubfamilia, setNewSubfamilia] = useState<number | undefined>(undefined);
 
   // Form State: Centros de Produção
-  const [applyCentroProd, setApplyCentroProd] = useState(false);
-  const [newCentroProd, setNewCentroProd] = useState<number | null>(null);
-  const [centroProdInfo, setCentroProdInfo] = useState<number>(0);
+  const [applyCentroPrimario, setApplyCentroPrimario] = useState(false);
+  const [newCentroPrimario, setNewCentroPrimario] = useState<number | null>(null);
+
+  const [applyCentrosSecundarios, setApplyCentrosSecundarios] = useState(false);
+  const [newCentrosSecundarios, setNewCentrosSecundarios] = useState<Set<number>>(new Set());
+
+  const [applyCentrosInformativos, setApplyCentrosInformativos] = useState(false);
+  const [newCentrosInformativos, setNewCentrosInformativos] = useState<Set<number>>(new Set());
 
   // Subfamilies belonging to selected newFamilia
   const filteredSubfamilies = newFamilia !== undefined
@@ -178,7 +183,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const colorsCount = (applyFundo ? 1 : 0) + (applyLetra ? 1 : 0) + (applyCor ? 1 : 0);
   const categoriesCount = (applyFamilia ? 1 : 0) + (applySubfamilia ? 1 : 0);
   const codesCount = (applyPlu ? 1 : 0) + (applyCodbarras ? 1 : 0) + (applyReferencia ? 1 : 0);
-  const productionCount = applyCentroProd ? 1 : 0;
+  const productionCount = (applyCentroPrimario ? 1 : 0) + (applyCentrosSecundarios ? 1 : 0) + (applyCentrosInformativos ? 1 : 0);
   const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0) + (applyPosicaofront ? 1 : 0);
 
   const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + productionCount + statusCount;
@@ -222,9 +227,12 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       new_familia: newFamilia,
       apply_subfamilia: applySubfamilia,
       new_subfamilia: newSubfamilia,
-      apply_centro_prod: applyCentroProd,
-      new_centro_prod: newCentroProd,
-      centro_prod_info: centroProdInfo,
+      apply_centro_primario: applyCentroPrimario,
+      new_centro_primario: newCentroPrimario,
+      apply_centros_secundarios: applyCentrosSecundarios,
+      new_centros_secundarios: Array.from(newCentrosSecundarios),
+      apply_centros_informativos: applyCentrosInformativos,
+      new_centros_informativos: Array.from(newCentrosInformativos),
       apply_iva: applyIva,
       new_iva: newIva,
       apply_bloqueado: applyBloqueado,
@@ -1313,77 +1321,115 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                 Encaminhamento para Produção (Cozinha/Bar)
               </h3>
 
-              {/* Production Center Checkbox & Selector */}
-              <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={applyCentroProd}
-                  onChange={(e) => setApplyCentroProd(e.target.checked)}
-                  className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
-                />
-                <span>Alterar Centro de Produção de Destino (`dbo.produtoscentrosprod`)</span>
-              </label>
+              {/* Centro Primário */}
+              <div className="space-y-2 pb-3 border-b border-slate-100">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyCentroPrimario}
+                    onChange={(e) => setApplyCentroPrimario(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Alterar Centro de Produção Primário (`dbo.produtos.cozinha`)</span>
+                </label>
+                {applyCentroPrimario && (
+                  <select
+                    value={newCentroPrimario ?? ''}
+                    onChange={(e) => setNewCentroPrimario(e.target.value === '' ? null : Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-semibold"
+                  >
+                    <option value="">(Remover / Sem Centro Primário)</option>
+                    {productionCenters.map((pc) => (
+                      <option key={pc.codigo} value={pc.codigo}>
+                        🍳 {pc.descricao} (#{pc.codigo})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
-              {applyCentroProd && (
-                <div className="space-y-3 pt-2 border-t border-slate-100">
-                  <div>
-                    <label className="text-[11px] text-slate-600 font-semibold block mb-1">
-                      Selecionar Centro de Produção:
-                    </label>
-                    <select
-                      value={newCentroProd ?? ''}
-                      onChange={(e) => setNewCentroProd(e.target.value === '' ? null : Number(e.target.value))}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-semibold"
-                    >
-                      <option value="">(Remover / Sem Centro de Produção)</option>
-                      {productionCenters.map((pc) => (
-                        <option key={pc.codigo} value={pc.codigo}>
-                          🍳 {pc.descricao} (#{pc.codigo})
-                        </option>
-                      ))}
-                    </select>
+              {/* Centros Secundários */}
+              <div className="space-y-2 pb-3 border-b border-slate-100">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyCentrosSecundarios}
+                    onChange={(e) => setApplyCentrosSecundarios(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Alterar Centros de Produção Secundários (saem também aqui)</span>
+                </label>
+                {applyCentrosSecundarios && (
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
+                    {productionCenters.map((pc) => {
+                      const checked = newCentrosSecundarios.has(pc.codigo);
+                      return (
+                        <label key={pc.codigo} className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer px-1 py-0.5 rounded hover:bg-white">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setNewCentrosSecundarios(prev => {
+                                const next = new Set(prev);
+                                if (next.has(pc.codigo)) next.delete(pc.codigo); else next.add(pc.codigo);
+                                return next;
+                              });
+                            }}
+                            className="rounded border-slate-300 bg-white text-amber-600 focus:ring-amber-500"
+                          />
+                          {pc.descricao}
+                        </label>
+                      );
+                    })}
                   </div>
+                )}
+              </div>
 
-                  {newCentroProd !== null && newCentroProd > 0 && (
-                    <div>
-                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">
-                        Tipo de Pedido no POS:
-                      </label>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setCentroProdInfo(0)}
-                          className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
-                            centroProdInfo === 0
-                              ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
-                              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                          }`}
-                        >
-                          🔥 Preparação (Imprime Pedido)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCentroProdInfo(1)}
-                          className={`py-2 px-3 rounded-lg font-semibold border transition text-center ${
-                            centroProdInfo === 1
-                              ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                          }`}
-                        >
-                          ℹ️ Informativo (Apenas Ecrã)
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                    <p className="flex items-center gap-1 font-bold text-amber-700">
-                      💡 Informação de Sincronização:
-                    </p>
-                    <p className="leading-relaxed">
-                      Ao guardar, a tabela <code className="text-indigo-600 font-mono font-semibold">dbo.produtoscentrosprod</code> é atualizada e os artigos são automaticamente marcados com <code className="text-amber-600 font-mono font-semibold">sync = 1</code> para atualizar os postos POS na cloud.
-                    </p>
+              {/* Centros Informativos */}
+              <div className="space-y-2 pb-1">
+                <label className="flex items-center gap-2 font-bold text-xs text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyCentrosInformativos}
+                    onChange={(e) => setApplyCentrosInformativos(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Alterar Centros de Produção Informativos (apenas ecrã)</span>
+                </label>
+                {applyCentrosInformativos && (
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
+                    {productionCenters.map((pc) => {
+                      const checked = newCentrosInformativos.has(pc.codigo);
+                      return (
+                        <label key={pc.codigo} className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer px-1 py-0.5 rounded hover:bg-white">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setNewCentrosInformativos(prev => {
+                                const next = new Set(prev);
+                                if (next.has(pc.codigo)) next.delete(pc.codigo); else next.add(pc.codigo);
+                                return next;
+                              });
+                            }}
+                            className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                          />
+                          {pc.descricao}
+                        </label>
+                      );
+                    })}
                   </div>
+                )}
+              </div>
+
+              {(applyCentroPrimario || applyCentrosSecundarios || applyCentrosInformativos) && (
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                  <p className="flex items-center gap-1 font-bold text-amber-700">
+                    💡 Informação de Sincronização:
+                  </p>
+                  <p className="leading-relaxed">
+                    Ao guardar, <code className="text-indigo-600 font-mono font-semibold">dbo.produtos.cozinha</code> (primário) e <code className="text-indigo-600 font-mono font-semibold">dbo.produtoscentrosprod</code> (secundários/informativos) são atualizados e os artigos são automaticamente marcados com <code className="text-amber-600 font-mono font-semibold">sync = 1</code> para atualizar os postos POS na cloud.
+                  </p>
                 </div>
               )}
             </div>

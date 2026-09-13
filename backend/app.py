@@ -33,7 +33,7 @@ from backend.services.products import (
     get_families, create_family, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
     get_vats, get_motivos_isencao, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
-    get_production_centers, get_printers
+    get_production_centers, get_printers, get_zonesoft_sync_status
 
 )
 from backend.services.reports import run_data_quality_report
@@ -51,7 +51,8 @@ from backend.services.ementa_digital import (
     get_ementa_languages, set_ementa_active_languages, get_product_translations, save_product_translations,
     translate_menu_texts, update_single_ementa_product,
     auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
-    save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules
+    save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules,
+    get_structure_translations, save_structure_translations
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -266,6 +267,11 @@ def list_production_centers_endpoint():
 def list_printers_endpoint():
     """Lista Impressoras disponíveis."""
     return get_printers()
+
+@app.get("/api/zonesoft-sync/status")
+def zonesoft_sync_status_endpoint():
+    """Estado da sincronização cloud do ZoneSoft (dbo.fullsync)."""
+    return get_zonesoft_sync_status()
 
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
@@ -708,6 +714,21 @@ def auto_general_translations_endpoint(target_langs: Optional[List[str]] = Body(
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message, "count": count}
+
+
+@app.get("/api/ementa-digital/structure-translations")
+def get_structure_translations_endpoint():
+    """Obtém as traduções dos nomes das ementas (menus) e famílias da ementa digital."""
+    return get_structure_translations()
+
+
+@app.post("/api/ementa-digital/structure-translations")
+def save_structure_translations_endpoint(payload: Dict[str, Any] = Body(...)):
+    """Grava em lote as traduções dos nomes das ementas (menus) e famílias."""
+    success, message = save_structure_translations(payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
 
 
 # Servir Frontend estático se compilado (Suporte a PyInstaller bundle)

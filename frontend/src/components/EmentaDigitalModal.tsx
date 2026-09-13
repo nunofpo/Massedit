@@ -76,6 +76,19 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [isAutoGeneralTranslating, setIsAutoGeneralTranslating] = useState<boolean>(false);
   const [isActivatingLangs, setIsActivatingLangs] = useState<boolean>(false);
 
+  // Structure Translation State (nomes de Ementas/Menus e Famílias)
+  const [showStructureTranslator, setShowStructureTranslator] = useState<boolean>(false);
+  const [structureLangTab, setStructureLangTab] = useState<string>('gb');
+  const [structureEmentas, setStructureEmentas] = useState<{ codigo: number; nome: string }[]>([]);
+  const [structureFamilies, setStructureFamilies] = useState<{ codigo: number; descricao: string }[]>([]);
+  const [structureEdits, setStructureEdits] = useState<{
+    ementas: Record<string, Record<string, string>>;
+    families: Record<string, Record<string, string>>;
+  }>({ ementas: {}, families: {} });
+  const [isLoadingStructureTranslations, setIsLoadingStructureTranslations] = useState<boolean>(false);
+  const [isSavingStructureTranslations, setIsSavingStructureTranslations] = useState<boolean>(false);
+  const [isAutoTranslatingStructure, setIsAutoTranslatingStructure] = useState<boolean>(false);
+
   // Toggle active language selection
   const toggleLangCode = (code: string) => {
     const lower = code.toLowerCase();
@@ -443,6 +456,120 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
+  // Load Ementa (menu) and Family names + existing translations for the structure translator
+  const loadStructureTranslations = async () => {
+    setIsLoadingStructureTranslations(true);
+    try {
+      const res = await fetch('/api/ementa-digital/structure-translations');
+      const data = await res.json();
+      const ementas = (data.ementas || []) as { codigo: number; nome: string; translations: Record<string, string> }[];
+      const families = (data.families || []) as { codigo: number; descricao: string; translations: Record<string, string> }[];
+
+      setStructureEmentas(ementas.map(e => ({ codigo: e.codigo, nome: e.nome })));
+      setStructureFamilies(families.map(f => ({ codigo: f.codigo, descricao: f.descricao })));
+
+      const ementaEdits: Record<string, Record<string, string>> = {};
+      ementas.forEach(e => { ementaEdits[String(e.codigo)] = { ...(e.translations || {}) }; });
+      const familyEdits: Record<string, Record<string, string>> = {};
+      families.forEach(f => { familyEdits[String(f.codigo)] = { ...(f.translations || {}) }; });
+      setStructureEdits({ ementas: ementaEdits, families: familyEdits });
+    } catch (err) {
+      alert('Falha de rede ao carregar traduções de estrutura.');
+    } finally {
+      setIsLoadingStructureTranslations(false);
+    }
+  };
+
+  const openStructureTranslator = () => {
+    setShowStructureTranslator(true);
+    loadStructureTranslations();
+  };
+
+  // AI Auto-Translate all Ementa/Family names for every active language in one go
+  const handleAutoTranslateStructure = async () => {
+    const targetLangs = Array.from(selectedLangCodes);
+    if (targetLangs.length === 0) return;
+
+    setIsAutoTranslatingStructure(true);
+    try {
+      const texts = Array.from(new Set([
+        ...structureEmentas.map(e => e.nome).filter(Boolean),
+        ...structureFamilies.map(f => f.descricao).filter(Boolean)
+      ]));
+      if (texts.length === 0) return;
+
+      const res = await fetch('/api/ementa-digital/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts, target_langs: targetLangs, source_lang: 'pt' })
+      });
+
+      if (!res.ok) {
+        alert('Erro ao obter tradução automática.');
+        return;
+      }
+      const data = await res.json();
+      const translations = data.translations || {};
+
+      setStructureEdits(prev => {
+        const next = {
+          ementas: { ...prev.ementas },
+          families: { ...prev.families }
+        };
+        structureEmentas.forEach(e => {
+          const map = translations[e.nome] || {};
+          const current = { ...(next.ementas[String(e.codigo)] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.ementas[String(e.codigo)] = current;
+        });
+        structureFamilies.forEach(f => {
+          const map = translations[f.descricao] || {};
+          const current = { ...(next.families[String(f.codigo)] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.families[String(f.codigo)] = current;
+        });
+        return next;
+      });
+
+      onSuccess('Tradução automática gerada! Revê os textos e clica em "Gravar no ZoneSoft".');
+    } catch (err) {
+      alert('Falha de rede ao traduzir a estrutura.');
+    } finally {
+      setIsAutoTranslatingStructure(false);
+    }
+  };
+
+  const handleSaveStructureTranslations = async () => {
+    setIsSavingStructureTranslations(true);
+    try {
+      const res = await fetch('/api/ementa-digital/structure-translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ementas: structureEdits.ementas,
+          families: structureEdits.families
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        onSuccess(data.message || 'Traduções de ementas e famílias gravadas com sucesso!');
+        setShowStructureTranslator(false);
+      } else {
+        alert(data.detail || data.message || 'Erro ao gravar traduções de estrutura.');
+      }
+    } catch (err) {
+      alert('Falha de rede ao gravar traduções de estrutura.');
+    } finally {
+      setIsSavingStructureTranslations(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -559,6 +686,29 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 Preencher 1-Clique
               </button>
             </div>
+          </div>
+
+          {/* Banner Traduzir Ementa/Familias */}
+          <div className="bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 p-3 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-sky-600 text-white rounded-lg shadow-2xs">
+                <Globe className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900 text-xs">Nomes de Ementas (Menus) e Famílias/Categorias</div>
+                <div className="text-[11px] text-slate-600">
+                  Traduz o nome do menu (ex: "Ementa") e das categorias (ex: "Ovos", "Sandes")
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openStructureTranslator}
+              className="flex items-center gap-1 bg-sky-600 hover:bg-sky-700 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs shrink-0"
+            >
+              <Languages className="w-3.5 h-3.5" />
+              Traduzir Estrutura
+            </button>
           </div>
 
           {/* Main Grid: Left Panel (Product List) & Right Panel (Translation Workspace) */}
@@ -952,6 +1102,159 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         </div>
 
       </div>
+
+      {/* Overlay: Traduzir Estrutura (Ementa/Menus e Familias) */}
+      {showStructureTranslator && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-sky-600" />
+                Traduzir Nomes de Ementa e Famílias
+              </h3>
+              <button
+                onClick={() => setShowStructureTranslator(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Language Tabs + Auto-Translate */}
+            <div className="flex items-center justify-between gap-2 px-5 py-2.5 border-b border-slate-200 bg-white flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {languages.filter(l => selectedLangCodes.has(l.code.toLowerCase())).map(l => (
+                  <button
+                    key={l.code}
+                    type="button"
+                    onClick={() => setStructureLangTab(l.code.toLowerCase())}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition border ${
+                      structureLangTab.toLowerCase() === l.code.toLowerCase()
+                        ? 'bg-sky-600 border-sky-600 text-white shadow-2xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    {l.code.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleAutoTranslateStructure}
+                disabled={isAutoTranslatingStructure || isLoadingStructureTranslations}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs shrink-0"
+                title="Traduz automaticamente o nome da ementa e das familias para todos os idiomas ativos"
+              >
+                {isAutoTranslatingStructure ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                Traduzir Automaticamente
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {isLoadingStructureTranslations ? (
+                <div className="flex items-center justify-center py-10 text-slate-400 text-xs gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> A carregar...
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {/* Ementas / Menus */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Ementa (Menu)
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structureEmentas.map(e => (
+                        <div key={e.codigo} className="flex items-center gap-3">
+                          <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={e.nome}>
+                            {e.nome || `Ementa #${e.codigo}`}
+                          </div>
+                          <input
+                            type="text"
+                            value={structureEdits.ementas[String(e.codigo)]?.[structureLangTab.toUpperCase()] || ''}
+                            onChange={(ev) => {
+                              const val = ev.target.value;
+                              setStructureEdits(prev => ({
+                                ...prev,
+                                ementas: {
+                                  ...prev.ementas,
+                                  [String(e.codigo)]: {
+                                    ...(prev.ementas[String(e.codigo)] || {}),
+                                    [structureLangTab.toUpperCase()]: val
+                                  }
+                                }
+                              }));
+                            }}
+                            placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                            className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Familias / Categorias */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Famílias / Categorias
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structureFamilies.map(f => (
+                        <div key={f.codigo} className="flex items-center gap-3">
+                          <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={f.descricao}>
+                            {f.descricao || `Família #${f.codigo}`}
+                          </div>
+                          <input
+                            type="text"
+                            value={structureEdits.families[String(f.codigo)]?.[structureLangTab.toUpperCase()] || ''}
+                            onChange={(ev) => {
+                              const val = ev.target.value;
+                              setStructureEdits(prev => ({
+                                ...prev,
+                                families: {
+                                  ...prev.families,
+                                  [String(f.codigo)]: {
+                                    ...(prev.families[String(f.codigo)] || {}),
+                                    [structureLangTab.toUpperCase()]: val
+                                  }
+                                }
+                              }));
+                            }}
+                            placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                            className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                          />
+                        </div>
+                      ))}
+                      {structureFamilies.length === 0 && (
+                        <p className="text-xs text-slate-400">Nenhuma família encontrada na ementa digital.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowStructureTranslator(false)}
+                className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStructureTranslations}
+                disabled={isSavingStructureTranslations || isLoadingStructureTranslations}
+                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition text-xs"
+              >
+                {isSavingStructureTranslations ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Gravar no ZoneSoft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

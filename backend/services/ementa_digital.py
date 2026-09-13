@@ -15,7 +15,7 @@ from backend.models import (
     EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
     EmentaBulkEditRequest, EmentaBulkEditAction, BulkEditPreviewResponse, ProductDiff, FieldDiff,
     EmentaTranslateRequest, EmentaTranslateResponse,
-    EmentaSaveTranslationsRequest
+    EmentaSaveTranslationsRequest, EmentaSaveFamilyTranslationsRequest
 )
 from backend.services.products import (
     _schema, _text_limit, _chunks, create_backup_snapshot, transform_text_case
@@ -2253,88 +2253,339 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
         conn.close()
 
 
+def get_family_translations(cod_familia: int) -> Dict[str, str]:
+    """Obtém as traduções do nome de uma família da tabela dbo.ementa_digital_traducoes."""
+    try:
+        conn = db_manager.get_connection()
+    except Exception:
+        return {}
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_traducoes" not in schema:
+            return {}
+
+        cursor.execute("""
+            SELECT id_country, value
+            FROM dbo.ementa_digital_traducoes
+            WHERE typeid = 1 AND id1 = ? AND field = 'descricao'
+        """, (cod_familia,))
+
+        translations: Dict[str, str] = {}
+        for row in cursor.fetchall():
+            country = (row[0] or "").upper()
+            translations[country] = row[1] or ""
+
+        return translations
+    finally:
+        conn.close()
+
+
+def save_family_translations(req: EmentaSaveFamilyTranslationsRequest) -> Tuple[bool, str]:
+    """Guarda as traduções do nome de uma família na tabela dbo.ementa_digital_traducoes.
+
+    Formato confirmado por observação direta de uma tradução feita no ZoneSoft nativo:
+    typeid=1, id1=<codigo da familia>, id2=<codigo da seccao>, field='descricao'.
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_traducoes_table(cursor)
+        schema = _schema(cursor)
+        if "ementa_digital_traducoes" not in schema:
+            return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
+
+        seccao = 0
+        if "ementa_digital_familias" in schema:
+            cursor.execute("SELECT seccao FROM dbo.ementa_digital_familias WHERE codigo = ?", (req.cod_familia,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                seccao = int(row[0])
+
+        written_count = 0
+        for country, val in req.translations.items():
+            c_code = country.upper()
+            if c_code == "EN":
+                c_code = "GB"
+            val_str = str(val).strip() if val else ""
+
+            if not val_str:
+                cursor.execute("""
+                    DELETE FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                """, (c_code, req.cod_familia, seccao))
+                continue
+
+            cursor.execute("""
+                SELECT 1 FROM dbo.ementa_digital_traducoes
+                WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+            """, (c_code, req.cod_familia, seccao))
+            if cursor.fetchone():
+                cursor.execute("""
+                    UPDATE dbo.ementa_digital_traducoes
+                    SET value = ?
+                    WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                """, (val_str, c_code, req.cod_familia, seccao))
+            else:
+                cursor.execute("""
+                    INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                    VALUES (?, 1, ?, ?, 'descricao', ?)
+                """, (c_code, req.cod_familia, seccao, val_str))
+            written_count += 1
+
+        try:
+            cursor.execute(
+                "INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) "
+                "VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 2, 0)",
+                (req.cod_familia,)
+            )
+        except Exception:
+            pass
+        sync_triggered = False
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+            sync_triggered = cursor.rowcount > 0
+        except Exception:
+            pass
+
+        conn.commit()
+        if sync_triggered:
+            return True, f"Traduções da família #{req.cod_familia} gravadas com sucesso. Sincronização com o ZoneSoft acionada."
+        return True, f"Traduções da família #{req.cod_familia} gravadas com sucesso, mas não foi possível acionar a sincronização automática com o ZoneSoft."
+    except Exception as e:
+        conn.rollback()
+        return False, f"Falha ao gravar traduções da família: {str(e)}"
+    finally:
+        conn.close()
+
+
+def get_structure_translations() -> Dict[str, Any]:
+    """Obtém as traduções de todas as ementas (menus) e famílias da ementa digital.
+
+    Formato confirmado por observação direta de traduções feitas no ZoneSoft nativo:
+    - Ementa (menu): typeid=0, id1=<codigo da ementa>, id2=0, field='nome'.
+    - Família: typeid=1, id1=<codigo da familia>, id2=<codigo da seccao>, field='descricao'.
+    """
+    try:
+        conn = db_manager.get_connection()
+    except Exception:
+        return {"ementas": [], "families": []}
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        has_traducoes = "ementa_digital_traducoes" in schema
+
+        ementas: List[Dict[str, Any]] = []
+        if "ementa_digital_ementas" in schema:
+            cursor.execute("SELECT codigo, nome FROM dbo.ementa_digital_ementas ORDER BY codigo")
+            for codigo, nome in cursor.fetchall():
+                translations: Dict[str, str] = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 0 AND id1 = ? AND id2 = 0 AND field = 'nome'
+                    """, (codigo,))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                ementas.append({"codigo": int(codigo), "nome": nome or "", "translations": translations})
+
+        families: List[Dict[str, Any]] = []
+        if "ementa_digital_familias" in schema:
+            cursor.execute("SELECT codigo, seccao, descricao FROM dbo.ementa_digital_familias ORDER BY seccao, codigo")
+            for codigo, seccao, descricao in cursor.fetchall():
+                translations = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                    """, (codigo, seccao or 0))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                families.append({"codigo": int(codigo), "seccao": int(seccao or 0), "descricao": descricao or "", "translations": translations})
+
+        return {"ementas": ementas, "families": families}
+    finally:
+        conn.close()
+
+
+def save_structure_translations(payload: Dict[str, Any]) -> Tuple[bool, str]:
+    """Guarda em lote as traduções de nomes de ementas (menus) e famílias.
+
+    payload esperado:
+    {
+        "ementas": {"<codigo>": {"FR": "Menu", ...}, ...},
+        "families": {"<codigo>": {"FR": "Œufs", ...}, ...}
+    }
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_traducoes_table(cursor)
+        schema = _schema(cursor)
+        if "ementa_digital_traducoes" not in schema:
+            return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
+
+        written_count = 0
+
+        for codigo_str, fields in (payload.get("ementas") or {}).items():
+            cod_ementa = int(codigo_str)
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 0 AND id1 = ? AND id2 = 0 AND field = 'nome'
+                    """, (c_code, cod_ementa))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 0 AND id1 = ? AND id2 = 0 AND field = 'nome'
+                """, (c_code, cod_ementa))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 0 AND id1 = ? AND id2 = 0 AND field = 'nome'
+                    """, (val_str, c_code, cod_ementa))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 0, ?, 0, 'nome', ?)
+                    """, (c_code, cod_ementa, val_str))
+                written_count += 1
+
+        for codigo_str, fields in (payload.get("families") or {}).items():
+            cod_familia = int(codigo_str)
+            seccao = 0
+            if "ementa_digital_familias" in schema:
+                cursor.execute("SELECT seccao FROM dbo.ementa_digital_familias WHERE codigo = ?", (cod_familia,))
+                row = cursor.fetchone()
+                if row and row[0] is not None:
+                    seccao = int(row[0])
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                    """, (c_code, cod_familia, seccao))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                """, (c_code, cod_familia, seccao))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 1 AND id1 = ? AND id2 = ? AND field = 'descricao'
+                    """, (val_str, c_code, cod_familia, seccao))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 1, ?, ?, 'descricao', ?)
+                    """, (c_code, cod_familia, seccao, val_str))
+                written_count += 1
+
+        sync_triggered = False
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+            sync_triggered = cursor.rowcount > 0
+        except Exception:
+            pass
+
+        conn.commit()
+        sync_msg = "Sincronização com o ZoneSoft acionada." if sync_triggered else "Não foi possível acionar a sincronização automática com o ZoneSoft."
+        return True, f"{written_count} traduções de estrutura gravadas com sucesso. {sync_msg}"
+    except Exception as e:
+        conn.rollback()
+        return False, f"Falha ao gravar traduções de estrutura: {str(e)}"
+    finally:
+        conn.close()
+
+
 GENERAL_UI_TRANSLATIONS_DICT: Dict[str, Dict[str, str]] = {
-    "aceitar": {"GB": "Place Order", "ES": "Realizar pedido", "FR": "Passer la commande", "DE": "Bestellung aufgeben"},
-    "aceitarconta": {"GB": "Accept Bill", "ES": "Aceptar cuenta", "FR": "Accepter l'addition", "DE": "Rechnung akzeptieren"},
-    "addproduto": {"GB": "Add item", "ES": "Añadir producto", "FR": "Ajouter un produit", "DE": "Produkt hinzufügen"},
-    "adicionado": {"GB": "Added", "ES": "Añadido", "FR": "Ajouté", "DE": "Hinzugefügt"},
-    "ajudamsg": {"GB": "Request staff assistance?", "ES": "¿Solicitar asistencia de un camarero?", "FR": "Demander l'aide d'un serveur ?", "DE": "Mitarbeiter um Hilfe bitten?"},
-    "alergenio": {"GB": "Contains allergens", "ES": "Contiene alérgenos", "FR": "Contient des allergènes", "DE": "Enthält Allergene"},
-    "bemvindo": {"GB": "Welcome", "ES": "Bienvenido", "FR": "Bienvenue", "DE": "Willkommen"},
-    "billwait": {"GB": "Waiting for bill", "ES": "Esperando la cuenta", "FR": "En attente de l'addition", "DE": "Warten auf Rechnung"},
-    "calorias": {"GB": "Calories", "ES": "Calorías", "FR": "Calories", "DE": "Kalorien"},
-    "cancel": {"GB": "Cancel", "ES": "Cancelar", "FR": "Annuler", "DE": "Abbrechen"},
-    "categorias": {"GB": "Categories", "ES": "Categorías", "FR": "Catégories", "DE": "Kategorien"},
-    "complementares": {"GB": "Extras", "ES": "Extras", "FR": "Suppléments", "DE": "Extras"},
-    "confirm": {"GB": "Confirmation", "ES": "Confirmación", "FR": "Confirmation", "DE": "Bestätigung"},
-    "confirmadd": {"GB": "Confirm", "ES": "Confirmar", "FR": "Confirmer", "DE": "Bestätigen"},
-    "confirmaddtitle": {"GB": "Add to order?", "ES": "¿Añadir al pedido?", "FR": "Ajouter à la commande ?", "DE": "Zur Bestellung hinzufügen?"},
-    "confirmajuda": {"GB": "Staff assistance requested. Please wait...", "ES": "Se ha solicitado asistencia. Por favor espere...", "FR": "Assistance demandée. Veuillez patienter...", "DE": "Hilfe angefordert. Bitte warten..."},
-    "conta": {"GB": "Bill", "ES": "Cuenta", "FR": "Addition", "DE": "Rechnung"},
-    "customgratificacao": {"GB": "Custom amount", "ES": "Personalizar importe", "FR": "Personnaliser le montant", "DE": "Betrag anpassen"},
-    "dadosfiscais": {"GB": "Tax Details", "ES": "Datos fiscales", "FR": "Informations fiscales", "DE": "Steuerdaten"},
-    "deixeopiniao": {"GB": "Leave us your feedback", "ES": "Déjenos su opinión", "FR": "Laissez-nous votre avis", "DE": "Hinterlassen Sie Ihr Feedback"},
-    "descontos": {"GB": "Discounts", "ES": "Descuentos", "FR": "Remises", "DE": "Rabatte"},
-    "dieta": {"GB": "Dietary", "ES": "Dieta", "FR": "Régime", "DE": "Diät"},
-    "divisaoconta": {"GB": "Split Bill", "ES": "Dividir cuenta", "FR": "Partager l'addition", "DE": "Rechnung teilen"},
-    "dose": {"GB": "Full Portion", "ES": "Ración", "FR": "Portion entière", "DE": "Ganze Portion"},
-    "dosepara": {"GB": "Serves", "ES": "Para", "FR": "Pour", "DE": "Portion für"},
-    "ementaoffline": {"GB": "Menu Offline\n\nPlease ask a staff member.", "ES": "Menú fuera de línea\n\nPor favor consulte al personal.", "FR": "Menu hors ligne\n\nVeuillez contacter un serveur.", "DE": "Speisekarte offline\n\nBitte wenden Sie sich an das Personal."},
-    "enquantoespera": {"GB": "While you wait...", "ES": "Mientras espera...", "FR": "En attendant...", "DE": "Während Sie warten..."},
-    "enviarpedido": {"GB": "Send order", "ES": "Enviar pedido", "FR": "Enviar pedido", "DE": "Bestellung senden"},
-    "error": {"GB": "An error occurred during operation.", "ES": "Ocurrió un error al ejecutar la operación.", "FR": "Une erreur est survenue lors de l'opération.", "DE": "Ein Fehler ist aufgetreten."},
-    "escolhapagamento": {"GB": "Select payment method", "ES": "Elija el método de pago", "FR": "Choisissez le mode de paiement", "DE": "Zahlungsmethode wählen"},
-    "escolhaprodutos": {"GB": "Select items to pay", "ES": "Elija los productos a pagar", "FR": "Sélectionnez les articles à payer", "DE": "Produkte zum Bezahlen auswählen"},
-    "escolher": {"GB": "Select", "ES": "Elegir", "FR": "Choisir", "DE": "Auswählen"},
-    "esgotado": {"GB": "Sold out", "ES": "Agotado", "FR": "Épuisé", "DE": "Ausverkauft"},
-    "fecharconta": {"GB": "Close bill", "ES": "Cerrar cuenta", "FR": "Clôturer l'addition", "DE": "Rechnung schließen"},
-    "feedbackdescription": {"GB": "Rate your experience", "ES": "Deje su valoración", "FR": "Donnez votre avis", "DE": "Bewerten Sie Ihre Erfahrung"},
-    "feedbacktitle": {"GB": "Did you enjoy your visit?", "ES": "¿Le gustó la experiencia?", "FR": "Avez-vous apprécié votre visite ?", "DE": "Hat es Ihnen gefallen?"},
-    "fidelizacao": {"GB": "Loyalty", "ES": "Fidelización", "FR": "Fidélité", "DE": "Treueprogramm"},
-    "finalizar": {"GB": "Checkout", "ES": "Finalizar", "FR": "Terminer", "DE": "Abschließen"},
-    "gluten": {"GB": "Gluten-free", "ES": "Sin gluten", "FR": "Sans gluten", "DE": "Glutenfrei"},
-    "gratificacao": {"GB": "Tip", "ES": "Propina", "FR": "Pourboire", "DE": "Trinkgeld"},
-    "hintname": {"GB": "Enter your name here", "ES": "Escriba aquí su nombre", "FR": "Entrez votre nom ici", "DE": "Namen hier eingeben"},
-    "hintnif": {"GB": "Enter Tax ID (NIF) here", "ES": "Escriba aquí su NIF/CIF", "FR": "Entrez votre numéro fiscal ici", "DE": "Steuernummer hier eingeben"},
-    "hintphone": {"GB": "Enter your phone number", "ES": "Escriba aquí su número de teléfono", "FR": "Entrez votre numéro de téléphone", "DE": "Telefonnummer hier eingeben"},
-    "informacoes": {"GB": "Information", "ES": "Información", "FR": "Informations", "DE": "Informationen"},
-    "introdadosfiscais": {"GB": "Enter invoice details", "ES": "Introduzca los datos para la factura", "FR": "Entrez les détails de la facture", "DE": "Rechnungsdaten eingeben"},
-    "introphone": {"GB": "Enter your mobile number", "ES": "Introduzca su número de teléfono", "FR": "Entrez votre numéro de téléphone mobile", "DE": "Handynummer eingeben"},
-    "itens": {"GB": "Order Summary", "ES": "Resumen del pedido", "FR": "Récapitulatif de la commande", "DE": "Bestellübersicht"},
-    "lactose": {"GB": "Lactose-free", "ES": "Sin lactosa", "FR": "Sans lactose", "DE": "Laktosefrei"},
-    "meiadose": {"GB": "Half Portion", "ES": "Media ración", "FR": "Demi-portion", "DE": "Halbe Portion"},
-    "nome": {"GB": "Name", "ES": "Nombre", "FR": "Nom", "DE": "Name"},
-    "numpessoas": {"GB": "Please select number of guests.", "ES": "Por favor seleccione el número de personas.", "FR": "Veuillez sélectionner le nombre de personnes.", "DE": "Bitte Personenanzahl auswählen."},
-    "obrigado": {"GB": "Thank you", "ES": "Gracias", "FR": "Merci", "DE": "Danke"},
-    "ok": {"GB": "OK", "ES": "OK", "FR": "OK", "DE": "OK"},
-    "opiniao": {"GB": "Your opinion", "ES": "Su opinión", "FR": "Votre avis", "DE": "Ihre Meinung"},
-    "pagamento": {"GB": "Payment", "ES": "Pago", "FR": "Paiement", "DE": "Zahlung"},
-    "pagamentoefectuado": {"GB": "Payment completed successfully.", "ES": "El pago se realizó con éxito.", "FR": "Paiement effectué avec succès.", "DE": "Zahlung erfolgreich abgeschlossen."},
-    "pedAnterior": {"GB": "Previous Order", "ES": "Pedido anterior", "FR": "Commande précédente", "DE": "Vorherige Bestellung"},
-    "pedidoenviado": {"GB": "Order sent. Please wait for staff.", "ES": "Pedido enviado. Por favor espere al camarero.", "FR": "Commande envoyée. Veuillez attendre le serveur.", "DE": "Bestellung gesendet. Bitte auf Mitarbeiter warten."},
-    "pedidos": {"GB": "Orders", "ES": "Pedidos", "FR": "Commandes", "DE": "Bestellungen"},
-    "pedidosconfirmar": {"GB": "There are still unconfirmed orders.", "ES": "Aún hay pedidos por confirmar.", "FR": "Il y a des commandes non confirmées.", "DE": "Es gibt noch unbestätigte Bestellungen."},
-    "pedidospendentes": {"GB": "Pending orders", "ES": "Pedidos pendientes", "FR": "Commandes en attente", "DE": "Ausstehende Bestellungen"},
-    "pedidosrealizar": {"GB": "Orders to process", "ES": "Pedidos por realizar", "FR": "Commandes à réaliser", "DE": "Auszuführende Bestellungen"},
-    "pedirajuda": {"GB": "Call Staff", "ES": "Pedir ayuda", "FR": "Appeler un serveur", "DE": "Kellner rufen"},
-    "pergDose": {"GB": "Product has half portion option.\nWhich do you want to add?", "ES": "Producto con opción de media ración.\n¿Cuál desea añadir?", "FR": "Article avec option demi-portion.\nLequel souhaitez-vous ajouter ?", "DE": "Produkt mit Option für halbe Portion.\nWelche möchten Sie hinzufügen?"},
-    "pessoas": {"GB": "Guests", "ES": "Personas", "FR": "Personnes", "DE": "Personen"},
-    "picante": {"GB": "Spicy", "ES": "Picante", "FR": "Épicé", "DE": "Scharf"},
-    "preparacao": {"GB": "Preparing", "ES": "En preparación", "FR": "En préparation", "DE": "In Zubereitung"},
-    "remove": {"GB": "Remove this item from your order?", "ES": "¿Desea eliminar este produto de su pedido?", "FR": "Voulez-vous retirer cet article de la commande ?", "DE": "Möchten Sie dieses Produkt aus der Bestellung entfernen?"},
-    "resumo": {"GB": "Summary", "ES": "Resumen", "FR": "Résumé", "DE": "Zusammenfassung"},
-    "sair": {"GB": "Exit", "ES": "Salir", "FR": "Quitter", "DE": "Beenden"},
-    "sal": {"GB": "Salt-free", "ES": "Sin sal", "FR": "Sans sel", "DE": "Salzfrei"},
-    "seguinte": {"GB": "Next", "ES": "Siguiente", "FR": "Suivant", "DE": "Weiter"},
-    "semgratificacao": {"GB": "No tip", "ES": "Sin propina", "FR": "Sans pourboire", "DE": "Ohne Trinkgeld"},
-    "sugestoes": {"GB": "Suggestions", "ES": "Sugerencias", "FR": "Suggestions", "DE": "Empfehlungen"},
-    "taptostart": {"GB": "Tap to view menu", "ES": "Toque para ver el menú", "FR": "Appuyez pour voir le menu", "DE": "Tippen zum Speisekarte anzeigen"},
-    "tempo": {"GB": "Prep Time", "ES": "Tiempo", "FR": "Temps", "DE": "Zubereitungszeit"},
-    "total": {"GB": "Total", "ES": "Total", "FR": "Total", "DE": "Gesamt"},
-    "totPedido": {"GB": "Order Total", "ES": "Total del pedido", "FR": "Total de la commande", "DE": "Bestellsumme"},
-    "validarpedido": {"GB": "Validate order", "ES": "Validar pedido", "FR": "Valider la commande", "DE": "Bestellung bestätigen"},
-    "vegetariano": {"GB": "Vegetarian", "ES": "Vegetariano", "FR": "Végétarien", "DE": "Vegetarisch"},
-    "voltar": {"GB": "Back", "ES": "Volver", "FR": "Retour", "DE": "Zurück"}
+    "aceitar": {"GB": "Place Order", "ES": "Realizar pedido", "FR": "Passer la commande", "DE": "Bestellung aufgeben", "IT": "Effettua ordine"},
+    "aceitarconta": {"GB": "Accept Bill", "ES": "Aceptar cuenta", "FR": "Accepter l'addition", "DE": "Rechnung akzeptieren", "IT": "Accetta conto"},
+    "addproduto": {"GB": "Add item", "ES": "Añadir producto", "FR": "Ajouter un produit", "DE": "Produkt hinzufügen", "IT": "Aggiungi articolo"},
+    "adicionado": {"GB": "Added", "ES": "Añadido", "FR": "Ajouté", "DE": "Hinzugefügt", "IT": "Aggiunto"},
+    "ajudamsg": {"GB": "Request staff assistance?", "ES": "¿Solicitar asistencia de un camarero?", "FR": "Demander l'aide d'un serveur ?", "DE": "Mitarbeiter um Hilfe bitten?", "IT": "Richiedere assistenza del personale?"},
+    "alergenio": {"GB": "Contains allergens", "ES": "Contiene alérgenos", "FR": "Contient des allergènes", "DE": "Enthält Allergene", "IT": "Contiene allergeni"},
+    "bemvindo": {"GB": "Welcome", "ES": "Bienvenido", "FR": "Bienvenue", "DE": "Willkommen", "IT": "Benvenuto"},
+    "billwait": {"GB": "Waiting for bill", "ES": "Esperando la cuenta", "FR": "En attente de l'addition", "DE": "Warten auf Rechnung", "IT": "In attesa del conto"},
+    "calorias": {"GB": "Calories", "ES": "Calorías", "FR": "Calories", "DE": "Kalorien", "IT": "Calorie"},
+    "cancel": {"GB": "Cancel", "ES": "Cancelar", "FR": "Annuler", "DE": "Abbrechen", "IT": "Annulla"},
+    "categorias": {"GB": "Categories", "ES": "Categorías", "FR": "Catégories", "DE": "Kategorien", "IT": "Categorie"},
+    "complementares": {"GB": "Extras", "ES": "Extras", "FR": "Suppléments", "DE": "Extras", "IT": "Extra"},
+    "confirm": {"GB": "Confirmation", "ES": "Confirmación", "FR": "Confirmation", "DE": "Bestätigung", "IT": "Conferma"},
+    "confirmadd": {"GB": "Confirm", "ES": "Confirmar", "FR": "Confirmer", "DE": "Bestätigen", "IT": "Conferma"},
+    "confirmaddtitle": {"GB": "Add to order?", "ES": "¿Añadir al pedido?", "FR": "Ajouter à la commande ?", "DE": "Zur Bestellung hinzufügen?", "IT": "Aggiungere all'ordine?"},
+    "confirmajuda": {"GB": "Staff assistance requested. Please wait...", "ES": "Se ha solicitado asistencia. Por favor espere...", "FR": "Assistance demandée. Veuillez patienter...", "DE": "Hilfe angefordert. Bitte warten...", "IT": "Assistenza richiesta. Attendere prego..."},
+    "conta": {"GB": "Bill", "ES": "Cuenta", "FR": "Addition", "DE": "Rechnung", "IT": "Conto"},
+    "customgratificacao": {"GB": "Custom amount", "ES": "Personalizar importe", "FR": "Personnaliser le montant", "DE": "Betrag anpassen", "IT": "Importo personalizzato"},
+    "dadosfiscais": {"GB": "Tax Details", "ES": "Datos fiscales", "FR": "Informations fiscales", "DE": "Steuerdaten", "IT": "Dati fiscali"},
+    "deixeopiniao": {"GB": "Leave us your feedback", "ES": "Déjenos su opinión", "FR": "Laissez-nous votre avis", "DE": "Hinterlassen Sie Ihr Feedback", "IT": "Lasciaci il tuo feedback"},
+    "descontos": {"GB": "Discounts", "ES": "Descuentos", "FR": "Remises", "DE": "Rabatte", "IT": "Sconti"},
+    "dieta": {"GB": "Dietary", "ES": "Dieta", "FR": "Régime", "DE": "Diät", "IT": "Dieta"},
+    "divisaoconta": {"GB": "Split Bill", "ES": "Dividir cuenta", "FR": "Partager l'addition", "DE": "Rechnung teilen", "IT": "Dividi conto"},
+    "dose": {"GB": "Full Portion", "ES": "Ración", "FR": "Portion entière", "DE": "Ganze Portion", "IT": "Porzione intera"},
+    "dosepara": {"GB": "Serves", "ES": "Para", "FR": "Pour", "DE": "Portion für", "IT": "Per"},
+    "ementaoffline": {"GB": "Menu Offline\n\nPlease ask a staff member.", "ES": "Menú fuera de línea\n\nPor favor consulte al personal.", "FR": "Menu hors ligne\n\nVeuillez contacter un serveur.", "DE": "Speisekarte offline\n\nBitte wenden Sie sich an das Personal.", "IT": "Menu non disponibile\n\nSi prega di rivolgersi al personale."},
+    "enquantoespera": {"GB": "While you wait...", "ES": "Mientras espera...", "FR": "En attendant...", "DE": "Während Sie warten...", "IT": "Mentre aspetti..."},
+    "enviarpedido": {"GB": "Send order", "ES": "Enviar pedido", "FR": "Enviar pedido", "DE": "Bestellung senden", "IT": "Invia ordine"},
+    "error": {"GB": "An error occurred during operation.", "ES": "Ocurrió un error al ejecutar la operación.", "FR": "Une erreur est survenue lors de l'opération.", "DE": "Ein Fehler ist aufgetreten.", "IT": "Si è verificato un errore durante l'operazione."},
+    "escolhapagamento": {"GB": "Select payment method", "ES": "Elija el método de pago", "FR": "Choisissez le mode de paiement", "DE": "Zahlungsmethode wählen", "IT": "Seleziona metodo di pagamento"},
+    "escolhaprodutos": {"GB": "Select items to pay", "ES": "Elija los productos a pagar", "FR": "Sélectionnez les articles à payer", "DE": "Produkte zum Bezahlen auswählen", "IT": "Seleziona gli articoli da pagare"},
+    "escolher": {"GB": "Select", "ES": "Elegir", "FR": "Choisir", "DE": "Auswählen", "IT": "Seleziona"},
+    "esgotado": {"GB": "Sold out", "ES": "Agotado", "FR": "Épuisé", "DE": "Ausverkauft", "IT": "Esaurito"},
+    "fecharconta": {"GB": "Close bill", "ES": "Cerrar cuenta", "FR": "Clôturer l'addition", "DE": "Rechnung schließen", "IT": "Chiudi conto"},
+    "feedbackdescription": {"GB": "Rate your experience", "ES": "Deje su valoración", "FR": "Donnez votre avis", "DE": "Bewerten Sie Ihre Erfahrung", "IT": "Valuta la tua esperienza"},
+    "feedbacktitle": {"GB": "Did you enjoy your visit?", "ES": "¿Le gustó la experiencia?", "FR": "Avez-vous apprécié votre visite ?", "DE": "Hat es Ihnen gefallen?", "IT": "Ti è piaciuta la tua visita?"},
+    "fidelizacao": {"GB": "Loyalty", "ES": "Fidelización", "FR": "Fidélité", "DE": "Treueprogramm", "IT": "Fedeltà"},
+    "finalizar": {"GB": "Checkout", "ES": "Finalizar", "FR": "Terminer", "DE": "Abschließen", "IT": "Concludi"},
+    "gluten": {"GB": "Gluten-free", "ES": "Sin gluten", "FR": "Sans gluten", "DE": "Glutenfrei", "IT": "Senza glutine"},
+    "gratificacao": {"GB": "Tip", "ES": "Propina", "FR": "Pourboire", "DE": "Trinkgeld", "IT": "Mancia"},
+    "hintname": {"GB": "Enter your name here", "ES": "Escriba aquí su nombre", "FR": "Entrez votre nom ici", "DE": "Namen hier eingeben", "IT": "Inserisci qui il tuo nome"},
+    "hintnif": {"GB": "Enter Tax ID (NIF) here", "ES": "Escriba aquí su NIF/CIF", "FR": "Entrez votre numéro fiscal ici", "DE": "Steuernummer hier eingeben", "IT": "Inserisci qui il codice fiscale"},
+    "hintphone": {"GB": "Enter your phone number", "ES": "Escriba aquí su número de teléfono", "FR": "Entrez votre numéro de téléphone", "DE": "Telefonnummer hier eingeben", "IT": "Inserisci il tuo numero di telefono"},
+    "informacoes": {"GB": "Information", "ES": "Información", "FR": "Informations", "DE": "Informationen", "IT": "Informazioni"},
+    "introdadosfiscais": {"GB": "Enter invoice details", "ES": "Introduzca los datos para la factura", "FR": "Entrez les détails de la facture", "DE": "Rechnungsdaten eingeben", "IT": "Inserisci i dati per la fattura"},
+    "introphone": {"GB": "Enter your mobile number", "ES": "Introduzca su número de teléfono", "FR": "Entrez votre numéro de téléphone mobile", "DE": "Handynummer eingeben", "IT": "Inserisci il tuo numero di cellulare"},
+    "itens": {"GB": "Order Summary", "ES": "Resumen del pedido", "FR": "Récapitulatif de la commande", "DE": "Bestellübersicht", "IT": "Riepilogo ordine"},
+    "lactose": {"GB": "Lactose-free", "ES": "Sin lactosa", "FR": "Sans lactose", "DE": "Laktosefrei", "IT": "Senza lattosio"},
+    "meiadose": {"GB": "Half Portion", "ES": "Media ración", "FR": "Demi-portion", "DE": "Halbe Portion", "IT": "Mezza porzione"},
+    "nome": {"GB": "Name", "ES": "Nombre", "FR": "Nom", "DE": "Name", "IT": "Nome"},
+    "numpessoas": {"GB": "Please select number of guests.", "ES": "Por favor seleccione el número de personas.", "FR": "Veuillez sélectionner le nombre de personnes.", "DE": "Bitte Personenanzahl auswählen.", "IT": "Seleziona il numero di persone."},
+    "obrigado": {"GB": "Thank you", "ES": "Gracias", "FR": "Merci", "DE": "Danke", "IT": "Grazie"},
+    "ok": {"GB": "OK", "ES": "OK", "FR": "OK", "DE": "OK", "IT": "OK"},
+    "opiniao": {"GB": "Your opinion", "ES": "Su opinión", "FR": "Votre avis", "DE": "Ihre Meinung", "IT": "La tua opinione"},
+    "pagamento": {"GB": "Payment", "ES": "Pago", "FR": "Paiement", "DE": "Zahlung", "IT": "Pagamento"},
+    "pagamentoefectuado": {"GB": "Payment completed successfully.", "ES": "El pago se realizó con éxito.", "FR": "Paiement effectué avec succès.", "DE": "Zahlung erfolgreich abgeschlossen.", "IT": "Pagamento effettuato con successo."},
+    "pedAnterior": {"GB": "Previous Order", "ES": "Pedido anterior", "FR": "Commande précédente", "DE": "Vorherige Bestellung", "IT": "Ordine precedente"},
+    "pedidoenviado": {"GB": "Order sent. Please wait for staff.", "ES": "Pedido enviado. Por favor espere al camarero.", "FR": "Commande envoyée. Veuillez attendre le serveur.", "DE": "Bestellung gesendet. Bitte auf Mitarbeiter warten.", "IT": "Ordine inviato. Attendere il personale."},
+    "pedidos": {"GB": "Orders", "ES": "Pedidos", "FR": "Commandes", "DE": "Bestellungen", "IT": "Ordini"},
+    "pedidosconfirmar": {"GB": "There are still unconfirmed orders.", "ES": "Aún hay pedidos por confirmar.", "FR": "Il y a des commandes non confirmées.", "DE": "Es gibt noch unbestätigte Bestellungen.", "IT": "Ci sono ancora ordini da confermare."},
+    "pedidospendentes": {"GB": "Pending orders", "ES": "Pedidos pendientes", "FR": "Commandes en attente", "DE": "Ausstehende Bestellungen", "IT": "Ordini in sospeso"},
+    "pedidosrealizar": {"GB": "Orders to process", "ES": "Pedidos por realizar", "FR": "Commandes à réaliser", "DE": "Auszuführende Bestellungen", "IT": "Ordini da elaborare"},
+    "pedirajuda": {"GB": "Call Staff", "ES": "Pedir ayuda", "FR": "Appeler un serveur", "DE": "Kellner rufen", "IT": "Chiama il personale"},
+    "pergDose": {"GB": "Product has half portion option.\nWhich do you want to add?", "ES": "Producto con opción de media ración.\n¿Cuál desea añadir?", "FR": "Article avec option demi-portion.\nLequel souhaitez-vous ajouter ?", "DE": "Produkt mit Option für halbe Portion.\nWelche möchten Sie hinzufügen?", "IT": "L'articolo ha l'opzione mezza porzione.\nQuale desideri aggiungere?"},
+    "pessoas": {"GB": "Guests", "ES": "Personas", "FR": "Personnes", "DE": "Personen", "IT": "Persone"},
+    "picante": {"GB": "Spicy", "ES": "Picante", "FR": "Épicé", "DE": "Scharf", "IT": "Piccante"},
+    "preparacao": {"GB": "Preparing", "ES": "En preparación", "FR": "En préparation", "DE": "In Zubereitung", "IT": "In preparazione"},
+    "remove": {"GB": "Remove this item from your order?", "ES": "¿Desea eliminar este produto de su pedido?", "FR": "Voulez-vous retirer cet article de la commande ?", "DE": "Möchten Sie dieses Produkt aus der Bestellung entfernen?", "IT": "Rimuovere questo articolo dall'ordine?"},
+    "resumo": {"GB": "Summary", "ES": "Resumen", "FR": "Résumé", "DE": "Zusammenfassung", "IT": "Riepilogo"},
+    "sair": {"GB": "Exit", "ES": "Salir", "FR": "Quitter", "DE": "Beenden", "IT": "Esci"},
+    "sal": {"GB": "Salt-free", "ES": "Sin sal", "FR": "Sans sel", "DE": "Salzfrei", "IT": "Senza sale"},
+    "seguinte": {"GB": "Next", "ES": "Siguiente", "FR": "Suivant", "DE": "Weiter", "IT": "Avanti"},
+    "semgratificacao": {"GB": "No tip", "ES": "Sin propina", "FR": "Sans pourboire", "DE": "Ohne Trinkgeld", "IT": "Senza mancia"},
+    "sugestoes": {"GB": "Suggestions", "ES": "Sugerencias", "FR": "Suggestions", "DE": "Empfehlungen", "IT": "Suggerimenti"},
+    "taptostart": {"GB": "Tap to view menu", "ES": "Toque para ver el menú", "FR": "Appuyez pour voir le menu", "DE": "Tippen zum Speisekarte anzeigen", "IT": "Tocca per vedere il menu"},
+    "tempo": {"GB": "Prep Time", "ES": "Tiempo", "FR": "Temps", "DE": "Zubereitungszeit", "IT": "Tempo di preparazione"},
+    "total": {"GB": "Total", "ES": "Total", "FR": "Total", "DE": "Gesamt", "IT": "Totale"},
+    "totPedido": {"GB": "Order Total", "ES": "Total del pedido", "FR": "Total de la commande", "DE": "Bestellsumme", "IT": "Totale ordine"},
+    "validarpedido": {"GB": "Validate order", "ES": "Validar pedido", "FR": "Valider la commande", "DE": "Bestellung bestätigen", "IT": "Convalida ordine"},
+    "vegetariano": {"GB": "Vegetarian", "ES": "Vegetariano", "FR": "Végétarien", "DE": "Vegetarisch", "IT": "Vegetariano"},
+    "voltar": {"GB": "Back", "ES": "Volver", "FR": "Retour", "DE": "Zurück", "IT": "Indietro"}
 }
 
 

@@ -32,6 +32,7 @@ export const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [useMock, setUseMock] = useState(false);
   const [connectionMsg, setConnectionMsg] = useState('');
+  const [zsSyncStatus, setZsSyncStatus] = useState<{ available: boolean; pending: boolean } | null>(null);
 
   // Auxiliary Data
   const [families, setFamilies] = useState<Family[]>([]);
@@ -199,6 +200,22 @@ export const App: React.FC = () => {
   useEffect(() => {
     fetchConfig();
     fetchAuxData();
+  }, []);
+
+  // Estado de sincronização cloud do ZoneSoft (dbo.fullsync) - verifica ao abrir e a cada 20s
+  useEffect(() => {
+    const checkSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/zonesoft-sync/status');
+        const data = await res.json();
+        setZsSyncStatus({ available: !!data.available, pending: !!data.pending });
+      } catch (err) {
+        setZsSyncStatus(null);
+      }
+    };
+    checkSyncStatus();
+    const interval = setInterval(checkSyncStatus, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -425,6 +442,7 @@ export const App: React.FC = () => {
         isConnected={isConnected}
         useMock={useMock}
         connectionMsg={connectionMsg}
+        zsSyncStatus={zsSyncStatus}
         onOpenConfig={() => setIsConfigOpen(true)}
         onOpenBackups={() => setIsBackupsOpen(true)}
         onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
