@@ -58,7 +58,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
   // Filters (Default to 'with_ementa' so only Ementa Digital items are listed by default)
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('all');
+  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('with_ementa');
   const [selectedFamily, setSelectedFamily] = useState<string>('all');
   const [selectedEmentaFamily, setSelectedEmentaFamily] = useState<string>('all');
 

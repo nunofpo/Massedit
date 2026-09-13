@@ -434,61 +434,86 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
         if filter_req.search and filter_req.search.strip():
             term = f"%{filter_req.search.strip()}%"
             if filter_req.search.strip().isdigit():
-                conditions.append("(p.codigo = ? OR p.descricao LIKE ? OR (ed.produto IS NOT NULL AND ed.produto LIKE ?))")
-                params.extend([int(filter_req.search.strip()), term, term])
+                if has_ementa:
+                    conditions.append("(COALESCE(ed.cod_produto, p.codigo) = ? OR ISNULL(p.descricao, '') LIKE ? OR ISNULL(ed.produto, '') LIKE ?)")
+                    params.extend([int(filter_req.search.strip()), term, term])
+                else:
+                    conditions.append("(p.codigo = ? OR ISNULL(p.descricao, '') LIKE ?)")
+                    params.extend([int(filter_req.search.strip()), term])
             else:
-                conditions.append("(p.descricao LIKE ? OR (ed.produto IS NOT NULL AND ed.produto LIKE ?))")
-                params.extend([term, term])
+                if has_ementa:
+                    conditions.append("(ISNULL(p.descricao, '') LIKE ? OR ISNULL(ed.produto, '') LIKE ?)")
+                    params.extend([term, term])
+                else:
+                    conditions.append("ISNULL(p.descricao, '') LIKE ?")
+                    params.append(term)
 
         if filter_req.familia is not None:
-            conditions.append("p.familia = ?")
+            if has_ementa:
+                conditions.append("COALESCE(p.familia, ed.familia) = ?")
+            else:
+                conditions.append("p.familia = ?")
             params.append(filter_req.familia)
 
         if filter_req.ementa_familia is not None:
-            conditions.append("(ed.familia = ? OR p.familia = ?)")
-            params.extend([filter_req.ementa_familia, filter_req.ementa_familia])
+            if has_ementa:
+                conditions.append("ed.familia = ?")
+                params.append(filter_req.ementa_familia)
+            else:
+                conditions.append("1=0")
 
         if filter_req.has_ementa_filter == "with_ementa":
-            conditions.append("ed.cod_produto IS NOT NULL")
+            if has_ementa:
+                conditions.append("ed.cod_produto IS NOT NULL")
+            else:
+                conditions.append("1=0")
         elif filter_req.has_ementa_filter == "without_ementa":
-            conditions.append("ed.cod_produto IS NULL")
+            if has_ementa:
+                conditions.append("ed.cod_produto IS NULL")
+            else:
+                conditions.append("1=1")
 
         if filter_req.visivel_filter == "visible":
-            if has_digital_familias:
-                conditions.append("(ed.cod_produto IS NOT NULL AND ef.codigo IS NOT NULL AND ed.visivel = 1)")
+            if has_ementa:
+                conditions.append("(ed.cod_produto IS NOT NULL AND ISNULL(ed.visivel, 1) = 1)")
             else:
-                conditions.append("(ed.cod_produto IS NOT NULL AND ed.visivel = 1)")
+                conditions.append("1=0")
         elif filter_req.visivel_filter == "hidden":
-            if has_digital_familias:
-                conditions.append("(ed.cod_produto IS NOT NULL AND ef.codigo IS NOT NULL AND ed.visivel = 0)")
+            if has_ementa:
+                conditions.append("(ed.cod_produto IS NOT NULL AND ISNULL(ed.visivel, 1) = 0)")
             else:
-                conditions.append("(ed.cod_produto IS NOT NULL AND ed.visivel = 0)")
+                conditions.append("1=0")
 
         where_clause = " AND ".join(conditions)
 
-        # Contagem total
         if has_digital_familias:
-            count_sql = f"""
-                SELECT COUNT(*)
-                FROM dbo.produtos p
-                LEFT JOIN dbo.ementa_digital_produtos ed ON p.codigo = ed.cod_produto
+            from_clause = f"""
+                FROM dbo.ementa_digital_produtos ed
+                FULL OUTER JOIN dbo.produtos p ON ed.cod_produto = p.codigo
+                LEFT JOIN dbo.familias f ON COALESCE(p.familia, ed.familia) = f.codigo
+                LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
                 LEFT JOIN dbo.ementa_digital_familias ef ON ed.familia = ef.codigo
                 {"LEFT JOIN dbo.ementa_digital_seccoes es ON ef.seccao = es.codigo" if has_digital_seccoes else ""}
-                WHERE {where_clause}
             """
         elif has_ementa:
-            count_sql = f"""
-                SELECT COUNT(*)
-                FROM dbo.produtos p
-                LEFT JOIN dbo.ementa_digital_produtos ed ON p.codigo = ed.cod_produto
-                WHERE {where_clause}
+            from_clause = """
+                FROM dbo.ementa_digital_produtos ed
+                FULL OUTER JOIN dbo.produtos p ON ed.cod_produto = p.codigo
+                LEFT JOIN dbo.familias f ON COALESCE(p.familia, ed.familia) = f.codigo
+                LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
             """
         else:
-            count_sql = f"""
-                SELECT COUNT(*)
+            from_clause = """
                 FROM dbo.produtos p
-                WHERE {where_clause.replace('ed.cod_produto IS NOT NULL', '1=0').replace('ed.cod_produto IS NULL', '1=1')}
+                LEFT JOIN dbo.familias f ON p.familia = f.codigo
+                LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
             """
+
+        count_sql = f"""
+            SELECT COUNT(*)
+            {from_clause}
+            WHERE {where_clause}
+        """
 
         cursor.execute(count_sql, params)
         count_row = cursor.fetchone()
@@ -498,43 +523,85 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
         offset = (filter_req.page - 1) * filter_req.page_size
         total_pages = max(1, (total_count + filter_req.page_size - 1) // filter_req.page_size)
 
-        image_check_sql = "CASE WHEN ed.imagem IS NOT NULL AND DATALENGTH(ed.imagem) > 0 THEN 1 ELSE 0 END" if has_image_col else "0"
-        image_url_sql = "ISNULL(ed.image_url, '')" if has_image_url_col else "''"
-        exists_check_sql = "CASE WHEN ed.cod_produto IS NOT NULL AND ef.codigo IS NOT NULL THEN 1 ELSE 0 END" if has_digital_familias else "CASE WHEN ed.cod_produto IS NOT NULL THEN 1 ELSE 0 END"
+        if has_ementa:
+            code_col = "COALESCE(ed.cod_produto, p.codigo)"
+            pos_desc_col = "ISNULL(NULLIF(p.descricao, ''), ISNULL(ed.produto, ''))"
+            pos_fam_col = "COALESCE(p.familia, ed.familia, 0)"
+            fam_desc_col = "ISNULL(f.descricao, ISNULL(ef.descricao, ''))" if has_digital_familias else "ISNULL(f.descricao, '')"
+            subfam_col = "p.subfam"
+            subfam_desc_col = "ISNULL(sf.descricao, '')"
+            pvp1_col = "ISNULL(p.precovenda, 0.0)"
+            exists_col = "CASE WHEN ed.cod_produto IS NOT NULL THEN 1 ELSE 0 END"
+            prod_col = "ISNULL(NULLIF(ed.produto, ''), ISNULL(p.descricao, ''))"
+            desc_col = "ISNULL(CAST(ed.descricao AS nvarchar(max)), '')"
+            visivel_col = "ISNULL(ed.visivel, 1)"
+            highlight_col = "ISNULL(ed.highlight, 0)" if has_highlight else "0"
+            posicao_col = "ISNULL(ed.posicao, 0)"
+            image_url_sql = "ISNULL(ed.image_url, '')" if has_image_url_col else "''"
+            image_check_sql = "CASE WHEN ed.imagem IS NOT NULL AND DATALENGTH(ed.imagem) > 0 THEN 1 ELSE 0 END" if has_image_col else "0"
+            gluten_col = "ISNULL(ed.gluten, 0)" if has_gluten else "0"
+            lactose_col = "ISNULL(ed.lactose, 0)" if has_lactose else "0"
+            veg_col = "ISNULL(ed.vegetariano, 0)" if has_vegetariano else "0"
+            picante_col = "ISNULL(ed.picante, 0)" if has_picante else "0"
+            calorias_col = "ISNULL(ed.calorias, 0)" if has_calorias else "0"
+            tempo_col = "ISNULL(ed.tempo, 0)" if has_tempo else "0"
+            ed_fam_col = "ed.familia"
+            ed_fam_desc_col = "ISNULL(ef.descricao, '')" if has_digital_familias else "''"
+            ed_sec_desc_col = "ISNULL(es.descricao, '')" if has_digital_familias and has_digital_seccoes else "''"
+        else:
+            code_col = "p.codigo"
+            pos_desc_col = "ISNULL(p.descricao, '')"
+            pos_fam_col = "p.familia"
+            fam_desc_col = "ISNULL(f.descricao, '')"
+            subfam_col = "p.subfam"
+            subfam_desc_col = "ISNULL(sf.descricao, '')"
+            pvp1_col = "ISNULL(p.precovenda, 0.0)"
+            exists_col = "0"
+            prod_col = "''"
+            desc_col = "''"
+            visivel_col = "1"
+            highlight_col = "0"
+            posicao_col = "0"
+            image_url_sql = "''"
+            image_check_sql = "0"
+            gluten_col = "0"
+            lactose_col = "0"
+            veg_col = "0"
+            picante_col = "0"
+            calorias_col = "0"
+            tempo_col = "0"
+            ed_fam_col = "NULL"
+            ed_fam_desc_col = "''"
+            ed_sec_desc_col = "''"
 
         query_sql = f"""
-            SELECT p.codigo,
-                   ISNULL(p.descricao, ''),
-                   p.familia,
-                   ISNULL(f.descricao, ''),
-                   p.subfam,
-                   ISNULL(sf.descricao, ''),
-                   ISNULL(p.precovenda, 0.0),
-                   {exists_check_sql},
-                   ISNULL(ed.produto, ''),
-                   ISNULL(CAST(ed.descricao AS nvarchar(max)), ''),
-                   ISNULL(ed.visivel, 1),
-                   { "ISNULL(ed.highlight, 0)" if has_highlight else "0" },
-                   ISNULL(ed.posicao, 0),
+            SELECT {code_col},
+                   {pos_desc_col},
+                   {pos_fam_col},
+                   {fam_desc_col},
+                   {subfam_col},
+                   {subfam_desc_col},
+                   {pvp1_col},
+                   {exists_col},
+                   {prod_col},
+                   {desc_col},
+                   {visivel_col},
+                   {highlight_col},
+                   {posicao_col},
                    {image_url_sql},
                    {image_check_sql},
-                   { "ISNULL(ed.gluten, 0)" if has_gluten else "0" },
-                   { "ISNULL(ed.lactose, 0)" if has_lactose else "0" },
-                   { "ISNULL(ed.vegetariano, 0)" if has_vegetariano else "0" },
-                   { "ISNULL(ed.picante, 0)" if has_picante else "0" },
-                   { "ISNULL(ed.calorias, 0)" if has_calorias else "0" },
-                   { "ISNULL(ed.tempo, 0)" if has_tempo else "0" },
-                   ed.familia,
-                   { "ISNULL(ef.descricao, '')" if has_digital_familias else "''" },
-                   { "ISNULL(es.descricao, '')" if has_digital_familias and has_digital_seccoes else "''" }
-            FROM dbo.produtos p
-            LEFT JOIN dbo.familias f ON p.familia = f.codigo
-            LEFT JOIN dbo.subfamilias sf ON p.subfam = sf.codigo
-            LEFT JOIN dbo.ementa_digital_produtos ed ON p.codigo = ed.cod_produto
-            { "LEFT JOIN dbo.ementa_digital_familias ef ON ed.familia = ef.codigo" if has_digital_familias else "" }
-            { "LEFT JOIN dbo.ementa_digital_seccoes es ON ef.seccao = es.codigo" if has_digital_familias and has_digital_seccoes else "" }
+                   {gluten_col},
+                   {lactose_col},
+                   {veg_col},
+                   {picante_col},
+                   {calorias_col},
+                   {tempo_col},
+                   {ed_fam_col},
+                   {ed_fam_desc_col},
+                   {ed_sec_desc_col}
+            {from_clause}
             WHERE {where_clause}
-            ORDER BY p.codigo ASC
+            ORDER BY {code_col} ASC
             OFFSET {offset} ROWS FETCH NEXT {filter_req.page_size} ROWS ONLY
         """
 
