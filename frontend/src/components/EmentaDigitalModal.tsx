@@ -11,19 +11,17 @@ import {
   X,
   CheckSquare,
   Square,
-  FileText,
   ChevronLeft,
   ChevronRight,
-  Info,
-  CheckCircle2,
-  AlertCircle
+  Filter
 } from 'lucide-react';
 import {
   EmentaProductItem,
   EmentaProductResponse,
   EmentaLanguage,
   Family,
-  BulkEditPreviewResponse
+  BulkEditPreviewResponse,
+  EmentaDigitalStructureResponse
 } from '../types';
 
 interface EmentaDigitalModalProps {
@@ -58,9 +56,14 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCodes, setSelectedCodes] = useState<Set<number>>(new Set());
 
-  // Filters
+  // Filters (Default to 'with_ementa' so only Ementa Digital items are listed by default)
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('with_ementa');
   const [selectedFamily, setSelectedFamily] = useState<string>('all');
+  const [selectedEmentaFamily, setSelectedEmentaFamily] = useState<string>('all');
+
+  // Digital Menu Structure
+  const [digitalStructure, setDigitalStructure] = useState<EmentaDigitalStructureResponse | null>(null);
 
   // Translation State
   const [selectedProductForTranslation, setSelectedProductForTranslation] = useState<EmentaProductItem | null>(null);
@@ -78,7 +81,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     const lower = code.toLowerCase();
     const next = new Set(selectedLangCodes);
     if (next.has(lower)) {
-      if (next.size <= 1) return; // Retain at least 1 active language
+      if (next.size <= 1) return;
       next.delete(lower);
     } else {
       next.add(lower);
@@ -128,6 +131,19 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
+  // Fetch digital menu structure (sections/families)
+  const fetchDigitalStructure = async () => {
+    try {
+      const res = await fetch('/api/ementa-digital/structure');
+      if (res.ok) {
+        const data: EmentaDigitalStructureResponse = await res.json();
+        setDigitalStructure(data);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar estrutura da ementa:', err);
+    }
+  };
+
   // Fetch products from backend
   const fetchProducts = async () => {
     setIsLoading(true);
@@ -138,7 +154,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         body: JSON.stringify({
           search: searchTerm,
           familia: selectedFamily !== 'all' ? parseInt(selectedFamily, 10) : null,
-          has_ementa_filter: 'all',
+          ementa_familia: selectedEmentaFamily !== 'all' ? parseInt(selectedEmentaFamily, 10) : null,
+          has_ementa_filter: hasEmentaFilter,
           page,
           page_size: 20
         })
@@ -148,8 +165,10 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         setProducts(data.items);
         setTotalCount(data.total_count);
         setTotalPages(data.total_pages);
-        if (data.items.length > 0 && !selectedProductForTranslation) {
+        if (data.items.length > 0) {
           handleSelectProductForTranslation(data.items[0]);
+        } else {
+          setSelectedProductForTranslation(null);
         }
       }
     } catch (err) {
@@ -162,6 +181,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchLanguages();
+      fetchDigitalStructure();
     }
   }, [isOpen]);
 
@@ -169,7 +189,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     if (isOpen) {
       fetchProducts();
     }
-  }, [isOpen, page, selectedFamily]);
+  }, [isOpen, page, selectedFamily, selectedEmentaFamily, hasEmentaFilter]);
 
   // Handle Search submit
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -310,7 +330,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
           return next;
         });
 
-        onSuccess(`Tradução automática gerada para "${textToTranslate}"! Clique em "Gravar Tradução".`);
+        onSuccess(`Tradução automática gerada para "${textToTranslate}"! Clique em "Gravar no ZoneSoft".`);
       } else {
         alert('Erro ao obter tradução automática.');
       }
@@ -443,7 +463,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Tradução automática e gestão de idiomas para artigos e ementas do ZoneSoft POS.
+                Tradução automática e gestão de idiomas para artigos da ementa digital ZoneSoft POS.
               </p>
             </div>
           </div>
@@ -547,8 +567,10 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
             {/* LEFT PANEL: Product Table & Filters */}
             <div className="lg:col-span-5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col min-h-0 overflow-hidden">
               
-              {/* Search & Family Filter Bar */}
-              <div className="p-3 border-b border-slate-200 bg-white flex flex-col gap-2">
+              {/* Search & Filters Header */}
+              <div className="p-3 border-b border-slate-200 bg-white flex flex-col gap-2.5">
+                
+                {/* Search Bar */}
                 <form onSubmit={handleSearchSubmit} className="flex gap-2">
                   <div className="relative flex-1">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -568,24 +590,69 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   </button>
                 </form>
 
-                <div className="flex items-center justify-between gap-2">
-                  <select
-                    value={selectedFamily}
-                    onChange={(e) => { setSelectedFamily(e.target.value); setPage(1); }}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="all">Todas as Famílias</option>
-                    {families.map(f => (
-                      <option key={f.codigo} value={f.codigo}>
-                        #{f.codigo} - {f.descricao}
-                      </option>
-                    ))}
-                  </select>
+                {/* Filter Dropdowns Row */}
+                <div className="grid grid-cols-2 gap-2">
+                  
+                  {/* Filter 1: Presença na Ementa */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-0.5 uppercase tracking-wider">
+                      Filtro de Artigos
+                    </label>
+                    <select
+                      value={hasEmentaFilter}
+                      onChange={(e) => { setHasEmentaFilter(e.target.value); setPage(1); }}
+                      className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-indigo-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="with_ementa">Apenas Artigos da Ementa Digital</option>
+                      <option value="all">Todos os Artigos (POS + Ementa)</option>
+                      <option value="without_ementa">Apenas Sem Registo na Ementa</option>
+                    </select>
+                  </div>
 
+                  {/* Filter 2: Secção da Ementa / Família POS */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-0.5 uppercase tracking-wider">
+                      Secção / Família
+                    </label>
+                    {digitalStructure?.families && digitalStructure.families.length > 0 ? (
+                      <select
+                        value={selectedEmentaFamily}
+                        onChange={(e) => { setSelectedEmentaFamily(e.target.value); setPage(1); }}
+                        className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">Todas as Secções da Ementa</option>
+                        {digitalStructure.families.map(ef => (
+                          <option key={ef.codigo} value={ef.codigo}>
+                            #{ef.codigo} - {ef.descricao}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={selectedFamily}
+                        onChange={(e) => { setSelectedFamily(e.target.value); setPage(1); }}
+                        className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">Todas as Famílias POS</option>
+                        {families.map(f => (
+                          <option key={f.codigo} value={f.codigo}>
+                            #{f.codigo} - {f.descricao}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {selectedCodes.size > 0 ? `${selectedCodes.size} selecionados` : 'Clique para traduzir'}
+                  </span>
                   <button
                     type="button"
                     onClick={handleSelectAllOnPage}
-                    className="px-2.5 py-1.5 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg transition flex items-center gap-1 shrink-0"
+                    className="px-2 py-1 text-[11px] font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg transition flex items-center gap-1"
                     title="Selecionar / Desselecionar todos os artigos da página atual"
                   >
                     {products.length > 0 && products.every(p => selectedCodes.has(p.codigo)) ? (
@@ -593,9 +660,10 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     ) : (
                       <Square className="w-3.5 h-3.5 text-slate-400" />
                     )}
-                    Página
+                    Selecionar Página
                   </button>
                 </div>
+
               </div>
 
               {/* Products Table */}
@@ -603,11 +671,15 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 {isLoading ? (
                   <div className="p-8 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-                    A carregar artigos do POS...
+                    A carregar artigos da ementa...
                   </div>
                 ) : products.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 text-xs">
-                    Nenhum artigo encontrado.
+                  <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <Filter className="w-6 h-6 text-slate-300" />
+                    <p className="font-bold text-slate-600">Nenhum artigo encontrado na Ementa Digital.</p>
+                    <p className="text-[11px] text-slate-400">
+                      Tente mudar o filtro para &quot;Todos os Artigos (POS + Ementa)&quot; ou alterar a secção selecionada.
+                    </p>
                   </div>
                 ) : (
                   products.map((prod) => {
