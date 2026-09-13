@@ -162,7 +162,7 @@ class DatabaseManager:
         """Abre ligação em modo transacional (autocommit desligado) com codificação correta para Latin1/UTF-8."""
         conn = pyodbc.connect(self.build_connection_string(), timeout=5)
         conn.setdecoding(pyodbc.SQL_CHAR, encoding='latin1')
-        conn.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
+        conn.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-16le')
         conn.setencoding(encoding='cp1252')
         conn.autocommit = False
 

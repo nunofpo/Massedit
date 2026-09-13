@@ -605,24 +605,34 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
             OFFSET {offset} ROWS FETCH NEXT {filter_req.page_size} ROWS ONLY
         """
 
+        def _str(val: Any) -> str:
+            if val is None:
+                return ""
+            if isinstance(val, bytes):
+                try:
+                    return val.decode("utf-8")
+                except UnicodeDecodeError:
+                    return val.decode("latin1", errors="replace")
+            return str(val)
+
         cursor.execute(query_sql, params)
         items: List[EmentaProductItem] = []
         for row in cursor.fetchall():
             items.append(EmentaProductItem(
                 codigo=int(row[0]),
-                pos_descricao=row[1] or "",
+                pos_descricao=_str(row[1]),
                 familia=row[2],
-                familia_desc=row[3] or "",
+                familia_desc=_str(row[3]),
                 subfamilia=row[4],
-                subfamilia_desc=row[5] or "",
+                subfamilia_desc=_str(row[5]),
                 pvp1=float(row[6] or 0.0),
                 exists_in_ementa=bool(row[7]),
-                produto=row[8] or "",
-                descricao=row[9] or "",
+                produto=_str(row[8]),
+                descricao=_str(row[9]),
                 visivel=int(row[10] if row[10] is not None else 1),
                 highlight=int(row[11] or 0),
                 posicao=int(row[12] or 0),
-                image_url=row[13] or "",
+                image_url=_str(row[13]),
                 has_image_bytes=bool(row[14]),
                 gluten=int(row[15] or 0),
                 lactose=int(row[16] or 0),
@@ -631,8 +641,8 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
                 calorias=int(row[19] or 0),
                 tempo=int(row[20] or 0),
                 ementa_familia=row[21],
-                ementa_familia_desc=row[22] or "",
-                ementa_seccao_desc=row[23] or ""
+                ementa_familia_desc=_str(row[22]),
+                ementa_seccao_desc=_str(row[23])
             ))
 
         return EmentaProductResponse(
