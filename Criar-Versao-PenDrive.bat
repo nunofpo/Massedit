@@ -34,7 +34,14 @@ if not exist ".venv-win\Scripts\python.exe" (
     python -m venv .venv-win
     if errorlevel 1 goto :erro
 )
-".venv-win\Scripts\python.exe" -m pip install -q fastapi uvicorn pydantic pyodbc pyinstaller
+".venv-win\Scripts\python.exe" -m pip install -q -r requirements.txt
+if errorlevel 1 goto :erro
+
+echo.
+echo [2.5/3] A verificar integridade e testes do backend...
+".venv-win\Scripts\python.exe" -c "import backend.app"
+if errorlevel 1 goto :erro
+".venv-win\Scripts\python.exe" -m unittest discover -s tests
 if errorlevel 1 goto :erro
 
 echo.

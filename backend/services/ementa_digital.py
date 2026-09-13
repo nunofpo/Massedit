@@ -11,12 +11,12 @@ from backend.db import db_manager, get_app_dir
 from backend.models import (
     EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
     EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
-    EmentaBulkEditRequest, BulkEditPreviewResponse, ProductDiff,
+    EmentaBulkEditRequest, EmentaBulkEditAction, BulkEditPreviewResponse, ProductDiff, FieldDiff,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest
 )
 from backend.services.products import (
-    _schema, _text_limit, _chunks, create_backup_snapshot
+    _schema, _text_limit, _chunks, create_backup_snapshot, transform_text_case
 )
 
 # Diretório para armazenamento local de imagens caso a base de dados use image_url relativo
@@ -738,12 +738,177 @@ def import_products_to_ementa(req: EmentaImportFromPosRequest) -> EmentaImportRe
 # Operações em Massa: Pré-visualização (Simulação) e Aplicação
 # ======================================================================
 
+def _compute_ementa_changes(
+    item_data: Dict[str, Any],
+    actions: EmentaBulkEditAction,
+    ed_cols: Dict[str, Any],
+    schema: Any
+) -> Tuple[List[FieldDiff], Dict[str, Any], bool, Optional[str]]:
+    """Calcula as alterações na ementa digital para um único artigo (partilhado entre preview e apply)."""
+    code = item_data["codigo"]
+    pos_name = item_data.get("pos_name") or ""
+    exists = item_data.get("exists", False)
+    if not exists:
+        reason = "Artigo ainda não existe na ementa digital (use a função 'Importar do POS' primeiro)."
+        return [
+            FieldDiff(
+                field_name="registo_ementa",
+                field_label="Registo na Ementa",
+                old_value="Inexistente",
+                new_value="Inexistente",
+                blocked=True,
+                reason=reason
+            )
+        ], {}, True, reason
+
+    diffs: List[FieldDiff] = []
+    updates: Dict[str, Any] = {}
+    is_blocked = False
+    blocked_reason = None
+
+    cur_menu_name = item_data.get("produto") or ""
+    cur_desc = item_data.get("descricao") or ""
+    cur_visivel = item_data.get("visivel", 1)
+    cur_highlight = item_data.get("highlight", 0)
+    cur_gluten = item_data.get("gluten", 0)
+    cur_lactose = item_data.get("lactose", 0)
+    cur_veggie = item_data.get("vegetariano", 0)
+    cur_picante = item_data.get("picante", 0)
+    cur_dieta = item_data.get("dieta", 0)
+    cur_familia = item_data.get("familia")
+    pos_short = item_data.get("pos_short") or ""
+
+    prod_limit = _text_limit(schema, "ementa_digital_produtos", "produto")
+    desc_limit = _text_limit(schema, "ementa_digital_produtos", "descricao")
+
+    # Visibilidade
+    if actions.set_visivel is not None and "visivel" in ed_cols:
+        if cur_visivel != actions.set_visivel:
+            diffs.append(FieldDiff(
+                field_name="visivel",
+                field_label="Visibilidade",
+                old_value="Visível" if cur_visivel == 1 else "Oculto",
+                new_value="Visível" if actions.set_visivel == 1 else "Oculto",
+                blocked=False
+            ))
+            updates["visivel"] = actions.set_visivel
+
+    # Destaque
+    if actions.set_highlight is not None and "highlight" in ed_cols:
+        if cur_highlight != actions.set_highlight:
+            diffs.append(FieldDiff(
+                field_name="highlight",
+                field_label="Destaque",
+                old_value="Destaque" if cur_highlight == 1 else "Normal",
+                new_value="Destaque" if actions.set_highlight == 1 else "Normal",
+                blocked=False
+            ))
+            updates["highlight"] = actions.set_highlight
+
+    # Nome na ementa (copy_pos_name / text_case_name)
+    new_menu_name = None
+    if actions.copy_pos_name:
+        new_menu_name = pos_name.strip()
+    elif actions.text_case_name:
+        val = cur_menu_name or pos_name
+        mode_map = {"upper": "uppercase", "lower": "lowercase", "title": "titlecase", "capitalize": "capitalize"}
+        case_mode = mode_map.get(actions.text_case_name, actions.text_case_name)
+        new_menu_name = transform_text_case(val, case_mode)
+
+    if new_menu_name is not None and new_menu_name != cur_menu_name and "produto" in ed_cols:
+        if prod_limit and len(new_menu_name) > prod_limit:
+            reason = f"Nome da ementa excede o limite da coluna ({len(new_menu_name)} > {prod_limit} caracteres)."
+            diffs.append(FieldDiff(
+                field_name="produto",
+                field_label="Nome na Ementa",
+                old_value=cur_menu_name or "(vazio)",
+                new_value=new_menu_name,
+                blocked=True,
+                reason=reason
+            ))
+            is_blocked = True
+            blocked_reason = reason
+        else:
+            diffs.append(FieldDiff(
+                field_name="produto",
+                field_label="Nome na Ementa",
+                old_value=cur_menu_name or "(vazio)",
+                new_value=new_menu_name,
+                blocked=False
+            ))
+            updates["produto"] = new_menu_name
+
+    # Descrição (copy_pos_short_desc / set_descricao / append_descricao)
+    new_desc = None
+    if actions.copy_pos_short_desc and pos_short:
+        new_desc = pos_short.strip()
+    elif actions.set_descricao is not None:
+        new_desc = actions.set_descricao.strip()
+    elif actions.append_descricao:
+        new_desc = (cur_desc + " " + actions.append_descricao).strip()
+
+    if new_desc is not None and new_desc != cur_desc and "descricao" in ed_cols:
+        if desc_limit and len(new_desc) > desc_limit:
+            reason = f"Descrição excede o limite da coluna ({len(new_desc)} > {desc_limit} caracteres)."
+            diffs.append(FieldDiff(
+                field_name="descricao",
+                field_label="Descrição",
+                old_value=cur_desc[:30] + "..." if len(cur_desc) > 30 else (cur_desc or "(vazio)"),
+                new_value=new_desc[:30] + "...",
+                blocked=True,
+                reason=reason
+            ))
+            is_blocked = True
+            blocked_reason = reason
+        else:
+            diffs.append(FieldDiff(
+                field_name="descricao",
+                field_label="Descrição",
+                old_value=cur_desc[:30] + "..." if len(cur_desc) > 30 else (cur_desc or "(vazio)"),
+                new_value=new_desc[:30] + "...",
+                blocked=False
+            ))
+            updates["descricao"] = new_desc
+
+    # Família na Ementa
+    if actions.set_ementa_familia is not None and "familia" in ed_cols:
+        if cur_familia != actions.set_ementa_familia:
+            diffs.append(FieldDiff(
+                field_name="familia",
+                field_label="Família na Ementa",
+                old_value=str(cur_familia or 0),
+                new_value=str(actions.set_ementa_familia),
+                blocked=False
+            ))
+            updates["familia"] = actions.set_ementa_familia
+
+    # Alergénios e dietas
+    allergens = [
+        ("gluten", "Glúten", actions.set_gluten, cur_gluten),
+        ("lactose", "Lactose", actions.set_lactose, cur_lactose),
+        ("vegetariano", "Vegetariano", actions.set_vegetariano, cur_veggie),
+        ("picante", "Picante", actions.set_picante, cur_picante),
+        ("dieta", "Dieta", actions.set_dieta, cur_dieta),
+    ]
+    for col_name, label, act_val, cur_val in allergens:
+        if act_val is not None and col_name in ed_cols and cur_val != act_val:
+            diffs.append(FieldDiff(
+                field_name=col_name,
+                field_label=label,
+                old_value=str(cur_val),
+                new_value=str(act_val),
+                blocked=False
+            ))
+            updates[col_name] = act_val
+
+    return diffs, updates, is_blocked, blocked_reason
+
+
 def preview_ementa_bulk_edit(req: EmentaBulkEditRequest) -> BulkEditPreviewResponse:
     """Simula alterações em massa na ementa digital sem alterar a base de dados."""
     if not req.codes:
         return BulkEditPreviewResponse(
-            total_selected=0, affected_count=0, blocked_count=0,
-            protected_count=0, diffs=[]
+            total_selected=0, total_affected=0, blocked_descriptions_count=0, previews=[]
         )
 
     conn = db_manager.get_connection()
@@ -752,31 +917,52 @@ def preview_ementa_bulk_edit(req: EmentaBulkEditRequest) -> BulkEditPreviewRespo
         schema = _schema(cursor)
         if "ementa_digital_produtos" not in schema:
             return BulkEditPreviewResponse(
-                total_selected=len(req.codes), affected_count=0,
-                blocked_count=len(req.codes), protected_count=0,
-                diffs=[
+                total_selected=len(req.codes),
+                total_affected=0,
+                blocked_descriptions_count=len(req.codes),
+                previews=[
                     ProductDiff(
-                        codigo=c, descricao="N/A", field="ementa_digital",
-                        old_value="N/A", new_value="N/A", status="blocked",
-                        reason="A tabela dbo.ementa_digital_produtos não existe nesta base de dados."
+                        codigo=c,
+                        descricao="N/A",
+                        has_sales=False,
+                        diffs=[
+                            FieldDiff(
+                                field_name="ementa_digital",
+                                field_label="Ementa Digital",
+                                old_value="N/A",
+                                new_value="N/A",
+                                blocked=True,
+                                reason="A tabela dbo.ementa_digital_produtos não existe nesta base de dados."
+                            )
+                        ]
                     ) for c in req.codes
                 ]
             )
 
-        chunks = [req.codes[i:i + 500] for i in range(0, len(req.codes), 500)]
-        diffs: List[ProductDiff] = []
+        ed_cols = schema["ementa_digital_produtos"]
+
+        previews: List[ProductDiff] = []
         affected = 0
         blocked = 0
 
-        for chunk in chunks:
+        ed_select = [
+            "ed.visivel" if "visivel" in ed_cols else "1 AS visivel",
+            "ed.highlight" if "highlight" in ed_cols else "0 AS highlight",
+            "ed.gluten" if "gluten" in ed_cols else "0 AS gluten",
+            "ed.lactose" if "lactose" in ed_cols else "0 AS lactose",
+            "ed.vegetariano" if "vegetariano" in ed_cols else "0 AS vegetariano",
+            "ed.picante" if "picante" in ed_cols else "0 AS picante",
+            "ed.dieta" if "dieta" in ed_cols else "0 AS dieta",
+            "ed.familia" if "familia" in ed_cols else "NULL AS familia",
+        ]
+
+        for chunk in _chunks(req.codes, 500):
             placeholders = ",".join("?" for _ in chunk)
             cursor.execute(f"""
                 SELECT p.codigo, ISNULL(p.descricao, ''), ed.cod_produto,
                        ISNULL(ed.produto, ''), ISNULL(CAST(ed.descricao AS nvarchar(max)), ''),
-                       ISNULL(ed.visivel, 1), ISNULL(ed.highlight, 0),
-                       ISNULL(ed.gluten, 0), ISNULL(ed.lactose, 0),
-                       ISNULL(ed.vegetariano, 0), ISNULL(ed.picante, 0),
-                       ISNULL(p.descricaocurta, '')
+                       ISNULL(p.descricaocurta, ''),
+                       {', '.join(ed_select)}
                 FROM dbo.produtos p
                 LEFT JOIN dbo.ementa_digital_produtos ed ON p.codigo = ed.cod_produto
                 WHERE p.codigo IN ({placeholders})
@@ -788,141 +974,49 @@ def preview_ementa_bulk_edit(req: EmentaBulkEditRequest) -> BulkEditPreviewRespo
                 exists = row[2] is not None
                 cur_menu_name = row[3]
                 cur_desc = row[4]
-                cur_visivel = int(row[5])
-                cur_highlight = int(row[6])
-                cur_gluten = int(row[7])
-                cur_lactose = int(row[8])
-                cur_veggie = int(row[9])
-                cur_picante = int(row[10])
-                pos_short = row[11]
+                pos_short = row[5]
 
-                if not exists:
+                item_data = {
+                    "codigo": code,
+                    "pos_name": pos_name,
+                    "exists": exists,
+                    "produto": cur_menu_name,
+                    "descricao": cur_desc,
+                    "pos_short": pos_short,
+                    "visivel": int(row[6]) if row[6] is not None else 1,
+                    "highlight": int(row[7]) if row[7] is not None else 0,
+                    "gluten": int(row[8]) if row[8] is not None else 0,
+                    "lactose": int(row[9]) if row[9] is not None else 0,
+                    "vegetariano": int(row[10]) if row[10] is not None else 0,
+                    "picante": int(row[11]) if row[11] is not None else 0,
+                    "dieta": int(row[12]) if row[12] is not None else 0,
+                    "familia": int(row[13]) if row[13] is not None else None,
+                }
+
+                diffs, updates, is_blocked, blocked_reason = _compute_ementa_changes(item_data, req.actions, ed_cols, schema)
+
+                if is_blocked:
                     blocked += 1
-                    diffs.append(ProductDiff(
-                        codigo=code, descricao=pos_name, field="registo_ementa",
-                        old_value="Inexistente", new_value="Inexistente", status="blocked",
-                        reason="Artigo ainda não existe na ementa digital (use a função 'Importar do POS' primeiro)."
+                    previews.append(ProductDiff(
+                        codigo=code,
+                        descricao=pos_name,
+                        has_sales=False,
+                        diffs=diffs
                     ))
-                    continue
-
-                row_has_changes = False
-
-                # Visibilidade
-                if req.actions.set_visivel is not None:
-                    if cur_visivel != req.actions.set_visivel:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="visivel",
-                            old_value="Visível" if cur_visivel == 1 else "Oculto",
-                            new_value="Visível" if req.actions.set_visivel == 1 else "Oculto",
-                            status="modified"
-                        ))
-
-                # Destaque
-                if req.actions.set_highlight is not None:
-                    if cur_highlight != req.actions.set_highlight:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="highlight",
-                            old_value="Destaque" if cur_highlight == 1 else "Normal",
-                            new_value="Destaque" if req.actions.set_highlight == 1 else "Normal",
-                            status="modified"
-                        ))
-
-                # Copiar nome do POS para a ementa
-                if req.actions.copy_pos_name:
-                    new_val = pos_name.strip()[:250]
-                    if cur_menu_name != new_val:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="produto",
-                            old_value=cur_menu_name or "(vazio)",
-                            new_value=new_val,
-                            status="modified"
-                        ))
-
-                # Copiar descrição curta do POS para a ementa
-                if req.actions.copy_pos_short_desc and pos_short:
-                    new_desc = pos_short.strip()
-                    if cur_desc != new_desc:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="descricao",
-                            old_value=cur_desc[:30] + "..." if len(cur_desc) > 30 else (cur_desc or "(vazio)"),
-                            new_value=new_desc[:30] + "...",
-                            status="modified"
-                        ))
-
-                # Formatação de caixa de texto
-                if req.actions.text_case_name:
-                    val = cur_menu_name or pos_name
-                    case_op = req.actions.text_case_name
-                    new_val = val
-                    if case_op == "upper":
-                        new_val = val.upper()
-                    elif case_op == "lower":
-                        new_val = val.lower()
-                    elif case_op == "title":
-                        new_val = val.title()
-                    elif case_op == "capitalize":
-                        new_val = val.capitalize()
-
-                    if cur_menu_name != new_val:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="produto",
-                            old_value=cur_menu_name,
-                            new_value=new_val,
-                            status="modified"
-                        ))
-
-                # Descrição
-                if req.actions.set_descricao is not None:
-                    if cur_desc != req.actions.set_descricao:
-                        row_has_changes = True
-                        diffs.append(ProductDiff(
-                            codigo=code, descricao=pos_name, field="descricao",
-                            old_value=cur_desc[:30] + "..." if len(cur_desc) > 30 else (cur_desc or "(vazio)"),
-                            new_value=req.actions.set_descricao[:30] + "...",
-                            status="modified"
-                        ))
-                elif req.actions.append_descricao:
-                    new_desc = (cur_desc + " " + req.actions.append_descricao).strip()
-                    row_has_changes = True
-                    diffs.append(ProductDiff(
-                        codigo=code, descricao=pos_name, field="descricao",
-                        old_value=cur_desc[:30] + "...",
-                        new_value=new_desc[:30] + "...",
-                        status="modified"
-                    ))
-
-                # Alergénios e dietas
-                if req.actions.set_gluten is not None and cur_gluten != req.actions.set_gluten:
-                    row_has_changes = True
-                    diffs.append(ProductDiff(codigo=code, descricao=pos_name, field="gluten",
-                                             old_value=str(cur_gluten), new_value=str(req.actions.set_gluten), status="modified"))
-                if req.actions.set_lactose is not None and cur_lactose != req.actions.set_lactose:
-                    row_has_changes = True
-                    diffs.append(ProductDiff(codigo=code, descricao=pos_name, field="lactose",
-                                             old_value=str(cur_lactose), new_value=str(req.actions.set_lactose), status="modified"))
-                if req.actions.set_vegetariano is not None and cur_veggie != req.actions.set_vegetariano:
-                    row_has_changes = True
-                    diffs.append(ProductDiff(codigo=code, descricao=pos_name, field="vegetariano",
-                                             old_value=str(cur_veggie), new_value=str(req.actions.set_vegetariano), status="modified"))
-                if req.actions.set_picante is not None and cur_picante != req.actions.set_picante:
-                    row_has_changes = True
-                    diffs.append(ProductDiff(codigo=code, descricao=pos_name, field="picante",
-                                             old_value=str(cur_picante), new_value=str(req.actions.set_picante), status="modified"))
-
-                if row_has_changes:
+                elif diffs:
                     affected += 1
+                    previews.append(ProductDiff(
+                        codigo=code,
+                        descricao=pos_name,
+                        has_sales=False,
+                        diffs=diffs
+                    ))
 
         return BulkEditPreviewResponse(
             total_selected=len(req.codes),
-            affected_count=affected,
-            blocked_count=blocked,
-            protected_count=0,
-            diffs=diffs
+            total_affected=affected,
+            blocked_descriptions_count=blocked,
+            previews=previews
         )
     finally:
         conn.close()
@@ -943,10 +1037,14 @@ def apply_ementa_bulk_edit(req: EmentaBulkEditRequest) -> Tuple[bool, str, int]:
         ed_cols = schema["ementa_digital_produtos"]
         has_sync = "sync" in ed_cols
 
-        # Snapshot do estado anterior
-        cursor.execute(f"SELECT * FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({','.join('?' for _ in req.codes)})", req.codes)
-        desc = [c[0].lower() for c in cursor.description]
-        prev_data = [dict(zip(desc, row)) for row in cursor.fetchall()]
+        # Snapshot do estado anterior em blocos de 500
+        prev_data: List[Dict[str, Any]] = []
+        for chunk in _chunks(req.codes, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"SELECT * FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", chunk)
+            desc = [c[0].lower() for c in cursor.description]
+            prev_data.extend([dict(zip(desc, row)) for row in cursor.fetchall()])
+
         if not prev_data:
             return False, "Nenhum dos artigos selecionados existe na ementa digital.", 0
 
@@ -959,79 +1057,73 @@ def apply_ementa_bulk_edit(req: EmentaBulkEditRequest) -> Tuple[bool, str, int]:
         except Exception as e:
             return False, f"Falha ao criar cópia de segurança antes de aplicar: {e}", 0
 
-        # Montar instruções de atualização
+        ed_select = [
+            "ed.visivel" if "visivel" in ed_cols else "1 AS visivel",
+            "ed.highlight" if "highlight" in ed_cols else "0 AS highlight",
+            "ed.gluten" if "gluten" in ed_cols else "0 AS gluten",
+            "ed.lactose" if "lactose" in ed_cols else "0 AS lactose",
+            "ed.vegetariano" if "vegetariano" in ed_cols else "0 AS vegetariano",
+            "ed.picante" if "picante" in ed_cols else "0 AS picante",
+            "ed.dieta" if "dieta" in ed_cols else "0 AS dieta",
+            "ed.familia" if "familia" in ed_cols else "NULL AS familia",
+        ]
+
         updated_count = 0
-        for item in prev_data:
-            code = int(item["cod_produto"])
-            sets: List[str] = []
-            params: List[Any] = []
 
-            if req.actions.set_visivel is not None:
-                sets.append("visivel = ?")
-                params.append(req.actions.set_visivel)
+        for chunk in _chunks(req.codes, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"""
+                SELECT p.codigo, ISNULL(p.descricao, ''), ed.cod_produto,
+                       ISNULL(ed.produto, ''), ISNULL(CAST(ed.descricao AS nvarchar(max)), ''),
+                       ISNULL(p.descricaocurta, ''),
+                       {', '.join(ed_select)}
+                FROM dbo.produtos p
+                INNER JOIN dbo.ementa_digital_produtos ed ON p.codigo = ed.cod_produto
+                WHERE p.codigo IN ({placeholders})
+            """, chunk)
 
-            if req.actions.set_highlight is not None and "highlight" in ed_cols:
-                sets.append("highlight = ?")
-                params.append(req.actions.set_highlight)
+            for row in cursor.fetchall():
+                code = int(row[0])
+                pos_name = row[1]
+                exists = row[2] is not None
+                cur_menu_name = row[3]
+                cur_desc = row[4]
+                pos_short = row[5]
 
-            if req.actions.copy_pos_name:
-                cursor.execute("SELECT descricao FROM dbo.produtos WHERE codigo = ?", (code,))
-                pos_r = cursor.fetchone()
-                if pos_r and pos_r[0]:
-                    sets.append("produto = ?")
-                    params.append(pos_r[0].strip()[:250])
+                item_data = {
+                    "codigo": code,
+                    "pos_name": pos_name,
+                    "exists": exists,
+                    "produto": cur_menu_name,
+                    "descricao": cur_desc,
+                    "pos_short": pos_short,
+                    "visivel": int(row[6]) if row[6] is not None else 1,
+                    "highlight": int(row[7]) if row[7] is not None else 0,
+                    "gluten": int(row[8]) if row[8] is not None else 0,
+                    "lactose": int(row[9]) if row[9] is not None else 0,
+                    "vegetariano": int(row[10]) if row[10] is not None else 0,
+                    "picante": int(row[11]) if row[11] is not None else 0,
+                    "dieta": int(row[12]) if row[12] is not None else 0,
+                    "familia": int(row[13]) if row[13] is not None else None,
+                }
 
-            if req.actions.text_case_name:
-                cur_p = item.get("produto") or ""
-                case_op = req.actions.text_case_name
-                new_p = cur_p
-                if case_op == "upper":
-                    new_p = cur_p.upper()
-                elif case_op == "lower":
-                    new_p = cur_p.lower()
-                elif case_op == "title":
-                    new_p = cur_p.title()
-                elif case_op == "capitalize":
-                    new_p = cur_p.capitalize()
-                sets.append("produto = ?")
-                params.append(new_p[:250])
+                diffs, updates, is_blocked, _ = _compute_ementa_changes(item_data, req.actions, ed_cols, schema)
 
-            if req.actions.copy_pos_short_desc:
-                cursor.execute("SELECT descricaocurta FROM dbo.produtos WHERE codigo = ?", (code,))
-                sc_r = cursor.fetchone()
-                if sc_r and sc_r[0]:
-                    sets.append("descricao = ?")
-                    params.append(sc_r[0].strip())
+                if is_blocked or not updates:
+                    continue
 
-            if req.actions.set_descricao is not None:
-                sets.append("descricao = ?")
-                params.append(req.actions.set_descricao)
-            elif req.actions.append_descricao:
-                cur_d = item.get("descricao") or ""
-                new_d = (cur_d + " " + req.actions.append_descricao).strip()
-                sets.append("descricao = ?")
-                params.append(new_d)
+                sets: List[str] = []
+                params: List[Any] = []
 
-            if req.actions.set_ementa_familia is not None:
-                sets.append("familia = ?")
-                params.append(req.actions.set_ementa_familia)
-
-            for col_name, act_val in [
-                ("gluten", req.actions.set_gluten),
-                ("lactose", req.actions.set_lactose),
-                ("vegetariano", req.actions.set_vegetariano),
-                ("picante", req.actions.set_picante),
-                ("dieta", req.actions.set_dieta),
-            ]:
-                if act_val is not None and col_name in ed_cols:
+                for col_name, new_val in updates.items():
                     sets.append(f"{col_name} = ?")
-                    params.append(act_val)
+                    params.append(new_val)
 
-            if sets:
                 if has_sync:
                     sets.append("sync = 1")
-                sql = f"UPDATE dbo.ementa_digital_produtos SET {', '.join(sets)} WHERE cod_produto = ?"
+
                 params.append(code)
+                sql = f"UPDATE dbo.ementa_digital_produtos SET {', '.join(sets)} WHERE cod_produto = ?"
                 cursor.execute(sql, params)
                 updated_count += 1
 

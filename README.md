@@ -159,6 +159,25 @@ Basta copiar a pasta `MassEdit-Portable` para uma Pen Drive e executar diretamen
 
 ---
 
+## 🧪 Antes de Commitar / Regras de Qualidade
+
+Antes de submeter qualquer alteração ao repositório, garanta a integridade executando os seguintes passos:
+
+1. **Validar Importação do Backend**:
+   ```bash
+   python -c "import backend.app"
+   ```
+2. **Executar Testes Unitários de Contratos**:
+   ```bash
+   python -m unittest discover -s tests
+   ```
+3. **Validar Build do Frontend**:
+   ```bash
+   cd frontend && npm run build && cd ..
+   ```
+
+---
+
 ## 🔒 Privacidade e Segurança de Dados
 
 - O ficheiro `config.json` e a pasta `backups/` são ignorados no repositório (`.gitignore`).

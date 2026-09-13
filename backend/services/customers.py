@@ -4,7 +4,11 @@ import urllib.parse
 import json
 from typing import List, Dict, Any, Optional, Tuple
 from backend.db import db_manager, SchemaInfo
-from backend.models import CustomerItem, CustomerAuditResponse, NifLookupResponse, BulkCustomerUpdateRequest
+from backend.models import (
+    CustomerItem, CustomerAuditResponse, NifLookupResponse, BulkCustomerUpdateRequest,
+    BulkEditPreviewResponse, ProductDiff, FieldDiff
+)
+from backend.services.products import _chunks, create_backup_snapshot
 
 def validate_pt_nif(nif_str: Optional[str]) -> Tuple[bool, str]:
     """
@@ -236,59 +240,241 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         conn.close()
 
 
+def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewResponse:
+    """Simula as alterações em clientes antes de as gravar na base de dados."""
+    if not req.customers:
+        return BulkEditPreviewResponse(
+            total_selected=0, total_affected=0, blocked_descriptions_count=0, previews=[]
+        )
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = db_manager.get_schema(cursor)
+        if "clientes" not in schema:
+            return BulkEditPreviewResponse(
+                total_selected=len(req.customers),
+                total_affected=0,
+                blocked_descriptions_count=len(req.customers),
+                previews=[
+                    ProductDiff(
+                        codigo=c.codigo,
+                        descricao="N/A",
+                        has_sales=False,
+                        diffs=[
+                            FieldDiff(
+                                field_name="clientes",
+                                field_label="Tabela Clientes",
+                                old_value="N/A",
+                                new_value="N/A",
+                                blocked=True,
+                                reason="A tabela dbo.clientes não existe nesta base de dados."
+                            )
+                        ]
+                    ) for c in req.customers
+                ]
+            )
+
+        c_cols = schema["clientes"]
+        codes = [c.codigo for c in req.customers]
+
+        # Ler estado atual dos clientes em chunks
+        current_data: Dict[int, Dict[str, Any]] = {}
+        for chunk in _chunks(codes, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"SELECT * FROM dbo.clientes WHERE codigo IN ({placeholders})", chunk)
+            desc = [col[0].lower() for col in cursor.description]
+            for row in cursor.fetchall():
+                row_dict = dict(zip(desc, row))
+                current_data[int(row_dict["codigo"])] = row_dict
+
+        previews: List[ProductDiff] = []
+        affected = 0
+        blocked = 0
+
+        for cust in req.customers:
+            cur = current_data.get(cust.codigo)
+            if not cur:
+                blocked += 1
+                previews.append(ProductDiff(
+                    codigo=cust.codigo,
+                    descricao="N/A",
+                    has_sales=False,
+                    diffs=[FieldDiff(
+                        field_name="codigo",
+                        field_label="Registo de Cliente",
+                        old_value="Inexistente",
+                        new_value="Inexistente",
+                        blocked=True,
+                        reason=f"Cliente #{cust.codigo} não existe na base de dados."
+                    )]
+                ))
+                continue
+
+            diffs: List[FieldDiff] = []
+            is_blocked = False
+            cur_nome = str(cur.get("nome") or "").strip()
+
+            # Se NIF for alterado ou fornecido, validar NIF português com validate_pt_nif
+            if cust.nif is not None and "nif" in c_cols:
+                clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
+                is_valid, nif_msg = validate_pt_nif(clean_nif)
+                cur_nif = str(cur.get("nif") or "").strip()
+                if not is_valid and clean_nif != "999999990":
+                    is_blocked = True
+                    diffs.append(FieldDiff(
+                        field_name="nif",
+                        field_label="NIF",
+                        old_value=cur_nif,
+                        new_value=cust.nif,
+                        blocked=True,
+                        reason=f"NIF português inválido: {nif_msg}"
+                    ))
+                elif cur_nif != clean_nif:
+                    diffs.append(FieldDiff(
+                        field_name="nif",
+                        field_label="NIF",
+                        old_value=cur_nif,
+                        new_value=clean_nif,
+                        blocked=False
+                    ))
+
+            field_mappings = [
+                ("nome", "Nome", cust.nome),
+                ("morada", "Morada", cust.morada),
+                ("localidade", "Localidade", cust.localidade),
+                ("codpostal", "Código Postal", cust.codpostal),
+                ("telefone", "Telefone", cust.telefone),
+                ("email", "Email", cust.email),
+            ]
+
+            for field_name, field_label, new_val in field_mappings:
+                if new_val is not None and field_name in c_cols:
+                    clean_val = new_val.strip()
+                    cur_val = str(cur.get(field_name) or "").strip()
+                    if cur_val != clean_val:
+                        diffs.append(FieldDiff(
+                            field_name=field_name,
+                            field_label=field_label,
+                            old_value=cur_val or "(vazio)",
+                            new_value=clean_val,
+                            blocked=False
+                        ))
+
+            if is_blocked:
+                blocked += 1
+                previews.append(ProductDiff(
+                    codigo=cust.codigo,
+                    descricao=cur_nome,
+                    has_sales=False,
+                    diffs=diffs
+                ))
+            elif diffs:
+                affected += 1
+                previews.append(ProductDiff(
+                    codigo=cust.codigo,
+                    descricao=cur_nome,
+                    has_sales=False,
+                    diffs=diffs
+                ))
+
+        return BulkEditPreviewResponse(
+            total_selected=len(req.customers),
+            total_affected=affected,
+            blocked_descriptions_count=blocked,
+            previews=previews
+        )
+    finally:
+        conn.close()
+
+
 def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int]:
     """
-    Atualiza dados de clientes em dbo.clientes (nome, nif, morada, localidade, codpostal, sync=1).
+    Atualiza dados de clientes em dbo.clientes com simulação, validação NIF, transação e backup.
     """
     if not req.customers:
         return False, "Nenhum cliente fornecido para atualização.", 0
-        
+
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         schema = db_manager.get_schema(cursor)
         if "clientes" not in schema:
             return False, "A tabela dbo.clientes não existe na base de dados.", 0
-            
+
         c_cols = schema["clientes"]
         has_sync = "sync" in c_cols
-        
+        codes = [c.codigo for c in req.customers]
+
+        # 1. Ler o estado anterior dos clientes afetados em blocos de 500 para o snapshot do backup
+        prev_customers: List[Dict[str, Any]] = []
+        for chunk in _chunks(codes, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"SELECT * FROM dbo.clientes WHERE codigo IN ({placeholders})", chunk)
+            desc = [col[0].lower() for col in cursor.description]
+            prev_customers.extend([dict(zip(desc, row)) for row in cursor.fetchall()])
+
+        if not prev_customers:
+            return False, "Nenhum dos clientes indicados foi encontrado na base de dados.", 0
+
+        # 2. Criar cópia de segurança antes de alterar (Regra 3 e Regra 9)
+        try:
+            create_backup_snapshot(
+                products=[],
+                description=f"Atualização em massa de {len(prev_customers)} cliente(s)",
+                clientes=prev_customers
+            )
+        except Exception as e:
+            return False, f"Falha ao criar cópia de segurança antes de alterar clientes: {e}", 0
+
+        prev_map = {int(c["codigo"]): c for c in prev_customers}
         updated_count = 0
+
+        # 3. Transação atómica de atualização
         for cust in req.customers:
+            prev = prev_map.get(cust.codigo)
+            if not prev:
+                continue
+
             sets = []
             params = []
-            
-            if "nome" in c_cols and cust.nome is not None:
-                sets.append("nome = ?")
-                params.append(cust.nome.strip())
+
+            # Validar NIF se fornecido/alterado
             if "nif" in c_cols and cust.nif is not None:
-                sets.append("nif = ?")
-                params.append(re.sub(r'[^0-9]', '', cust.nif.strip()))
-            if "morada" in c_cols and cust.morada is not None:
-                sets.append("morada = ?")
-                params.append(cust.morada.strip())
-            if "localidade" in c_cols and cust.localidade is not None:
-                sets.append("localidade = ?")
-                params.append(cust.localidade.strip())
-            if "codpostal" in c_cols and cust.codpostal is not None:
-                sets.append("codpostal = ?")
-                params.append(cust.codpostal.strip())
-            if "telefone" in c_cols and cust.telefone is not None:
-                sets.append("telefone = ?")
-                params.append(cust.telefone.strip())
-            if "email" in c_cols and cust.email is not None:
-                sets.append("email = ?")
-                params.append(cust.email.strip())
-                
-            if has_sync:
-                sets.append("sync = 1")
-                
+                clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
+                is_valid, nif_msg = validate_pt_nif(clean_nif)
+                if not is_valid and clean_nif != "999999990":
+                    conn.rollback()
+                    return False, f"Alteração cancelada: NIF inválido para o cliente #{cust.codigo} ({nif_msg}).", 0
+                if str(prev.get("nif") or "").strip() != clean_nif:
+                    sets.append("nif = ?")
+                    params.append(clean_nif)
+
+            fields = [
+                ("nome", cust.nome),
+                ("morada", cust.morada),
+                ("localidade", cust.localidade),
+                ("codpostal", cust.codpostal),
+                ("telefone", cust.telefone),
+                ("email", cust.email),
+            ]
+
+            for col_name, val in fields:
+                if val is not None and col_name in c_cols:
+                    clean_v = val.strip()
+                    if str(prev.get(col_name) or "").strip() != clean_v:
+                        sets.append(f"{col_name} = ?")
+                        params.append(clean_v)
+
+            # Corrigido o efeito secundário: apenas efetua UPDATE se houver alterações reais nos campos
             if sets:
+                if has_sync:
+                    sets.append("sync = 1")
                 params.append(cust.codigo)
                 sql = f"UPDATE dbo.clientes SET {', '.join(sets)} WHERE codigo = ?"
                 cursor.execute(sql, params)
                 updated_count += 1
-                
+
         conn.commit()
         return True, f"{updated_count} cliente(s) atualizado(s) com sucesso no SQL Server.", updated_count
     except Exception as e:

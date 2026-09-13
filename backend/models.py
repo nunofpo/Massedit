@@ -63,6 +63,7 @@ class ProductItem(BaseModel):
     subfamilia_desc: Optional[str] = ""
     iva: Optional[float] = None
     iva_desc: Optional[str] = ""
+    isencao: Optional[str] = ""
     centro_prod: Optional[int] = None
     centro_prod_desc: Optional[str] = ""
     centro_prod_info: Optional[int] = 0
@@ -305,6 +306,7 @@ class PosLayoutApplyRequest(BaseModel):
     order: List[int]
     step: int = 1
     mark_cloud_sync: bool = True
+    set_ordem_frontoffice: bool = False
 
 class MenuPriceItem(BaseModel):
     rotulo: str

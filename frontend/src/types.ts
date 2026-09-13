@@ -7,6 +7,7 @@ export interface DatabaseConfig {
   trusted_connection: boolean;
   driver: string;
   save_password?: boolean;
+  password_saved?: boolean;
 }
 
 export interface PortInfo {
@@ -295,6 +296,7 @@ export interface PosLayoutApplyRequest {
   order: number[];
   step?: number;
   mark_cloud_sync?: boolean;
+  set_ordem_frontoffice?: boolean;
 }
 
 export interface MenuPriceItem {

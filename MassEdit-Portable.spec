@@ -12,6 +12,7 @@ a = Analysis(
         'pyodbc',
         'python_multipart',
         'multipart',
+        'pypdf',
     ],
     hookspath=[],
     hooksconfig={},

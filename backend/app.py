@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
@@ -25,7 +25,7 @@ from backend.models import (
     CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest
 )
 from backend.services.customers import (
-    get_customers, update_customer_data, lookup_nif_pt, validate_pt_nif
+    get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
 )
 from backend.db import db_manager
 from backend.services.products import (
@@ -60,7 +60,7 @@ app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Se
 # A interface é servida pelo próprio servidor (mesma origem). CORS só para o servidor de desenvolvimento Vite.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,8 +70,11 @@ app.add_middleware(
 def get_db_config():
     """Obtém a configuração de ligação e o estado atual da conexão ao SQL Server."""
     online, message = db_manager.test_connection()
+    cfg_dump = db_manager.config.model_dump()
+    cfg_dump["password"] = ""
+    cfg_dump["password_saved"] = bool(db_manager.config.save_password and db_manager.config.password)
     return {
-        "config": db_manager.config.model_dump(),
+        "config": cfg_dump,
         "is_connected": online,
         "use_mock": db_manager.use_mock,
         "message": message
@@ -80,12 +83,18 @@ def get_db_config():
 @app.post("/api/config")
 def update_db_config(cfg: DatabaseConfig):
     """Atualiza a configuração da base de dados, grava-a em config.json e testa a conexão."""
+    # Preservar palavra-passe guardada se não for introduzida uma nova
+    if not cfg.password and db_manager.config.password and cfg.save_password:
+        cfg.password = db_manager.config.password
     save_error = db_manager.set_config(cfg)
     online, message = db_manager.test_connection()
     if save_error:
         message = f"{message} Aviso: {save_error}"
+    cfg_dump = db_manager.config.model_dump()
+    cfg_dump["password"] = ""
+    cfg_dump["password_saved"] = bool(db_manager.config.save_password and db_manager.config.password)
     return {
-        "config": db_manager.config.model_dump(),
+        "config": cfg_dump,
         "is_connected": online,
         "use_mock": db_manager.use_mock,
         "message": message
@@ -215,12 +224,17 @@ def lookup_customer_nif_endpoint(req: NifLookupRequest):
     """Consulta dados de faturação da empresa através da API do NIF.pt."""
     return lookup_nif_pt(req.nif, req.api_key)
 
+@app.post("/api/customers/preview", response_model=BulkEditPreviewResponse)
+def preview_customers_endpoint(req: BulkCustomerUpdateRequest):
+    """Simulação (dry-run) de alterações em clientes."""
+    return preview_customer_update(req)
+
 @app.post("/api/customers/update")
 def update_customers_endpoint(req: BulkCustomerUpdateRequest):
-    """Atualiza dados de clientes em lote no SQL Server com sync=1."""
+    """Atualiza dados de clientes em lote no SQL Server com simulação prévia, backup e sync=1."""
     success, msg, count = update_customer_data(req)
     if not success:
-        raise HTTPException(status_code=500, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "updated_count": count}
 
 @app.get("/api/families")
@@ -390,6 +404,9 @@ async def upload_menu_pdf_endpoint(file: UploadFile = File(...)):
     else:
         text = extract_text_from_pdf(content)
         
+    if text.startswith("Leitura de PDF indisponível:"):
+        raise HTTPException(status_code=400, detail=text)
+
     if not text.strip():
         raise HTTPException(
             status_code=400,
@@ -708,7 +725,8 @@ if os.path.exists(DIST_DIR):
     async def serve_spa(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API route not found")
-        file_path = os.path.join(DIST_DIR, full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
+        dist_root = os.path.realpath(DIST_DIR)
+        file_path = os.path.realpath(os.path.join(dist_root, full_path))
+        if (file_path == dist_root or file_path.startswith(dist_root + os.sep)) and os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+        return FileResponse(os.path.join(dist_root, "index.html"))

@@ -22,9 +22,14 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-pip install -q fastapi uvicorn pydantic pyodbc pyinstaller
+pip install -q -r requirements.txt
 
-# 3. Compilar Backend com PyInstaller
+# 3. Validar Backend e Testes
+echo "A verificar integridade e testes do backend..."
+python3 -c "import backend.app"
+python3 -m unittest discover -s tests
+
+# 4. Compilar Backend com PyInstaller
 echo "A compilar a aplicação standalone com PyInstaller..."
 PYINSTALLER_CONFIG_DIR="$DIR/build/pyinstaller_config" pyinstaller --noconfirm MassEdit-Portable.spec
 

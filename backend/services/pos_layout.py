@@ -7,7 +7,7 @@ from backend.models import (
 )
 from backend.db import db_manager, int_color_to_hex, is_valid_hex_color, SchemaInfo
 from backend.services.products import (
-    _schema, _prod_cols, _fetch_products_by_codes, _apply_changes,
+    _schema, _prod_cols, _has_table_cols, _fetch_products_by_codes, _apply_changes,
     create_backup_snapshot, Change, _unique_codes
 )
 
@@ -171,25 +171,59 @@ def preview_pos_layout(req: PosLayoutApplyRequest) -> BulkEditPreviewResponse:
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
+        schema = _schema(cursor)
         plan, fam_desc = _compute_pos_layout_changes(cursor, req)
+
+        previews: List[ProductDiff] = []
+        for p, changes in plan:
+            previews.append(ProductDiff(
+                codigo=p.codigo,
+                descricao=p.descricao,
+                has_sales=p.has_sales,
+                diffs=[c.to_diff() for c in changes]
+            ))
+
+        if req.set_ordem_frontoffice:
+            if _has_table_cols(schema, "configpostos", ("chave", "valor")):
+                cursor.execute("SELECT valor FROM dbo.configpostos WHERE chave = 'ORDEM NO FRONTOFFICE'")
+                r = cursor.fetchone()
+                cur_val = r[0] if r and r[0] is not None else "Não definida"
+                if cur_val != "1":
+                    previews.append(ProductDiff(
+                        codigo=0,
+                        descricao="Configuração Geral de Postos (dbo.configpostos)",
+                        has_sales=False,
+                        diffs=[FieldDiff(
+                            field_name="configpostos",
+                            field_label="Ordem no Frontoffice",
+                            old_value=cur_val,
+                            new_value="1 (Por Posição)",
+                            blocked=False
+                        )]
+                    ))
+            else:
+                previews.append(ProductDiff(
+                    codigo=0,
+                    descricao="Configuração Geral de Postos (dbo.configpostos)",
+                    has_sales=False,
+                    diffs=[FieldDiff(
+                        field_name="configpostos",
+                        field_label="Ordem no Frontoffice",
+                        old_value="N/A",
+                        new_value="1 (Por Posição)",
+                        blocked=True,
+                        reason="A tabela dbo.configpostos não existe nesta base de dados."
+                    )]
+                ))
+
+        return BulkEditPreviewResponse(
+            total_selected=len(req.order),
+            total_affected=len(plan) + (1 if (req.set_ordem_frontoffice and _has_table_cols(schema, "configpostos", ("chave", "valor"))) else 0),
+            blocked_descriptions_count=0,
+            previews=previews
+        )
     finally:
         conn.close()
-
-    previews: List[ProductDiff] = []
-    for p, changes in plan:
-        previews.append(ProductDiff(
-            codigo=p.codigo,
-            descricao=p.descricao,
-            has_sales=p.has_sales,
-            diffs=[c.to_diff() for c in changes]
-        ))
-
-    return BulkEditPreviewResponse(
-        total_selected=len(req.order),
-        total_affected=len(plan),
-        blocked_descriptions_count=0,
-        previews=previews
-    )
 
 
 def apply_pos_layout(req: PosLayoutApplyRequest) -> Tuple[bool, str, int]:
@@ -203,15 +237,23 @@ def apply_pos_layout(req: PosLayoutApplyRequest) -> Tuple[bool, str, int]:
         except ValueError as ve:
             return False, str(ve), 0
 
-        if not plan:
+        if not plan and not req.set_ordem_frontoffice:
             return True, "A ordem dos botões já corresponde à pretendida. Nenhuma alteração foi necessária.", 0
 
-        # Backup obrigatório
+        # Backup obrigatório (incluindo estado de configpostos se solicitado)
         affected_prods = [p for p, _ in plan]
+        cp_prev = None
+        if req.set_ordem_frontoffice and _has_table_cols(schema, "configpostos", ("chave", "valor")):
+            cursor.execute("SELECT valor FROM dbo.configpostos WHERE chave = 'ORDEM NO FRONTOFFICE'")
+            r = cursor.fetchone()
+            if r:
+                cp_prev = [{"chave": "ORDEM NO FRONTOFFICE", "valor": r[0]}]
+
         try:
             backup_name = create_backup_snapshot(
                 affected_prods,
-                f"Reordenação POS — família {fam_desc}"
+                f"Reordenação POS — família {fam_desc}",
+                configpostos=cp_prev
             )
         except Exception as e:
             return False, f"Não foi possível criar a cópia de segurança ({e}). Nenhuma alteração foi gravada.", 0
@@ -223,8 +265,9 @@ def apply_pos_layout(req: PosLayoutApplyRequest) -> Tuple[bool, str, int]:
                 if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync):
                     affected_count += 1
 
-            # Garantir que a configuração 'ORDEM NO FRONTOFFICE' está definida como '1' (Posição) em configpostos
-            cursor.execute("UPDATE dbo.configpostos SET valor = '1' WHERE chave = 'ORDEM NO FRONTOFFICE'")
+            # Só atualizar configpostos se a opção explícita for ativada e a tabela/colunas existirem
+            if req.set_ordem_frontoffice and _has_table_cols(schema, "configpostos", ("chave", "valor")):
+                cursor.execute("UPDATE dbo.configpostos SET valor = '1' WHERE chave = 'ORDEM NO FRONTOFFICE'")
 
             conn.commit()
         except Exception as e:

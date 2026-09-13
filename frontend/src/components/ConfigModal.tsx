@@ -401,14 +401,22 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-slate-700 font-bold block mb-1 flex items-center gap-1">
-                <Key className="w-3.5 h-3.5 text-indigo-600" />
-                Palavra-passe:
+              <label className="text-slate-700 font-bold block mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Key className="w-3.5 h-3.5 text-indigo-600" />
+                  Palavra-passe:
+                </span>
+                {formConfig.password_saved && !formConfig.password && (
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    Guardada
+                  </span>
+                )}
               </label>
               <input
                 type="password"
                 value={formConfig.password || ''}
                 onChange={(e) => setFormConfig({ ...formConfig, password: e.target.value })}
+                placeholder={formConfig.password_saved ? '•••••••• (Manter guardada)' : 'Palavra-passe SQL'}
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono font-semibold"
               />
             </div>

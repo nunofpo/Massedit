@@ -27,6 +27,10 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     """Tenta extrair texto de um PDF nativo sem IA."""
     try:
         import pypdf
+    except ImportError:
+        return "Leitura de PDF indisponível: falta a biblioteca pypdf"
+
+    try:
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
         full_text = []
         for page in reader.pages:

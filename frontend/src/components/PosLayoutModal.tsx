@@ -32,6 +32,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
   const [displayField, setDisplayField] = useState<'descricaocurta' | 'descricao'>('descricaocurta');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [includeHidden, setIncludeHidden] = useState<boolean>(false);
+  const [setOrdemFrontoffice, setSetOrdemFrontoffice] = useState<boolean>(false);
   const [subfamilyFilter, setSubfamilyFilter] = useState<string>('all');
   const [searchFamily, setSearchFamily] = useState<string>('');
   
@@ -213,7 +214,8 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
       familia: selectedFamily,
       order: currentOrder,
       step: step,
-      mark_cloud_sync: true
+      mark_cloud_sync: true,
+      set_ordem_frontoffice: setOrdemFrontoffice
     };
 
     try {
@@ -440,6 +442,17 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                     className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
                   />
                   <span>Incluir ocultos/bloqueados</span>
+                </label>
+
+                {/* Definir Ordem no Frontoffice em configpostos */}
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-amber-50/80 border border-amber-200 px-2.5 py-1 rounded-xl cursor-pointer select-none" title="Define a chave 'ORDEM NO FRONTOFFICE' = '1' (Por Posição) em dbo.configpostos para todos os postos.">
+                  <input
+                    type="checkbox"
+                    checked={setOrdemFrontoffice}
+                    onChange={(e) => setSetOrdemFrontoffice(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                  />
+                  <span className="text-amber-900">Ativar Posição em Todos os Postos</span>
                 </label>
 
                 {/* Subfamily Filter if applicable */}

@@ -196,6 +196,8 @@ def _product_select_sql(schema: SchemaInfo) -> str:
     def opt(col: str, default: int) -> str:
         return f"ISNULL(p.{col}, {default})" if _has_optional_int_col(schema, col) else str(default)
 
+    isencao_col = "ISNULL(p.isencao, '')" if "isencao" in _prod_cols(schema) else "''"
+
     return f"""
         p.codigo, p.descricao, ISNULL(p.descricaocurta, ''), p.familia, f.descricao,
         p.subfam, sf.descricao, p.iva,
@@ -204,7 +206,8 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         ISNULL(p.fundo, 0), ISNULL(p.letra, 16777215), ISNULL(p.ordem, 0), ISNULL(p.codigo_alf, 0),
         ISNULL(p.codbarras, ''), ISNULL(p.referencia, ''),
         pcp.centro, cp.descricao, ISNULL(pcp.informativo, 0),
-        {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)}
+        {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)},
+        {isencao_col}
     """
 
 
@@ -221,6 +224,7 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
     fundo = _int_or(r[18], 0)
     letra = _int_or(r[19], 16777215)
     cor = _int_or(r[29], 0)
+    isencao_val = str(r[31] or "") if len(r) > 31 and r[31] is not None else ""
     return ProductItem(
         codigo=code,
         descricao=r[1] or "",
@@ -250,6 +254,7 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         cor=cor,
         cor_hex=int_color_to_hex(cor),
         sync=_int_or(r[30], 0),
+        isencao=isencao_val,
         has_sales=has_sales,
         sales_check_ok=sales_ok,
         can_edit_description=not has_sales,
@@ -725,6 +730,12 @@ class _Lookups:
         self.vat_factors: List[float] = [float(r[0]) for r in cursor.fetchall() if r[0] is not None]
         cursor.execute("SELECT codigo, descricao FROM dbo.centrosprod")
         self.centers: Dict[int, str] = {int(r[0]): (r[1] or "") for r in cursor.fetchall()}
+        try:
+            cursor.execute("SELECT TOP 1 codigo FROM dbo.motivos_isencao ORDER BY codigo ASC")
+            r_is = cursor.fetchone()
+            self.default_isencao: str = str(r_is[0]).strip() if r_is and r_is[0] else "M07"
+        except Exception:
+            self.default_isencao = "M07"
 
     def vat_exists(self, factor: float) -> bool:
         return any(abs(f - float(factor)) < 0.001 for f in self.vat_factors)
@@ -1258,9 +1269,18 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
     if req.apply_subfamilia:
         changes.append(_subfamilia_change(lookups, p, req.new_subfamilia, target_family))
 
-    # 5. IVA
+    # 5. IVA e Isenção
     if req.apply_iva:
-        changes.append(_iva_change(lookups, p, req.new_iva))
+        iva_change = _iva_change(lookups, p, req.new_iva)
+        changes.append(iva_change)
+        if iva_change is not None and not iva_change.blocked and "isencao" in _prod_cols(schema):
+            new_iva_val = float(req.new_iva or 0.0)
+            if new_iva_val > 0:
+                new_isencao = ""
+            else:
+                new_isencao = getattr(lookups, "default_isencao", "M07") or "M07"
+            if (p.isencao or "") != new_isencao:
+                changes.append(Change("isencao", "Motivo de Isenção", p.isencao or "(Nenhum)", new_isencao or "(Nenhum)", column="isencao", value=new_isencao))
 
     # 6. Centro de produção
     if req.apply_centro_prod:
@@ -1334,12 +1354,6 @@ def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change
                     "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)",
                     (codigo, ch.price_idx, ch.value)
                 )
-
-    if has_iva_change:
-        if new_iva_val and new_iva_val > 0:
-            sets.append("isencao = ''")
-        else:
-            sets.append("isencao = 'M07'")
 
     if not touched:
         return False
@@ -1475,8 +1489,10 @@ def _read_family_colors(cursor, codes: List[int]) -> List[Dict[str, Any]]:
 
 def create_backup_snapshot(products: List[ProductItem], description: str,
                            families: Optional[List[Dict[str, Any]]] = None,
-                           ementa_digital: Optional[List[Dict[str, Any]]] = None) -> str:
-    """Cria um ficheiro JSON de backup com o estado anterior dos produtos (e famílias / ementa digital). Lança exceção se falhar."""
+                           ementa_digital: Optional[List[Dict[str, Any]]] = None,
+                           clientes: Optional[List[Dict[str, Any]]] = None,
+                           configpostos: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Cria um ficheiro JSON de backup com o estado anterior dos produtos (e famílias, ementa, clientes, configpostos). Lança exceção se falhar."""
     now = datetime.now()
     filename = f"backup_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}.json"
     filepath = os.path.join(BACKUP_DIR, filename)
@@ -1486,12 +1502,14 @@ def create_backup_snapshot(products: List[ProductItem], description: str,
         "format_version": BACKUP_FORMAT_VERSION,
         "timestamp": now.isoformat(),
         "description": description,
-        "items_count": len(products) + len(families or []) + len(ementa_digital or []),
+        "items_count": len(products) + len(families or []) + len(ementa_digital or []) + len(clientes or []) + len(configpostos or []),
         "database": db_manager.config.database,
         "optional_columns": [c for c in OPTIONAL_PRODUCT_COLUMNS if _has_optional_int_col(schema, c)],
         "products": [p.model_dump() for p in products],
         "families": families or [],
         "ementa_digital": ementa_digital or [],
+        "clientes": clientes or [],
+        "configpostos": configpostos or [],
     }
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -1550,6 +1568,7 @@ RESTORE_FIELDS = [
     ("familias", "familia", "int"),
     ("subfamilia", "subfam", "int"),
     ("iva", "iva", "float"),
+    ("isencao", "isencao", "text"),
     ("pvp1", "precovenda", "float"),
     ("pvp2", "pvp2", "float"),
     ("pvp3", "pvp3", "float"),
@@ -1596,7 +1615,10 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
     products_data = [bp for bp in data.get("products", []) if isinstance(bp, dict) and bp.get("codigo") is not None]
     families_data = [fd for fd in (data.get("families") or []) if isinstance(fd, dict) and fd.get("codigo") is not None]
     ementa_data = [ed for ed in (data.get("ementa_digital") or []) if isinstance(ed, dict) and ed.get("cod_produto") is not None]
-    if not products_data and not families_data and not ementa_data:
+    clientes_data = [cd for cd in (data.get("clientes") or []) if isinstance(cd, dict) and cd.get("codigo") is not None]
+    configpostos_data = [cp for cp in (data.get("configpostos") or []) if isinstance(cp, dict) and cp.get("chave") is not None]
+
+    if not products_data and not families_data and not ementa_data and not clientes_data and not configpostos_data:
         return False, "Nenhum registo encontrado dentro do ficheiro de backup."
 
     backup_optional = set(data.get("optional_columns", [])) if version >= 2 else set()
@@ -1705,7 +1727,62 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
                 if ed_sets:
                     ementa_plan.append({"cod_produto": c_prod, "sets": ed_sets, "params": ed_params})
 
-        if not plan and not fam_plan and not ementa_plan:
+        # Planeamento de Clientes
+        cust_plan = []
+        cur_clientes_snapshots = []
+        if "clientes" in schema and clientes_data:
+            cust_cols = schema["clientes"]
+            cust_codes = [int(cd["codigo"]) for cd in clientes_data]
+            existing_cust = {}
+            for chunk in _chunks(cust_codes, 500):
+                placeholders = ",".join("?" for _ in chunk)
+                cursor.execute(f"SELECT * FROM dbo.clientes WHERE codigo IN ({placeholders})", chunk)
+                desc = [c[0].lower() for c in cursor.description]
+                for row in cursor.fetchall():
+                    row_dict = dict(zip(desc, row))
+                    existing_cust[int(row_dict["codigo"])] = row_dict
+            valid_cust_cols = [c for c in ["nome", "nif", "morada", "localidade", "codpostal", "telefone", "email"] if c in cust_cols]
+            for cd in clientes_data:
+                c_code = int(cd["codigo"])
+                cur_c = existing_cust.get(c_code)
+                if not cur_c:
+                    continue
+                cur_clientes_snapshots.append(cur_c)
+                c_sets: List[str] = []
+                c_params: List[Any] = []
+                for col in valid_cust_cols:
+                    if col in cd:
+                        val = str(cd[col] or "").strip()
+                        cur_val = str(cur_c.get(col) or "").strip()
+                        if val != cur_val:
+                            c_sets.append(f"{col} = ?")
+                            c_params.append(val)
+                if c_sets:
+                    cust_plan.append({"codigo": c_code, "sets": c_sets, "params": c_params})
+
+        # Planeamento de ConfigPostos
+        configpostos_plan = []
+        cur_configpostos_snapshots = []
+        if "configpostos" in schema and configpostos_data:
+            cp_cols = schema["configpostos"]
+            if "chave" in cp_cols and "valor" in cp_cols:
+                chaves = [str(cp["chave"]) for cp in configpostos_data]
+                existing_cp = {}
+                for chunk in _chunks(chaves, 500):
+                    placeholders = ",".join("?" for _ in chunk)
+                    cursor.execute(f"SELECT chave, valor FROM dbo.configpostos WHERE chave IN ({placeholders})", chunk)
+                    for r in cursor.fetchall():
+                        existing_cp[str(r[0])] = str(r[1] or "")
+                for cp in configpostos_data:
+                    key = str(cp["chave"])
+                    cur_val = existing_cp.get(key)
+                    if cur_val is not None:
+                        cur_configpostos_snapshots.append({"chave": key, "valor": cur_val})
+                        target_val = str(cp.get("valor") or "")
+                        if target_val != cur_val:
+                            configpostos_plan.append({"chave": key, "valor": target_val})
+
+        if not plan and not fam_plan and not ementa_plan and not cust_plan and not configpostos_plan:
             msg = "Nada a restaurar: os artigos já estão no estado desta cópia de segurança."
             if protected:
                 msg += f" ({protected} designação(ões) de artigos com vendas não foram repostas.)"
@@ -1717,7 +1794,9 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
                 [cur for cur, _, _, _ in plan],
                 f"Estado antes do restauro de {filename}",
                 families=[cur_fam_map[c] for c, _, _ in fam_plan],
-                ementa_digital=cur_ementa_snapshots
+                ementa_digital=cur_ementa_snapshots,
+                clientes=cur_clientes_snapshots,
+                configpostos=cur_configpostos_snapshots
             )
         except Exception as e:
             return False, f"Não foi possível criar a cópia de segurança do estado atual ({e}). Nada foi alterado."
@@ -1758,6 +1837,26 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
                         ed_item["params"] + [ed_item["cod_produto"]]
                     )
 
+            # Restaurar Clientes
+            if cust_plan:
+                has_cust_sync = "sync" in schema.get("clientes", {})
+                for c_item in cust_plan:
+                    sets_sql = list(c_item["sets"])
+                    if has_cust_sync:
+                        sets_sql.append("sync = 1")
+                    cursor.execute(
+                        f"UPDATE dbo.clientes SET {', '.join(sets_sql)} WHERE codigo = ?",
+                        c_item["params"] + [c_item["codigo"]]
+                    )
+
+            # Restaurar ConfigPostos
+            if configpostos_plan:
+                for cp_item in configpostos_plan:
+                    cursor.execute(
+                        "UPDATE dbo.configpostos SET valor = ? WHERE chave = ?",
+                        (cp_item["valor"], cp_item["chave"])
+                    )
+
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -1768,13 +1867,17 @@ def restore_backup(filename: str) -> Tuple[bool, str]:
             parts.append(f"e {len(fam_plan)} família(s)")
         if ementa_plan:
             parts.append(f"e {len(ementa_plan)} artigo(s) na ementa digital")
+        if cust_plan:
+            parts.append(f"e {len(cust_plan)} cliente(s)")
+        if configpostos_plan:
+            parts.append(f"e {len(configpostos_plan)} definição(ões) de postos")
         msg = " ".join(parts) + f". Estado anterior guardado em {safety_name}."
         if protected:
             msg += f" {protected} designação(ões) não foram repostas porque os artigos já têm vendas."
         if missing:
             msg += f" {missing} artigo(s) do backup já não existem na base de dados."
         if version < 2:
-            msg += " (Backup antigo: centros de produção e ementa digital não incluídos.)"
+            msg += " (Backup antigo: centros de produção, ementa digital e clientes não incluídos.)"
         return True, msg
     finally:
         conn.close()
@@ -2055,7 +2158,18 @@ def _compute_import_changes(p: ProductItem, imp: ImportRow, schema: SchemaInfo, 
     if imp.subfam is not None:
         changes.append(_subfamilia_change(lookups, p, imp.subfam, target_family))
     if imp.iva is not None:
-        changes.append(_iva_change(lookups, p, imp.iva))
+        iva_change = _iva_change(lookups, p, imp.iva)
+        changes.append(iva_change)
+        if iva_change is not None and not iva_change.blocked and "isencao" in _prod_cols(schema):
+            new_iva_val = float(imp.iva or 0.0)
+            if new_iva_val > 0:
+                new_isencao = ""
+            else:
+                new_isencao = (imp.isencao or getattr(lookups, "default_isencao", "M07") or "M07").strip()
+                if new_isencao in ("", "0"):
+                    new_isencao = getattr(lookups, "default_isencao", "M07") or "M07"
+            if (p.isencao or "") != new_isencao:
+                changes.append(Change("isencao", "Motivo de Isenção", p.isencao or "(Nenhum)", new_isencao or "(Nenhum)", column="isencao", value=new_isencao))
 
     if imp.fundo_hex:
         changes.append(_color_change("fundo", "fundo", "Cor de Fundo", schema, p.fundo or 0, p.fundo_hex, imp.fundo_hex))
