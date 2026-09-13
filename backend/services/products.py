@@ -594,33 +594,24 @@ def create_family(descricao: str, fundo: int = 8421504, letra: int = 16777215, c
             while target_code in existing_codes:
                 target_code += 1
 
-        has_posprint = "posicaoprint" in fam_cols
-        
-        cols = ["codigo", "frontoffice", "posicaofront", "fundo", "letra", "tipo"]
-        vals = [target_code, 1, target_code, fundo, letra, 0]
-        if "id" in fam_cols:
-            cols.append("id")
-            vals.append(target_code)
-
-        if has_posprint:
-            cols.append("posicaoprint")
-            vals.append(0)
-
         try:
             hex_str = "0x" + desc_clean.encode('cp1252').hex()
             desc_sql = f"CONVERT(VARCHAR(250), {hex_str})"
         except Exception:
-            desc_sql = "?"
-            cols.append("descricao")
-            vals.append(desc_clean)
+            desc_sql = f"?"
 
-        cols_str = ", ".join(cols)
-        placeholders = ", ".join(["?"] * len(vals))
+        has_desc_loja = "descricao_loja" in fam_cols
 
         if desc_sql != "?":
-            cursor.execute(f"INSERT INTO dbo.familias ({cols_str}, descricao) VALUES ({placeholders}, {desc_sql})", vals)
+            if has_desc_loja:
+                cursor.execute(f"INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, {desc_sql}, {desc_sql}, 1, NULL, NULL, ?, ?, 0)", (target_code, fundo, letra))
+            else:
+                cursor.execute(f"INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, {desc_sql}, 1, NULL, NULL, ?, ?, 0)", (target_code, fundo, letra))
         else:
-            cursor.execute(f"INSERT INTO dbo.familias ({cols_str}) VALUES ({placeholders})", vals)
+            if has_desc_loja:
+                cursor.execute("INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, ?, ?, 1, NULL, NULL, ?, ?, 0)", (target_code, desc_clean, desc_clean, fundo, letra))
+            else:
+                cursor.execute("INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, ?, 1, NULL, NULL, ?, ?, 0)", (target_code, desc_clean, fundo, letra))
 
         conn.commit()
         return {"codigo": target_code, "descricao": desc_clean}
@@ -1963,9 +1954,9 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
                         raw_desc = raw_fam.strip()
                         try:
                             hex_str = "0x" + raw_desc.encode('cp1252').hex()
-                            cur_f.execute(f"INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, CONVERT(VARCHAR(250), {hex_str}), 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, max_fam_code))
+                            cur_f.execute(f"INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, CONVERT(VARCHAR(250), {hex_str}), CONVERT(VARCHAR(250), {hex_str}), 1, NULL, NULL, 8421504, 16777215, 0)", (max_fam_code,))
                         except Exception:
-                            cur_f.execute("INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)", (max_fam_code, max_fam_code, raw_desc, max_fam_code))
+                            cur_f.execute("INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, ?, ?, 1, NULL, NULL, 8421504, 16777215, 0)", (max_fam_code, raw_desc, raw_desc))
                         conn_f.commit()
                         conn_f.close()
                     except Exception:
@@ -2153,9 +2144,9 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                 cursor.execute("SELECT COUNT(*) FROM dbo.familias WHERE codigo = ?", (fam_code,))
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(
-                        "INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) "
-                        "VALUES (?, ?, 'Geral', 1, ?, 0, 8421504, 16777215, 0)",
-                        (fam_code, fam_code, fam_code)
+                        "INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) "
+                        "VALUES (1, ?, 'Geral', 'Geral', 1, NULL, NULL, 8421504, 16777215, 0)",
+                        (fam_code,)
                     )
 
                 if target_iva and float(target_iva) > 0:
@@ -2227,8 +2218,17 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                 except Exception:
                     pass
 
+                try:
+                    cursor.execute("INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 1, 0)", (imp.codigo,))
+                except Exception:
+                    pass
+
                 affected += 1
 
+            try:
+                cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+            except Exception:
+                pass
 
             conn.commit()
         except Exception as e:

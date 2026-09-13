@@ -1874,8 +1874,8 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                 family_map[k] = max_fam_code
                 try:
                     cursor.execute(
-                        "INSERT INTO dbo.familias (id, codigo, descricao, frontoffice, posicaofront, fundo, letra, tipo) VALUES (?, ?, ?, 1, ?, 8421504, 16777215, 0)",
-                        (max_fam_code, max_fam_code, f_name, max_fam_code)
+                        "INSERT INTO dbo.familias (id, codigo, descricao, descricao_loja, frontoffice, posicaofront, posicaoprint, fundo, letra, tipo) VALUES (1, ?, ?, ?, 1, NULL, NULL, 8421504, 16777215, 0)",
+                        (max_fam_code, f_name, f_name)
                     )
                 except Exception:
                     pass
@@ -1957,6 +1957,11 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
 
             try:
                 cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (code, fam_code, code, fam_code))
+            except Exception:
+                pass
+
+            try:
+                cursor.execute("INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 1, 0)", (code,))
             except Exception:
                 pass
 
