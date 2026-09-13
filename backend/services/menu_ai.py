@@ -42,13 +42,13 @@ def get_next_auto_code() -> int:
     try:
         conn = db_manager.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT ISNULL(MAX(codigo), 700000) FROM dbo.produtos WHERE codigo >= 700000 AND codigo < 800000")
+        cursor.execute("SELECT ISNULL(MAX(codigo), 7000000) FROM dbo.produtos WHERE codigo >= 7000000 AND codigo < 8000000")
         row = cursor.fetchone()
-        next_c = (row[0] if row and row[0] >= 700000 else 700000) + 1
+        next_c = (row[0] if row and row[0] >= 7000000 else 7000000) + 1
         conn.close()
-        return max(700001, next_c)
+        return max(7000001, next_c)
     except Exception:
-        return 700001
+        return 7000001
 
 
 def parse_plain_text_menu(text: str) -> MenuExtractionResponse:
@@ -315,15 +315,15 @@ def convert_matched_to_import_rows(rows: List[MenuReviewedRow], price_mapping: D
     import_rows: List[ImportRow] = []
     created_fam_cache: Dict[str, int] = {}
 
-    auto_code = 700001
+    auto_code = 7000001
     try:
         conn = db_manager.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT ISNULL(MAX(codigo), 700000) FROM dbo.produtos WHERE codigo >= 700000 AND codigo < 800000")
+        cursor.execute("SELECT ISNULL(MAX(codigo), 7000000) FROM dbo.produtos WHERE codigo >= 7000000 AND codigo < 8000000")
         row_c = cursor.fetchone()
-        auto_code = (row_c[0] if row_c and row_c[0] >= 700000 else 700000) + 1
-        if auto_code < 700001:
-            auto_code = 700001
+        auto_code = (row_c[0] if row_c and row_c[0] >= 7000000 else 7000000) + 1
+        if auto_code < 7000001:
+            auto_code = 7000001
         conn.close()
     except Exception:
         pass

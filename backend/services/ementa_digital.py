@@ -1940,7 +1940,7 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                     except Exception:
                         pass
 
-        start_code = req.start_code or 700001
+        start_code = req.start_code or 7000001
         imported_count = 0
 
         try:

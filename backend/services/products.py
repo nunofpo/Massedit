@@ -1896,7 +1896,7 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
             col_map["descricao"] = 0
 
     has_code_col = "codigo" in col_map
-    auto_code = 700001
+    auto_code = 7000001
     family_map: Dict[str, int] = {}
     max_fam_code = 0
 
@@ -1911,11 +1911,11 @@ def parse_import_csv(csv_text: str) -> List[ImportRow]:
         max_fam_code = cursor.fetchone()[0] or 0
 
         if not has_code_col:
-            cursor.execute("SELECT ISNULL(MAX(codigo), 700000) FROM dbo.produtos WHERE codigo >= 700000 AND codigo < 800000")
+            cursor.execute("SELECT ISNULL(MAX(codigo), 7000000) FROM dbo.produtos WHERE codigo >= 7000000 AND codigo < 8000000")
             row = cursor.fetchone()
-            auto_code = (row[0] if row and row[0] >= 700000 else 700000) + 1
-            if auto_code < 700001:
-                auto_code = 700001
+            auto_code = (row[0] if row and row[0] >= 7000000 else 7000000) + 1
+            if auto_code < 7000001:
+                auto_code = 7000001
         conn.close()
     except Exception:
         pass

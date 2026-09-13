@@ -331,7 +331,7 @@ class MenuExtractionResponse(BaseModel):
     secoes: List[MenuSectionItem] = Field(default_factory=list)
     rotulos_preco_encontrados: List[str] = Field(default_factory=list)
     avisos: List[str] = Field(default_factory=list)
-    proximo_codigo: int = 700001
+    proximo_codigo: int = 7000001
 
 class MenuReviewedRow(BaseModel):
     codigo: Optional[int] = None
@@ -451,7 +451,7 @@ class EmentaImportFromPosRequest(BaseModel):
 
 class EmentaImportCsvRequest(BaseModel):
     csv_text: str
-    start_code: int = 700001
+    start_code: int = 7000001
     overwrite: bool = True
 
 

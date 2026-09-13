@@ -37,7 +37,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Extracted rows state
-  const [startCode, setStartCode] = useState<number>(700001);
+  const [startCode, setStartCode] = useState<number>(7000001);
   const [startFamilyCode, setStartFamilyCode] = useState<number>(101);
   const [startSubfamilyCode, setStartSubfamilyCode] = useState<number>(1);
   const [reviewedRows, setReviewedRows] = useState<MenuReviewedRow[]>([]);
@@ -315,7 +315,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       }
       const data: MenuExtractionResponse = await res.json();
       
-      const initialCode = data.proximo_codigo || 700001;
+      const initialCode = data.proximo_codigo || 7000001;
       setStartCode(initialCode);
       let currentCode = initialCode;
       const rows: MenuReviewedRow[] = [];
@@ -631,7 +631,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                           const val = parseInt(e.target.value, 10);
                           handleStartCodeChange(isNaN(val) ? 1 : val);
                         }}
-                        placeholder="Ex: 700001"
+                        placeholder="Ex: 7000001"
                         className="w-20 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
                       />
                     </div>

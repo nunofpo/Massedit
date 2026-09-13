@@ -93,20 +93,20 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [importMode, setImportMode] = useState<'pos' | 'csv'>('pos');
   const [csvInput, setCsvInput] = useState<string>('');
-  const [csvStartCode, setCsvStartCode] = useState<string>('700001');
+  const [csvStartCode, setCsvStartCode] = useState<string>('7000001');
   const [importFamily, setImportFamily] = useState<string>('all');
   const [importEmentaFamily, setImportEmentaFamily] = useState<string>('default');
   const [importOverwrite, setImportOverwrite] = useState<boolean>(false);
   const [importStorePreset, setImportStorePreset] = useState<string>('7');
-  const [importMinCode, setImportMinCode] = useState<string>('700001');
-  const [importMaxCode, setImportMaxCode] = useState<string>('799999');
+  const [importMinCode, setImportMinCode] = useState<string>('7000001');
+  const [importMaxCode, setImportMaxCode] = useState<string>('7999999');
   const [isImporting, setIsImporting] = useState<boolean>(false);
 
   const handleStorePresetChange = (preset: string) => {
     setImportStorePreset(preset);
     if (preset === '7') {
-      setImportMinCode('700001');
-      setImportMaxCode('799999');
+      setImportMinCode('7000001');
+      setImportMaxCode('7999999');
     } else if (preset === '1') {
       setImportMinCode('100001');
       setImportMaxCode('199999');
@@ -419,7 +419,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csv_text: csvInput,
-          start_code: csvStartCode ? parseInt(csvStartCode, 10) : 700001,
+          start_code: csvStartCode ? parseInt(csvStartCode, 10) : 7000001,
           overwrite: true
         })
       });
@@ -1946,7 +1946,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       onChange={(e) => handleStorePresetChange(e.target.value)}
                       className="w-full px-3 py-1.5 text-xs bg-teal-50 border border-teal-300 rounded-lg font-bold text-teal-900"
                     >
-                      <option value="7">Loja 7 (Códigos 700001 - 799999)</option>
+                      <option value="7">Loja 7 (Códigos 7000001 - 7999999)</option>
                       <option value="1">Loja 1 (Códigos 100001 - 199999)</option>
                       <option value="all">Todas as Lojas (Sem filtro)</option>
                       <option value="custom">Personalizado</option>
@@ -1985,7 +1985,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                           setImportMinCode(e.target.value);
                           setImportStorePreset('custom');
                         }}
-                        placeholder="Ex: 700001"
+                        placeholder="Ex: 7000001"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-800"
                       />
                     </div>
@@ -1998,7 +1998,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                           setImportMaxCode(e.target.value);
                           setImportStorePreset('custom');
                         }}
-                        placeholder="Ex: 799999"
+                        placeholder="Ex: 7999999"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-800"
                       />
                     </div>
@@ -2112,7 +2112,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <label className="text-xs font-bold text-slate-800 block">Código Inicial dos Artigos</label>
-                          <span className="text-[11px] text-slate-500">Ex: 700001 para Loja 7, 100001 para Loja 1</span>
+                          <span className="text-[11px] text-slate-500">Ex: 7000001 para Loja 7, 1000001 para Loja 1</span>
                         </div>
                         <input
                           type="number"
