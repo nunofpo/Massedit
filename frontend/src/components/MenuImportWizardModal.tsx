@@ -37,10 +37,19 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Extracted rows state
+  const [startCode, setStartCode] = useState<number>(700001);
   const [reviewedRows, setReviewedRows] = useState<MenuReviewedRow[]>([]);
   const [priceLabels, setPriceLabels] = useState<string[]>(['PVP']);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [matchesByRow, setMatchesByRow] = useState<Record<number, MenuMatchResponse>>({});
+
+  const handleStartCodeChange = (newStart: number) => {
+    setStartCode(newStart);
+    setReviewedRows(prev => prev.map((row, idx) => ({
+      ...row,
+      codigo: newStart > 0 ? newStart + idx : row.codigo
+    })));
+  };
 
   // Price column mapping (label -> pvp1..10)
   const [priceMapping, setPriceMapping] = useState<Record<string, string>>({
@@ -281,7 +290,9 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       }
       const data: MenuExtractionResponse = await res.json();
       
-      let currentCode = data.proximo_codigo || 700001;
+      const initialCode = data.proximo_codigo || 700001;
+      setStartCode(initialCode);
+      let currentCode = initialCode;
       const rows: MenuReviewedRow[] = [];
       data.secoes.forEach(sec => {
         sec.artigos.forEach(art => {
@@ -582,7 +593,22 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   </h3>
                   <p className="text-xs text-slate-500">Confirme nomes, secções e preços antes de mapear com a base de dados.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1.5 bg-violet-50/70 border border-violet-200/80 px-2.5 py-1 rounded-lg">
+                    <label className="text-[11px] font-bold text-violet-900 whitespace-nowrap">
+                      Código Inicial:
+                    </label>
+                    <input
+                      type="number"
+                      value={startCode || ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        handleStartCodeChange(isNaN(val) ? 1 : val);
+                      }}
+                      placeholder="Ex: 700001"
+                      className="w-24 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => setStep(1)}
