@@ -1307,9 +1307,16 @@ def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change
     touched = False
     history_ok = _has_table_cols(schema, "historico_precos", ("datahora", "codigo", "pvp", "siva", "preco"))
 
+    has_iva_change = False
+    new_iva_val = None
+
     for ch in changes:
         if ch.blocked:
             continue
+        if ch.column == "iva":
+            has_iva_change = True
+            new_iva_val = float(ch.value) if ch.value is not None else 0.0
+
         if ch.centros is not None:
             cursor.execute("DELETE FROM dbo.produtoscentrosprod WHERE codigo = ?", (codigo,))
             for centro, info in ch.centros:
@@ -1327,6 +1334,12 @@ def _apply_changes(cursor, schema: SchemaInfo, codigo: int, changes: List[Change
                     "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)",
                     (codigo, ch.price_idx, ch.value)
                 )
+
+    if has_iva_change:
+        if new_iva_val and new_iva_val > 0:
+            sets.append("isencao = ''")
+        else:
+            sets.append("isencao = 'M07'")
 
     if not touched:
         return False
