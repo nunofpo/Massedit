@@ -2827,6 +2827,84 @@ def auto_populate_general_translations(target_langs: Optional[List[str]] = None)
         conn.close()
 
 
+def get_general_ui_terms() -> List[Dict[str, Any]]:
+    """Devolve a lista completa dos 81 termos de interface gerais (typeid=0) com valores guardados na DB ou por omissão."""
+    conn = db_manager.get_connection()
+    db_terms: Dict[str, Dict[str, str]] = {}
+    try:
+        cursor = conn.cursor()
+        ensure_traducoes_table(cursor)
+        cursor.execute("SELECT id_country, field, value FROM dbo.ementa_digital_traducoes WHERE typeid = 0 AND id1 = 0 AND id2 = 0")
+        for country, field, val in cursor.fetchall():
+            c_code = (country or "").upper()
+            f_code = (field or "").lower()
+            if f_code not in db_terms:
+                db_terms[f_code] = {}
+            db_terms[f_code][c_code] = val or ""
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    result = []
+    for field, defaults in GENERAL_UI_TRANSLATIONS_DICT.items():
+        merged_translations = {}
+        for lang in ["GB", "ES", "FR", "DE", "IT"]:
+            merged_translations[lang] = db_terms.get(field, {}).get(lang) or defaults.get(lang, "")
+        result.append({
+            "field": field,
+            "translations": merged_translations
+        })
+    return result
+
+
+def save_general_ui_terms(terms_payload: List[Dict[str, Any]]) -> Tuple[bool, str]:
+    """Grava traduções personalizadas dos termos de interface (typeid=0) na base de dados."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_traducoes_table(cursor)
+        count = 0
+        for item in terms_payload:
+            field = item.get("field")
+            translations = item.get("translations") or {}
+            if not field:
+                continue
+            for lang, val in translations.items():
+                c_code = lang.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 0 AND id1 = 0 AND id2 = 0 AND field = ?
+                """, (c_code, field))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 0 AND id1 = 0 AND id2 = 0 AND field = ?
+                    """, (val_str, c_code, field))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 0, 0, 0, ?, ?)
+                    """, (c_code, field, val_str))
+                count += 1
+
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+        except Exception:
+            pass
+
+        conn.commit()
+        return True, f"{count} traduções de termos gerais gravadas com sucesso no ZoneSoft!"
+    except Exception as e:
+        conn.rollback()
+        return False, f"Falha ao gravar termos gerais: {str(e)}"
+    finally:
+        conn.close()
+
+
 def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
     """Importa artigos a partir de texto CSV para dbo.produtos e dbo.ementa_digital_produtos."""
     conn = db_manager.get_connection()

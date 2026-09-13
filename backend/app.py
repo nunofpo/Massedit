@@ -54,7 +54,8 @@ from backend.services.ementa_digital import (
     translate_menu_texts, update_single_ementa_product,
     auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
     save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules,
-    get_structure_translations, save_structure_translations
+    get_structure_translations, save_structure_translations,
+    get_general_ui_terms, save_general_ui_terms
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -749,6 +750,21 @@ def auto_general_translations_endpoint(target_langs: Optional[List[str]] = Body(
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message, "count": count}
+
+
+@app.get("/api/ementa-digital/general-terms")
+def get_general_terms_endpoint():
+    """Obtém a lista completa dos 81 termos gerais de interface da ementa digital."""
+    return get_general_ui_terms()
+
+
+@app.post("/api/ementa-digital/general-terms")
+def save_general_terms_endpoint(payload: List[Dict[str, Any]] = Body(...)):
+    """Grava traduções personalizadas dos termos gerais de interface."""
+    success, message = save_general_ui_terms(payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
 
 
 @app.get("/api/ementa-digital/structure-translations")
