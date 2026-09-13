@@ -2365,11 +2365,12 @@ def get_structure_translations() -> Dict[str, Any]:
     Formato confirmado por observação direta de traduções feitas no ZoneSoft nativo:
     - Ementa (menu): typeid=0, id1=<codigo da ementa>, id2=0, field='nome'.
     - Família: typeid=1, id1=<codigo da familia>, id2=<codigo da seccao>, field='descricao'.
+    - Complementar: typeid=5, id1=<codigo do produto complementar>, id2=0, field='descricao'.
     """
     try:
         conn = db_manager.get_connection()
     except Exception:
-        return {"ementas": [], "families": []}
+        return {"ementas": [], "families": [], "complementares": []}
     try:
         cursor = conn.cursor()
         schema = _schema(cursor)
@@ -2403,7 +2404,71 @@ def get_structure_translations() -> Dict[str, Any]:
                         translations[(c or "").upper()] = v or ""
                 families.append({"codigo": int(codigo), "seccao": int(seccao or 0), "descricao": descricao or "", "translations": translations})
 
-        return {"ementas": ementas, "families": families}
+        complementares: List[Dict[str, Any]] = []
+        if "complementares" in schema:
+            cursor.execute("""
+                SELECT DISTINCT c.codigo, p.descricao
+                FROM dbo.complementares c
+                LEFT JOIN dbo.produtos p ON p.codigo = c.codigo
+                ORDER BY c.codigo
+            """)
+            for codigo, descricao in cursor.fetchall():
+                translations = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 5 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (codigo,))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                complementares.append({"codigo": int(codigo), "descricao": descricao or "", "translations": translations})
+
+        pos_families: List[Dict[str, Any]] = []
+        if "familias" in schema:
+            cursor.execute("SELECT codigo, descricao FROM dbo.familias ORDER BY codigo")
+            for codigo, descricao in cursor.fetchall():
+                translations = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 6 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (codigo,))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                pos_families.append({"codigo": int(codigo), "descricao": descricao or "", "translations": translations})
+
+        menu_niveis: List[Dict[str, Any]] = []
+        if "niveismenu" in schema:
+            cursor.execute("SELECT menu, nivel, descricao FROM dbo.niveismenu ORDER BY menu, nivel")
+            for menu, nivel, descricao in cursor.fetchall():
+                translations = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 7 AND id1 = ? AND id2 = ? AND field = 'nome'
+                    """, (menu, nivel))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                menu_niveis.append({"menu": int(menu), "nivel": int(nivel), "descricao": descricao or "", "translations": translations})
+
+        opcoes: List[Dict[str, Any]] = []
+        if "opcoes" in schema:
+            cursor.execute("SELECT grupo, codigo, descricao FROM dbo.opcoes ORDER BY grupo, codigo")
+            for grupo, codigo, descricao in cursor.fetchall():
+                translations = {}
+                if has_traducoes:
+                    cursor.execute("""
+                        SELECT id_country, value FROM dbo.ementa_digital_traducoes
+                        WHERE typeid = 4 AND id1 = ? AND id2 = ? AND field = 'opcao'
+                    """, (grupo, codigo))
+                    for c, v in cursor.fetchall():
+                        translations[(c or "").upper()] = v or ""
+                opcoes.append({"grupo": int(grupo), "codigo": int(codigo), "descricao": descricao or "", "translations": translations})
+
+        return {
+            "ementas": ementas, "families": families, "complementares": complementares,
+            "pos_families": pos_families, "menu_niveis": menu_niveis, "opcoes": opcoes,
+        }
     finally:
         conn.close()
 
@@ -2414,7 +2479,11 @@ def save_structure_translations(payload: Dict[str, Any]) -> Tuple[bool, str]:
     payload esperado:
     {
         "ementas": {"<codigo>": {"FR": "Menu", ...}, ...},
-        "families": {"<codigo>": {"FR": "Œufs", ...}, ...}
+        "families": {"<codigo>": {"FR": "Œufs", ...}, ...},
+        "complementares": {"<codigo>": {"FR": "Double Espresso", ...}, ...},
+        "pos_families": {"<codigo>": {"FR": "Outres Boissons", ...}, ...},
+        "menu_niveis": {"<menu>:<nivel>": {"FR": "Boisson", ...}, ...},
+        "opcoes": {"<grupo>:<codigo>": {"FR": "Chaud", ...}, ...}
     }
     """
     conn = db_manager.get_connection()
@@ -2485,6 +2554,122 @@ def save_structure_translations(payload: Dict[str, Any]) -> Tuple[bool, str]:
                         INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
                         VALUES (?, 1, ?, ?, 'descricao', ?)
                     """, (c_code, cod_familia, seccao, val_str))
+                written_count += 1
+
+        for codigo_str, fields in (payload.get("complementares") or {}).items():
+            cod_complementar = int(codigo_str)
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 5 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (c_code, cod_complementar))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 5 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                """, (c_code, cod_complementar))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 5 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (val_str, c_code, cod_complementar))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 5, ?, 0, 'descricao', ?)
+                    """, (c_code, cod_complementar, val_str))
+                written_count += 1
+
+        for codigo_str, fields in (payload.get("pos_families") or {}).items():
+            cod_familia_pos = int(codigo_str)
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 6 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (c_code, cod_familia_pos))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 6 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                """, (c_code, cod_familia_pos))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 6 AND id1 = ? AND id2 = 0 AND field = 'descricao'
+                    """, (val_str, c_code, cod_familia_pos))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 6, ?, 0, 'descricao', ?)
+                    """, (c_code, cod_familia_pos, val_str))
+                written_count += 1
+
+        for key_str, fields in (payload.get("menu_niveis") or {}).items():
+            try:
+                menu_str, nivel_str = key_str.split(":", 1)
+                cod_menu, nivel = int(menu_str), int(nivel_str)
+            except ValueError:
+                continue
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 7 AND id1 = ? AND id2 = ? AND field = 'nome'
+                    """, (c_code, cod_menu, nivel))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 7 AND id1 = ? AND id2 = ? AND field = 'nome'
+                """, (c_code, cod_menu, nivel))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 7 AND id1 = ? AND id2 = ? AND field = 'nome'
+                    """, (val_str, c_code, cod_menu, nivel))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 7, ?, ?, 'nome', ?)
+                    """, (c_code, cod_menu, nivel, val_str))
+                written_count += 1
+
+        for key_str, fields in (payload.get("opcoes") or {}).items():
+            try:
+                grupo_str, codigo_str = key_str.split(":", 1)
+                grupo, cod_opcao = int(grupo_str), int(codigo_str)
+            except ValueError:
+                continue
+            for country, val in (fields or {}).items():
+                c_code = "GB" if country.upper() == "EN" else country.upper()
+                val_str = str(val).strip() if val else ""
+                if not val_str:
+                    cursor.execute("""
+                        DELETE FROM dbo.ementa_digital_traducoes
+                        WHERE id_country = ? AND typeid = 4 AND id1 = ? AND id2 = ? AND field = 'opcao'
+                    """, (c_code, grupo, cod_opcao))
+                    continue
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = 4 AND id1 = ? AND id2 = ? AND field = 'opcao'
+                """, (c_code, grupo, cod_opcao))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_traducoes SET value = ?
+                        WHERE id_country = ? AND typeid = 4 AND id1 = ? AND id2 = ? AND field = 'opcao'
+                    """, (val_str, c_code, grupo, cod_opcao))
+                else:
+                    cursor.execute("""
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, 4, ?, ?, 'opcao', ?)
+                    """, (c_code, grupo, cod_opcao, val_str))
                 written_count += 1
 
         sync_triggered = False

@@ -81,10 +81,18 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [structureLangTab, setStructureLangTab] = useState<string>('gb');
   const [structureEmentas, setStructureEmentas] = useState<{ codigo: number; nome: string }[]>([]);
   const [structureFamilies, setStructureFamilies] = useState<{ codigo: number; descricao: string }[]>([]);
+  const [structureComplementares, setStructureComplementares] = useState<{ codigo: number; descricao: string }[]>([]);
+  const [structurePosFamilies, setStructurePosFamilies] = useState<{ codigo: number; descricao: string }[]>([]);
+  const [structureMenuNiveis, setStructureMenuNiveis] = useState<{ menu: number; nivel: number; descricao: string }[]>([]);
+  const [structureOpcoes, setStructureOpcoes] = useState<{ grupo: number; codigo: number; descricao: string }[]>([]);
   const [structureEdits, setStructureEdits] = useState<{
     ementas: Record<string, Record<string, string>>;
     families: Record<string, Record<string, string>>;
-  }>({ ementas: {}, families: {} });
+    complementares: Record<string, Record<string, string>>;
+    pos_families: Record<string, Record<string, string>>;
+    menu_niveis: Record<string, Record<string, string>>;
+    opcoes: Record<string, Record<string, string>>;
+  }>({ ementas: {}, families: {}, complementares: {}, pos_families: {}, menu_niveis: {}, opcoes: {} });
   const [isLoadingStructureTranslations, setIsLoadingStructureTranslations] = useState<boolean>(false);
   const [isSavingStructureTranslations, setIsSavingStructureTranslations] = useState<boolean>(false);
   const [isAutoTranslatingStructure, setIsAutoTranslatingStructure] = useState<boolean>(false);
@@ -464,15 +472,34 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       const data = await res.json();
       const ementas = (data.ementas || []) as { codigo: number; nome: string; translations: Record<string, string> }[];
       const families = (data.families || []) as { codigo: number; descricao: string; translations: Record<string, string> }[];
+      const complementares = (data.complementares || []) as { codigo: number; descricao: string; translations: Record<string, string> }[];
+      const posFamilies = (data.pos_families || []) as { codigo: number; descricao: string; translations: Record<string, string> }[];
+      const menuNiveis = (data.menu_niveis || []) as { menu: number; nivel: number; descricao: string; translations: Record<string, string> }[];
+      const opcoes = (data.opcoes || []) as { grupo: number; codigo: number; descricao: string; translations: Record<string, string> }[];
 
       setStructureEmentas(ementas.map(e => ({ codigo: e.codigo, nome: e.nome })));
       setStructureFamilies(families.map(f => ({ codigo: f.codigo, descricao: f.descricao })));
+      setStructureComplementares(complementares.map(c => ({ codigo: c.codigo, descricao: c.descricao })));
+      setStructurePosFamilies(posFamilies.map(f => ({ codigo: f.codigo, descricao: f.descricao })));
+      setStructureMenuNiveis(menuNiveis.map(m => ({ menu: m.menu, nivel: m.nivel, descricao: m.descricao })));
+      setStructureOpcoes(opcoes.map(o => ({ grupo: o.grupo, codigo: o.codigo, descricao: o.descricao })));
 
       const ementaEdits: Record<string, Record<string, string>> = {};
       ementas.forEach(e => { ementaEdits[String(e.codigo)] = { ...(e.translations || {}) }; });
       const familyEdits: Record<string, Record<string, string>> = {};
       families.forEach(f => { familyEdits[String(f.codigo)] = { ...(f.translations || {}) }; });
-      setStructureEdits({ ementas: ementaEdits, families: familyEdits });
+      const complementarEdits: Record<string, Record<string, string>> = {};
+      complementares.forEach(c => { complementarEdits[String(c.codigo)] = { ...(c.translations || {}) }; });
+      const posFamilyEdits: Record<string, Record<string, string>> = {};
+      posFamilies.forEach(f => { posFamilyEdits[String(f.codigo)] = { ...(f.translations || {}) }; });
+      const menuNivelEdits: Record<string, Record<string, string>> = {};
+      menuNiveis.forEach(m => { menuNivelEdits[`${m.menu}:${m.nivel}`] = { ...(m.translations || {}) }; });
+      const opcoesEdits: Record<string, Record<string, string>> = {};
+      opcoes.forEach(o => { opcoesEdits[`${o.grupo}:${o.codigo}`] = { ...(o.translations || {}) }; });
+      setStructureEdits({
+        ementas: ementaEdits, families: familyEdits, complementares: complementarEdits,
+        pos_families: posFamilyEdits, menu_niveis: menuNivelEdits, opcoes: opcoesEdits
+      });
     } catch (err) {
       alert('Falha de rede ao carregar traduções de estrutura.');
     } finally {
@@ -494,7 +521,11 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     try {
       const texts = Array.from(new Set([
         ...structureEmentas.map(e => e.nome).filter(Boolean),
-        ...structureFamilies.map(f => f.descricao).filter(Boolean)
+        ...structureFamilies.map(f => f.descricao).filter(Boolean),
+        ...structureComplementares.map(c => c.descricao).filter(Boolean),
+        ...structurePosFamilies.map(f => f.descricao).filter(Boolean),
+        ...structureMenuNiveis.map(m => m.descricao).filter(Boolean),
+        ...structureOpcoes.map(o => o.descricao).filter(Boolean)
       ]));
       if (texts.length === 0) return;
 
@@ -514,7 +545,11 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       setStructureEdits(prev => {
         const next = {
           ementas: { ...prev.ementas },
-          families: { ...prev.families }
+          families: { ...prev.families },
+          complementares: { ...prev.complementares },
+          pos_families: { ...prev.pos_families },
+          menu_niveis: { ...prev.menu_niveis },
+          opcoes: { ...prev.opcoes }
         };
         structureEmentas.forEach(e => {
           const map = translations[e.nome] || {};
@@ -533,6 +568,44 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
             if (val) current[lang.toUpperCase()] = val;
           });
           next.families[String(f.codigo)] = current;
+        });
+        structureComplementares.forEach(c => {
+          const map = translations[c.descricao] || {};
+          const current = { ...(next.complementares[String(c.codigo)] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.complementares[String(c.codigo)] = current;
+        });
+        structurePosFamilies.forEach(f => {
+          const map = translations[f.descricao] || {};
+          const current = { ...(next.pos_families[String(f.codigo)] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.pos_families[String(f.codigo)] = current;
+        });
+        structureMenuNiveis.forEach(m => {
+          const map = translations[m.descricao] || {};
+          const key = `${m.menu}:${m.nivel}`;
+          const current = { ...(next.menu_niveis[key] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.menu_niveis[key] = current;
+        });
+        structureOpcoes.forEach(o => {
+          const map = translations[o.descricao] || {};
+          const key = `${o.grupo}:${o.codigo}`;
+          const current = { ...(next.opcoes[key] || {}) };
+          targetLangs.forEach(lang => {
+            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
+            if (val) current[lang.toUpperCase()] = val;
+          });
+          next.opcoes[key] = current;
         });
         return next;
       });
@@ -553,12 +626,16 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ementas: structureEdits.ementas,
-          families: structureEdits.families
+          families: structureEdits.families,
+          complementares: structureEdits.complementares,
+          pos_families: structureEdits.pos_families,
+          menu_niveis: structureEdits.menu_niveis,
+          opcoes: structureEdits.opcoes
         })
       });
       const data = await res.json();
       if (data.success) {
-        onSuccess(data.message || 'Traduções de ementas e famílias gravadas com sucesso!');
+        onSuccess(data.message || 'Traduções de ementas, famílias e complementares gravadas com sucesso!');
         setShowStructureTranslator(false);
       } else {
         alert(data.detail || data.message || 'Erro ao gravar traduções de estrutura.');
@@ -1227,6 +1304,164 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       ))}
                       {structureFamilies.length === 0 && (
                         <p className="text-xs text-slate-400">Nenhuma família encontrada na ementa digital.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Complementares */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Complementares
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structureComplementares.map(c => (
+                        <div key={c.codigo} className="flex items-center gap-3">
+                          <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={c.descricao}>
+                            {c.descricao || `Complementar #${c.codigo}`}
+                          </div>
+                          <input
+                            type="text"
+                            value={structureEdits.complementares[String(c.codigo)]?.[structureLangTab.toUpperCase()] || ''}
+                            onChange={(ev) => {
+                              const val = ev.target.value;
+                              setStructureEdits(prev => ({
+                                ...prev,
+                                complementares: {
+                                  ...prev.complementares,
+                                  [String(c.codigo)]: {
+                                    ...(prev.complementares[String(c.codigo)] || {}),
+                                    [structureLangTab.toUpperCase()]: val
+                                  }
+                                }
+                              }));
+                            }}
+                            placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                            className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                          />
+                        </div>
+                      ))}
+                      {structureComplementares.length === 0 && (
+                        <p className="text-xs text-slate-400">Nenhum complementar encontrado.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Familias POS (dbo.familias) */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Famílias de Produtos (POS)
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structurePosFamilies.map(f => (
+                        <div key={f.codigo} className="flex items-center gap-3">
+                          <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={f.descricao}>
+                            {f.descricao || `Família #${f.codigo}`}
+                          </div>
+                          <input
+                            type="text"
+                            value={structureEdits.pos_families[String(f.codigo)]?.[structureLangTab.toUpperCase()] || ''}
+                            onChange={(ev) => {
+                              const val = ev.target.value;
+                              setStructureEdits(prev => ({
+                                ...prev,
+                                pos_families: {
+                                  ...prev.pos_families,
+                                  [String(f.codigo)]: {
+                                    ...(prev.pos_families[String(f.codigo)] || {}),
+                                    [structureLangTab.toUpperCase()]: val
+                                  }
+                                }
+                              }));
+                            }}
+                            placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                            className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                          />
+                        </div>
+                      ))}
+                      {structurePosFamilies.length === 0 && (
+                        <p className="text-xs text-slate-400">Nenhuma família POS encontrada.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Niveis de Menu (dbo.niveismenu) */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Níveis de Menu
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structureMenuNiveis.map(m => {
+                        const key = `${m.menu}:${m.nivel}`;
+                        return (
+                          <div key={key} className="flex items-center gap-3">
+                            <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={m.descricao}>
+                              {m.descricao || `Nível #${m.nivel}`}
+                            </div>
+                            <input
+                              type="text"
+                              value={structureEdits.menu_niveis[key]?.[structureLangTab.toUpperCase()] || ''}
+                              onChange={(ev) => {
+                                const val = ev.target.value;
+                                setStructureEdits(prev => ({
+                                  ...prev,
+                                  menu_niveis: {
+                                    ...prev.menu_niveis,
+                                    [key]: {
+                                      ...(prev.menu_niveis[key] || {}),
+                                      [structureLangTab.toUpperCase()]: val
+                                    }
+                                  }
+                                }));
+                              }}
+                              placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                              className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                        );
+                      })}
+                      {structureMenuNiveis.length === 0 && (
+                        <p className="text-xs text-slate-400">Nenhum nível de menu encontrado.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Opcoes (dbo.opcoes) */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Grupos de Opções
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {structureOpcoes.map(o => {
+                        const key = `${o.grupo}:${o.codigo}`;
+                        return (
+                          <div key={key} className="flex items-center gap-3">
+                            <div className="w-32 shrink-0 text-xs font-semibold text-slate-700 truncate" title={o.descricao}>
+                              {o.descricao || `Opção #${o.codigo}`}
+                            </div>
+                            <input
+                              type="text"
+                              value={structureEdits.opcoes[key]?.[structureLangTab.toUpperCase()] || ''}
+                              onChange={(ev) => {
+                                const val = ev.target.value;
+                                setStructureEdits(prev => ({
+                                  ...prev,
+                                  opcoes: {
+                                    ...prev.opcoes,
+                                    [key]: {
+                                      ...(prev.opcoes[key] || {}),
+                                      [structureLangTab.toUpperCase()]: val
+                                    }
+                                  }
+                                }));
+                              }}
+                              placeholder={`Nome traduzido (${structureLangTab.toUpperCase()})`}
+                              className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                        );
+                      })}
+                      {structureOpcoes.length === 0 && (
+                        <p className="text-xs text-slate-400">Nenhuma opção encontrada.</p>
                       )}
                     </div>
                   </div>
