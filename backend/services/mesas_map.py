@@ -6,14 +6,14 @@ import base64
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from backend.db import db_manager, get_app_dir, int_color_to_hex, hex_to_int_color
 from backend.services.products import _schema
 
 MESAS_BACKUP_DIR = os.path.join(get_app_dir(), "backups", "mesas_map")
 
-# Paletas de Presets de Temas
+# Paletas de Presets de Temas Visuais de Luxo
 THEMES = {
     "claro": {
         "key": "claro",
@@ -27,13 +27,13 @@ THEMES = {
     },
     "escuro": {
         "key": "escuro",
-        "name": "Escuro Lounge / VIP",
-        "bg_base": (30, 34, 42),
-        "bg_dot": (48, 54, 66),
-        "fill": (45, 52, 65, 255),
-        "border": (212, 175, 55, 255),
-        "seat": (65, 75, 95, 255),
-        "seat_border": (180, 145, 40, 255),
+        "name": "Cyber Lounge / Neon VIP",
+        "bg_base": (15, 23, 42),
+        "bg_dot": (30, 41, 59),
+        "fill": (30, 41, 59, 255),
+        "border": (56, 189, 248, 255),  # Cyan neon
+        "seat": (51, 65, 85, 255),
+        "seat_border": (147, 51, 234, 255),  # Purple neon
     },
     "rustico": {
         "key": "rustico",
@@ -47,11 +47,11 @@ THEMES = {
     },
     "minimalista": {
         "key": "minimalista",
-        "name": "Minimalista Monocromático",
+        "name": "Bistro Fine Dining",
         "bg_base": (248, 249, 250),
         "bg_dot": (220, 224, 230),
         "fill": (255, 255, 255, 255),
-        "border": (50, 60, 70, 255),
+        "border": (212, 175, 55, 255),  # Brass / Gold
         "seat": (230, 235, 240, 255),
         "seat_border": (100, 110, 120, 255),
     },
@@ -118,7 +118,6 @@ def _square_table_icon(size: int, seats: int, fill_rgb: Optional[Tuple[int, int,
     box = [pad, pad, size - pad, size - pad]
     d.rounded_rectangle(box, radius=size * 0.08, fill=fill, outline=border, width=4)
 
-    # Assentos nos lados
     seat_w = size * 0.22
     seat_h = size * 0.10
     if seats in [1, 2, 4]:
@@ -192,6 +191,14 @@ def _counter_icon(w: int, h: int, theme_key: str = "claro") -> Image.Image:
     return im
 
 
+def _wall_icon(w: int, h: int, theme_key: str = "claro") -> Image.Image:
+    t = THEMES.get(theme_key, THEMES["claro"])
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle([1, 1, w - 2, h - 2], radius=2, fill=t["border"], outline=t["seat_border"], width=1)
+    return im
+
+
 def _bg_tile(size: int = 100, theme_key: str = "claro") -> Image.Image:
     t = THEMES.get(theme_key, THEMES["claro"])
     im = Image.new("RGB", (size, size), t["bg_base"])
@@ -218,7 +225,9 @@ def _generate_icon_for_object(tipoobjecto: int, lugares: Optional[int], largura:
     seats = _nearest_seat_count(lugares)
 
     if tipoobjecto == 1:
-        if forma == "bench" or (w > 0 and h > 0 and w > h * 1.6):
+        if forma == "wall":
+            return _wall_icon(w, h, theme_key)
+        elif forma == "bench" or (w > 0 and h > 0 and w > h * 1.6):
             return _bench_icon(w, h, theme_key)
         elif forma == "counter":
             return _counter_icon(w, h, theme_key)
@@ -414,39 +423,58 @@ def get_zona_detail(codigo: int) -> Dict[str, Any]:
 def create_mesa_objeto(codigo_zona: int, nome: str, tipoobjecto: int = 0, lugares: int = 4,
                        forma: str = "round", posx: int = 60, posy: int = 60, largura: int = 100,
                        altura: int = 100, cor_hex: Optional[str] = None) -> Tuple[bool, str, Optional[int]]:
-    """Cria uma nova mesa ou objeto decorativo na zona."""
+    """Cria uma nova mesa ou objeto decorativo na zona e regista em dbo.mesas e dbo.mapamesas."""
     detail = get_zona_detail(codigo_zona)
     if not detail.get("available"):
         return False, detail.get("message") or f"Zona #{codigo_zona} não disponível.", None
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.mapamesas")
-        new_id = int(cursor.fetchone()[0])
+        
+        # Determina o ID numérico da mesa
+        target_nome = nome.strip() if nome and nome.strip() else ""
+        new_id = None
+        if target_nome.isdigit():
+            possible_id = int(target_nome)
+            cursor.execute("SELECT 1 FROM dbo.mapamesas WHERE id = ? AND zona = ?", (possible_id, codigo_zona))
+            if not cursor.fetchone():
+                new_id = possible_id
+
+        if new_id is None:
+            cursor.execute("SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.mapamesas")
+            new_id = int(cursor.fetchone()[0])
+            if not target_nome:
+                target_nome = str(new_id)
 
         cor_int = hex_to_int_color(cor_hex) if cor_hex else 0
         icon = _generate_icon_for_object(tipoobjecto, lugares, largura, altura, cor_hex, forma)
         icon_bytes = _bmp_bytes(icon)
 
         cursor.execute("""
-            INSERT INTO dbo.mapamesas (id, nomeobjecto, posx, posy, altura, largura, tipoobjecto, lugares, corgrupo, zona, imagem)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (new_id, nome.strip() or str(new_id), posx, posy, altura, largura, tipoobjecto, lugares, cor_int, codigo_zona, icon_bytes))
+            INSERT INTO dbo.mapamesas (id, nomeobjecto, numeroobjecto, posx, posy, altura, largura, tipoobjecto, lugares, corgrupo, zona, imagem)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (new_id, target_nome, new_id, posx, posy, altura, largura, tipoobjecto, lugares, cor_int, codigo_zona, icon_bytes))
 
         if tipoobjecto == 0:
+            # Garante o registo correspondente na tabela de negócio dbo.mesas para o FrontOffice abrir contas
             try:
                 cursor.execute("SELECT 1 FROM dbo.mesas WHERE mesa = ?", (new_id,))
                 if not cursor.fetchone():
-                    cursor.execute("INSERT INTO dbo.mesas (mesa, nome) VALUES (?, ?)", (new_id, nome.strip() or str(new_id)))
+                    cursor.execute("""
+                        INSERT INTO dbo.mesas (mesa, nomemesa, pessoas, mesagrupo, lugar)
+                        VALUES (?, ?, ?, 0, 0)
+                    """, (new_id, target_nome, lugares))
+                else:
+                    cursor.execute("UPDATE dbo.mesas SET nomemesa = ?, pessoas = ? WHERE mesa = ?", (target_nome, lugares, new_id))
             except Exception:
                 pass
 
         _trigger_zonesoft_sync(cursor, codigo_zona)
         conn.commit()
-        return True, f"Objeto/Mesa #{new_id} criado com sucesso.", new_id
+        return True, f"Mesa/Objeto '{target_nome}' (#{new_id}) criada com sucesso.", new_id
     except Exception as e:
         conn.rollback()
-        return False, f"Falha ao criar mesa/objeto: {str(e)}", None
+        return False, f"Falha ao criar mesa: {str(e)}", None
     finally:
         conn.close()
 
@@ -464,8 +492,8 @@ def duplicate_mesa_objeto(codigo_zona: int, objeto_id: int) -> Tuple[bool, str, 
     if obj["nome"].isdigit():
         new_nome = str(int(obj["nome"]) + 1)
 
-    new_x = min(obj["posx"] + 30, detail["width"] - 120)
-    new_y = min(obj["posy"] + 30, detail["height"] - 120)
+    new_x = min(obj["posx"] + 40, detail["width"] - 120)
+    new_y = min(obj["posy"] + 40, detail["height"] - 120)
 
     return create_mesa_objeto(
         codigo_zona=codigo_zona,
@@ -670,7 +698,7 @@ def update_posicoes(codigo: int, updates: List[Dict[str, int]]) -> Tuple[bool, s
 def update_objeto_props(codigo: int, objeto_id: int, lugares: Optional[int] = None,
                           cor_hex: Optional[str] = None, largura: Optional[int] = None,
                           altura: Optional[int] = None, forma: Optional[str] = None) -> Tuple[bool, str]:
-    """Atualiza lugares/cor/tamanho de uma mesa e regenera o seu ícone para corresponder."""
+    """Atualiza lugares/cor/tamanho/forma de uma mesa e regenera o seu ícone para corresponder."""
     detail = get_zona_detail(codigo)
     if not detail.get("available"):
         return False, detail.get("message") or f"Zona #{codigo} não disponível."
@@ -699,6 +727,11 @@ def update_objeto_props(codigo: int, objeto_id: int, lugares: Optional[int] = No
             "UPDATE dbo.mapamesas SET lugares = ?, largura = ?, altura = ?, corgrupo = ?, imagem = ? WHERE id = ? AND zona = ?",
             (new_lugares, new_largura, new_altura, new_cor_int, icon_bytes, objeto_id, codigo)
         )
+        if obj["tipoobjecto"] == 0:
+            try:
+                cursor.execute("UPDATE dbo.mesas SET pessoas = ? WHERE mesa = ?", (new_lugares, objeto_id))
+            except Exception:
+                pass
         _trigger_zonesoft_sync(cursor, codigo)
         conn.commit()
         return True, f"Mesa '{obj['nome']}' atualizada. Cópia de segurança: {backup_name}"
