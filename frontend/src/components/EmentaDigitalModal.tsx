@@ -3,15 +3,12 @@ import {
   X, QrCode, Globe, Database, Search, Filter, Check, AlertTriangle,
   Upload, Image as ImageIcon, Eye, EyeOff, Star, Sparkles, RefreshCw,
   Copy, Save, ChevronLeft, ChevronRight, ExternalLink, Languages, Trash2,
-  Edit3, FileText, Wand2, Plus, ArrowRight, Smartphone, Tablet, Layers, Clock,
-  ArrowUp, ArrowDown, Settings2
+  Edit3, FileText, Wand2, Plus, ArrowRight
 } from 'lucide-react';
 import {
   EmentaProductItem, EmentaProductResponse, EmentaLanguage,
-  EmentaSchemaInfo, BulkEditPreviewResponse, EmentaDigitalStructureResponse,
-  EmentaRuleItem, EmentaDigitalSection, EmentaDigitalFamily
+  EmentaSchemaInfo, BulkEditPreviewResponse, EmentaDigitalStructureResponse
 } from '../types';
-import { EmentaSimulatorFrame } from './EmentaSimulatorFrame';
 
 interface EmentaDigitalModalProps {
   isOpen: boolean;
@@ -38,7 +35,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   onOpenPreview,
   onSuccess
 }) => {
-  const [activeTab, setActiveTab] = useState<'products' | 'simulator' | 'structure' | 'rules' | 'translations' | 'schema'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'translations'>('products');
 
   // Products tab state
   const [products, setProducts] = useState<EmentaProductItem[]>([]);
@@ -55,15 +52,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [visivelFilter, setVisivelFilter] = useState<string>('all');
   const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('with_ementa');
 
-  // Digital Menu Structure & Rules
+  // Digital Menu Structure
   const [digitalStructure, setDigitalStructure] = useState<EmentaDigitalStructureResponse | null>(null);
-  const [rules, setRules] = useState<EmentaRuleItem[]>([]);
-  const [isLoadingRules, setIsLoadingRules] = useState<boolean>(false);
-
-  // Section / Family Editing State
-  const [editingSection, setEditingSection] = useState<Partial<EmentaDigitalSection> | null>(null);
-  const [editingFamily, setEditingFamily] = useState<Partial<EmentaDigitalFamily> | null>(null);
-  const [isSavingStructure, setIsSavingStructure] = useState<boolean>(false);
 
   // Bulk Actions
   const [bulkVisivel, setBulkVisivel] = useState<string>('');
@@ -198,16 +188,12 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
-  // Schema tab state
-  const [schemaInfo, setSchemaInfo] = useState<EmentaSchemaInfo | null>(null);
-  const [isLoadingSchema, setIsLoadingSchema] = useState<boolean>(false);
 
   // Load products when filters or page change
   useEffect(() => {
     if (isOpen) {
       loadProducts();
       loadLanguages();
-      loadSchemaInfo();
       loadDigitalStructure();
     }
   }, [isOpen, page, selectedFamily, selectedEmentaFamily, visivelFilter, hasEmentaFilter]);
@@ -286,79 +272,6 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
-  const loadSchemaInfo = async () => {
-    setIsLoadingSchema(true);
-    try {
-      const res = await fetch('/api/ementa-digital/schema');
-      if (res.ok) {
-        const data: EmentaSchemaInfo = await res.json();
-        setSchemaInfo(data);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar dados do esquema:', err);
-    } finally {
-      setIsLoadingSchema(false);
-    }
-  };
-
-  const loadRules = async () => {
-    setIsLoadingRules(true);
-    try {
-      const res = await fetch('/api/ementa-digital/rules');
-      if (res.ok) {
-        const data: EmentaRuleItem[] = await res.json();
-        setRules(data);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar regras:', err);
-    } finally {
-      setIsLoadingRules(false);
-    }
-  };
-
-  const handleSaveSectionForm = async () => {
-    if (!editingSection?.descricao) return;
-    setIsSavingStructure(true);
-    try {
-      const res = await fetch('/api/ementa-digital/sections/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingSection)
-      });
-      const data = await res.json();
-      if (data.codigo || data.success) {
-        onSuccess(data.message || 'Secção gravada com sucesso!');
-        setEditingSection(null);
-        loadDigitalStructure();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSavingStructure(false);
-    }
-  };
-
-  const handleSaveFamilyForm = async () => {
-    if (!editingFamily?.descricao) return;
-    setIsSavingStructure(true);
-    try {
-      const res = await fetch('/api/ementa-digital/families/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingFamily)
-      });
-      const data = await res.json();
-      if (data.codigo || data.success) {
-        onSuccess(data.message || 'Família gravada com sucesso!');
-        setEditingFamily(null);
-        loadDigitalStructure();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSavingStructure(false);
-    }
-  };
 
   // Selection handlers
   const handleSelectAll = () => {
@@ -865,7 +778,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
           <div className="flex items-center gap-3">
             {/* Tabs */}
-            <div className="flex bg-slate-200/70 p-1 rounded-xl text-xs font-bold text-slate-600 flex-wrap gap-1">
+            <div className="flex bg-slate-200/70 p-1 rounded-xl text-xs font-bold text-slate-600 gap-1">
               <button
                 type="button"
                 onClick={() => setActiveTab('products')}
@@ -873,44 +786,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   activeTab === 'products' ? 'bg-white text-teal-900 shadow-xs' : 'hover:text-slate-900'
                 }`}
               >
-                <QrCode className="w-3.5 h-3.5 text-teal-600" />
-                Artigos & Descrições
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('simulator')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activeTab === 'simulator' ? 'bg-white text-teal-900 shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5 text-teal-600" />
-                Simulador Live (Kiosk / Mobile)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('structure')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activeTab === 'structure' ? 'bg-white text-blue-900 shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5 text-blue-600" />
-                Estrutura & Secções
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('rules');
-                  loadRules();
-                }}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activeTab === 'rules' ? 'bg-white text-amber-900 shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5 text-amber-600" />
-                Regras ZoneSoft
+                <ImageIcon className="w-3.5 h-3.5 text-teal-600" />
+                Imagens & Descrições
               </button>
 
               <button
@@ -921,23 +798,12 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 }`}
               >
                 <Languages className="w-3.5 h-3.5 text-indigo-600" />
-                Traduções
+                Assistente de Tradução IA
                 {selectedCodes.size > 0 && (
                   <span className="ml-1 bg-indigo-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                     {selectedCodes.size}
                   </span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('schema')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activeTab === 'schema' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5 text-slate-500" />
-                Diagnóstico BD
               </button>
             </div>
 
@@ -1616,421 +1482,6 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 >
                   Voltar à Lista de Artigos
                 </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB: Simulador Live Kiosk / Mobile */}
-        {activeTab === 'simulator' && (
-          <div className="flex-1 p-4 overflow-hidden flex flex-col">
-            <EmentaSimulatorFrame
-              menus={digitalStructure?.menus || []}
-              sections={digitalStructure?.sections || []}
-              families={digitalStructure?.families || []}
-              products={products}
-            />
-          </div>
-        )}
-
-        {/* TAB: Estrutura & Secções */}
-        {activeTab === 'structure' && (
-          <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-6">
-            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 p-4 rounded-2xl">
-              <div>
-                <h3 className="font-extrabold text-blue-950 text-sm flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-blue-600" />
-                  Estrutura da Ementa Digital (Secções & Famílias)
-                </h3>
-                <p className="text-xs text-blue-800 mt-0.5">
-                  Organize as categorias (secções) e subcategorias (famílias) apresentadas ao cliente na Ementa Digital.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingSection({ codigo: 0, descricao: '', visivel: 1, posicao: (digitalStructure?.sections.length || 0) + 1 })}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Nova Secção
-                </button>
-              </div>
-            </div>
-
-            {/* Sections & Families List */}
-            <div className="space-y-6">
-              {digitalStructure?.sections.map(sec => {
-                const secFamilies = digitalStructure.families.filter(f => f.seccao === sec.codigo);
-                return (
-                  <div key={sec.codigo} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-3">
-                        {sec.image_url ? (
-                          <img src={sec.image_url} alt={sec.descricao} className="w-10 h-10 rounded-xl object-cover border border-slate-200" />
-                        ) : (
-                          <div className="w-10 h-10 bg-blue-100 text-blue-700 font-extrabold rounded-xl flex items-center justify-center text-sm">
-                            #{sec.codigo}
-                          </div>
-                        )}
-                        <div>
-                          <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                            {sec.descricao}
-                            {sec.visivel === 1 ? (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">Visível</span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full">Oculta</span>
-                            )}
-                          </h4>
-                          <span className="text-[11px] text-slate-400">
-                            Posição: #{sec.posicao} | {secFamilies.length} Família(s) associada(s)
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingSection(sec)}
-                          className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition flex items-center gap-1"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" /> Editar Secção
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingFamily({ codigo: 0, seccao: sec.codigo, descricao: '', visivel: 1, posicao: secFamilies.length + 1 })}
-                          className="px-2.5 py-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold rounded-lg transition flex items-center gap-1 border border-blue-200"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Nova Família
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Families Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {secFamilies.map(fam => (
-                        <div key={fam.codigo} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
-                          <div>
-                            <span className="text-xs font-bold text-slate-800 block">{fam.descricao}</span>
-                            <span className="text-[10px] text-slate-400">
-                              Posição: #{fam.posicao} {fam.dose ? `| Dose: ${fam.dose}` : ''}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setEditingFamily(fam)}
-                            className="p-1.5 hover:bg-slate-200 text-slate-600 rounded-lg transition"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* TAB: Regras ZoneSoft */}
-        {activeTab === 'rules' && (
-          <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-6">
-            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 p-4 rounded-2xl">
-              <div>
-                <h3 className="font-extrabold text-amber-950 text-sm flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-600" />
-                  Regras de Apresentação ZoneSoft (dbo.ementa_digital_regras)
-                </h3>
-                <p className="text-xs text-amber-800 mt-0.5">
-                  Visualização dos horários, zonas e aplicações ativas para a ementa digital no Kiosk e POS.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={loadRules}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRules ? 'animate-spin' : ''}`} /> Atualizar
-              </button>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px]">
-                  <tr>
-                    <th className="p-3">Ordem</th>
-                    <th className="p-3">Aplicação Target</th>
-                    <th className="p-3">Serviço</th>
-                    <th className="p-3">Horário Ativo</th>
-                    <th className="p-3">Zona</th>
-                    <th className="p-3">Ementa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rules.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-6 text-center text-slate-400 italic">
-                        {isLoadingRules ? 'A carregar regras...' : 'Nenhuma regra de apresentação encontrada em dbo.ementa_digital_regras.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    rules.map(r => (
-                      <tr key={r.codigo} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono font-bold text-slate-800">#{r.ordem}</td>
-                        <td className="p-3 font-bold text-teal-800">{r.app_label}</td>
-                        <td className="p-3 font-medium text-slate-700">{r.servico_label}</td>
-                        <td className="p-3 font-mono text-slate-800 font-semibold">{r.inicio} — {r.fim}</td>
-                        <td className="p-3 text-slate-600">{r.zona_nome}</td>
-                        <td className="p-3 font-bold text-indigo-900">{r.ementa_nome}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Section Edit Modal */}
-        {editingSection && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-extrabold text-slate-900 text-sm">
-                  {editingSection.codigo ? `Editar Secção #${editingSection.codigo}` : 'Nova Secção'}
-                </h3>
-                <button onClick={() => setEditingSection(null)} className="p-1 text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Descrição / Nome da Secção</label>
-                  <input
-                    type="text"
-                    value={editingSection.descricao || ''}
-                    onChange={e => setEditingSection({ ...editingSection, descricao: e.target.value })}
-                    placeholder="Ex: Pratos de Peixe"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">URL da Imagem de Capa</label>
-                  <input
-                    type="text"
-                    value={editingSection.image_url || ''}
-                    onChange={e => setEditingSection({ ...editingSection, image_url: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-slate-800"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Posição</label>
-                    <input
-                      type="number"
-                      value={editingSection.posicao || 1}
-                      onChange={e => setEditingSection({ ...editingSection, posicao: parseInt(e.target.value, 10) || 1 })}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-mono font-bold text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Visível</label>
-                    <select
-                      value={editingSection.visivel ?? 1}
-                      onChange={e => setEditingSection({ ...editingSection, visivel: parseInt(e.target.value, 10) })}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-bold text-slate-800"
-                    >
-                      <option value={1}>Sim (Visível)</option>
-                      <option value={0}>Não (Oculta)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingSection(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSectionForm}
-                  disabled={isSavingStructure}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-1.5"
-                >
-                  {isSavingStructure ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Gravar Secção
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Family Edit Modal */}
-        {editingFamily && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-extrabold text-slate-900 text-sm">
-                  {editingFamily.codigo ? `Editar Família #${editingFamily.codigo}` : 'Nova Família da Secção'}
-                </h3>
-                <button onClick={() => setEditingFamily(null)} className="p-1 text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Secção / Categoria Mãe</label>
-                  <select
-                    value={editingFamily.seccao || 1}
-                    onChange={e => setEditingFamily({ ...editingFamily, seccao: parseInt(e.target.value, 10) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900"
-                  >
-                    {digitalStructure?.sections.map(s => (
-                      <option key={s.codigo} value={s.codigo}>{s.descricao}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Descrição da Família</label>
-                  <input
-                    type="text"
-                    value={editingFamily.descricao || ''}
-                    onChange={e => setEditingFamily({ ...editingFamily, descricao: e.target.value })}
-                    placeholder="Ex: Grelhados"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Rótulo Dose (Opcional)</label>
-                    <input
-                      type="text"
-                      value={editingFamily.dose || ''}
-                      onChange={e => setEditingFamily({ ...editingFamily, dose: e.target.value })}
-                      placeholder="Ex: Dose"
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-medium text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Rótulo Meia Dose (Opcional)</label>
-                    <input
-                      type="text"
-                      value={editingFamily.meiadose || ''}
-                      onChange={e => setEditingFamily({ ...editingFamily, meiadose: e.target.value })}
-                      placeholder="Ex: 1/2 Dose"
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-medium text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Posição</label>
-                    <input
-                      type="number"
-                      value={editingFamily.posicao || 1}
-                      onChange={e => setEditingFamily({ ...editingFamily, posicao: parseInt(e.target.value, 10) || 1 })}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-mono font-bold text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Visível</label>
-                    <select
-                      value={editingFamily.visivel ?? 1}
-                      onChange={e => setEditingFamily({ ...editingFamily, visivel: parseInt(e.target.value, 10) })}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-bold text-slate-800"
-                    >
-                      <option value={1}>Sim (Visível)</option>
-                      <option value={0}>Não (Oculta)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingFamily(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveFamilyForm}
-                  disabled={isSavingStructure}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-1.5"
-                >
-                  {isSavingStructure ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Gravar Família
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: Diagnóstico da Base de Dados */}
-        {activeTab === 'schema' && (
-          <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-6">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Estado do Esquema SQL da Ementa Digital</h3>
-                <p className="text-xs text-slate-500">
-                  Deteção automática de tabelas ZoneSoft no SQL Server.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(schemaInfo, null, 2));
-                  onSuccess('Estrutura copiada para a área de transferência!');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-2xs"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                Copiar Estrutura (JSON)
-              </button>
-            </div>
-
-            {schemaInfo && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(schemaInfo.tables).map(([tableName, info]: any) => (
-                  <div key={tableName} className="border border-slate-200 rounded-xl p-4 bg-white shadow-2xs">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-mono font-bold text-slate-900 text-xs">dbo.{tableName}</span>
-                      {info.exists ? (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
-                          Presente ({info.row_count} registos)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-bold text-[10px]">
-                          Não encontrada
-                        </span>
-                      )}
-                    </div>
-                    {info.columns && (
-                      <div className="max-h-52 overflow-y-auto text-[11px] font-mono border-t border-slate-100 pt-2 divide-y divide-slate-50">
-                        {info.columns.map((c: any) => (
-                          <div key={c.name} className="py-1 flex justify-between text-slate-600">
-                            <span>{c.name}</span>
-                            <span className="text-indigo-600">{c.type}({c.max_length})</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
               </div>
             )}
           </div>
