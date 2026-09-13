@@ -38,6 +38,7 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
 
   // Extracted rows state
   const [startCode, setStartCode] = useState<number>(700001);
+  const [startFamilyCode, setStartFamilyCode] = useState<number>(101);
   const [reviewedRows, setReviewedRows] = useState<MenuReviewedRow[]>([]);
   const [priceLabels, setPriceLabels] = useState<string[]>(['PVP']);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -49,6 +50,19 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
       ...row,
       codigo: newStart > 0 ? newStart + idx : row.codigo
     })));
+  };
+
+  const handleStartFamilyCodeChange = (newFamStart: number) => {
+    setStartFamilyCode(newFamStart);
+  };
+
+  const getNextAvailableFamilyCode = (baseStart: number, currentFams: Family[]) => {
+    const existingCodes = new Set(currentFams.map(f => f.codigo));
+    let code = baseStart > 0 ? baseStart : 101;
+    while (existingCodes.has(code)) {
+      code++;
+    }
+    return code;
   };
 
   // Price column mapping (label -> pvp1..10)
@@ -84,7 +98,13 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
   const handleCreateNewFamilySubmit = async (nameToCreate?: string, codeToCreate?: number) => {
     const targetName = (nameToCreate || newFamilyName).trim();
     if (!targetName) return;
-    const codeVal = codeToCreate !== undefined ? codeToCreate : (newFamilyCode.trim() ? parseInt(newFamilyCode.trim(), 10) : undefined);
+    let codeVal = codeToCreate;
+    if (codeVal === undefined && newFamilyCode.trim()) {
+      codeVal = parseInt(newFamilyCode.trim(), 10);
+    }
+    if (codeVal === undefined || isNaN(codeVal)) {
+      codeVal = getNextAvailableFamilyCode(startFamilyCode, localFamilies);
+    }
     setIsCreatingFamily(true);
     try {
       const res = await fetch('/api/families/create', {
@@ -594,20 +614,38 @@ export const MenuImportWizardModal: React.FC<MenuImportWizardModalProps> = ({
                   <p className="text-xs text-slate-500">Confirme nomes, secções e preços antes de mapear com a base de dados.</p>
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 bg-violet-50/70 border border-violet-200/80 px-2.5 py-1 rounded-lg">
-                    <label className="text-[11px] font-bold text-violet-900 whitespace-nowrap">
-                      Código Inicial:
-                    </label>
-                    <input
-                      type="number"
-                      value={startCode || ''}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        handleStartCodeChange(isNaN(val) ? 1 : val);
-                      }}
-                      placeholder="Ex: 700001"
-                      className="w-24 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
-                    />
+                  <div className="flex items-center gap-2 bg-violet-50/70 border border-violet-200/80 px-2.5 py-1 rounded-lg">
+                    <div className="flex items-center gap-1">
+                      <label className="text-[11px] font-bold text-violet-900 whitespace-nowrap">
+                        Cód. Artigos Inicial:
+                      </label>
+                      <input
+                        type="number"
+                        value={startCode || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          handleStartCodeChange(isNaN(val) ? 1 : val);
+                        }}
+                        placeholder="Ex: 700001"
+                        className="w-20 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                      />
+                    </div>
+                    <div className="w-[1px] h-4 bg-violet-200" />
+                    <div className="flex items-center gap-1">
+                      <label className="text-[11px] font-bold text-violet-900 whitespace-nowrap">
+                        Cód. Famílias Inicial:
+                      </label>
+                      <input
+                        type="number"
+                        value={startFamilyCode || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          handleStartFamilyCodeChange(isNaN(val) ? 101 : val);
+                        }}
+                        placeholder="Ex: 101"
+                        className="w-16 bg-white border border-violet-300 focus:border-violet-600 font-mono text-xs font-extrabold text-violet-950 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                      />
+                    </div>
                   </div>
                   <button
                     type="button"
