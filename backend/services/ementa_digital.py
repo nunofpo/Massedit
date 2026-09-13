@@ -2223,6 +2223,21 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
                         _upsert_row(c_code, 1, target_id2, field, val_str)
                         _upsert_row(c_code, 2, target_id2, field, val_str)
 
+        # Regista a alteração para o ZoneSoft sincronizar com o backoffice/cloud
+        # (sem isto a traducao fica apenas na base local e nunca aparece no ZoneSoft)
+        try:
+            cursor.execute(
+                "INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) "
+                "VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 2, 0)",
+                (req.cod_produto,)
+            )
+        except Exception:
+            pass
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+        except Exception:
+            pass
+
         conn.commit()
         print(f"[SAVE_TRANSLATIONS] Sucesso: {written_count} registos atualizados/inseridos para o produto #{req.cod_produto} (família={prod_familia}).")
         return True, "Traduções gravadas com sucesso."
@@ -2354,6 +2369,11 @@ def auto_populate_general_translations(target_langs: Optional[List[str]] = None)
                         VALUES (?, 0, 0, 0, ?, ?)
                     """, (c_code, field, val))
                     inserted_or_updated += 1
+
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+        except Exception:
+            pass
 
         conn.commit()
         return True, f"Preenchidas {inserted_or_updated} traduções gerais com sucesso para os idiomas {', '.join(langs)}.", inserted_or_updated
