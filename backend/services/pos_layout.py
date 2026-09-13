@@ -222,6 +222,10 @@ def apply_pos_layout(req: PosLayoutApplyRequest) -> Tuple[bool, str, int]:
             for p, changes in plan:
                 if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync):
                     affected_count += 1
+
+            # Garantir que a configuração 'ORDEM NO FRONTOFFICE' está definida como '1' (Posição) em configpostos
+            cursor.execute("UPDATE dbo.configpostos SET valor = '1' WHERE chave = 'ORDEM NO FRONTOFFICE'")
+
             conn.commit()
         except Exception as e:
             conn.rollback()
