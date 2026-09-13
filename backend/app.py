@@ -410,8 +410,8 @@ def mesas_map_posicoes_endpoint(codigo: int, req: MesasPosicoesRequest):
 
 @app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/props")
 def mesas_map_objeto_props_endpoint(codigo: int, objeto_id: int, req: MesaObjetoPropsRequest):
-    """Atualiza lugares/cor/tamanho/forma de uma mesa e regenera o seu ícone."""
-    success, message = update_mesas_objeto_props(codigo, objeto_id, req.lugares, req.cor_hex, req.largura, req.altura, req.forma)
+    """Atualiza número, nome, lugares, cor, tamanho e forma de uma mesa e regenera o seu ícone."""
+    success, message = update_mesas_objeto_props(codigo, objeto_id, req.lugares, req.cor_hex, req.largura, req.altura, req.forma, req.nome, req.novo_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message}

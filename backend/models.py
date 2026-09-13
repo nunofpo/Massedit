@@ -683,6 +683,8 @@ class MesaObjetoPropsRequest(BaseModel):
     largura: Optional[int] = None
     altura: Optional[int] = None
     forma: Optional[str] = None
+    nome: Optional[str] = None
+    novo_id: Optional[int] = None
 
 class CreateZonaRequest(BaseModel):
     descricao: str

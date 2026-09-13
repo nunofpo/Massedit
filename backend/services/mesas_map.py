@@ -697,8 +697,9 @@ def update_posicoes(codigo: int, updates: List[Dict[str, int]]) -> Tuple[bool, s
 
 def update_objeto_props(codigo: int, objeto_id: int, lugares: Optional[int] = None,
                           cor_hex: Optional[str] = None, largura: Optional[int] = None,
-                          altura: Optional[int] = None, forma: Optional[str] = None) -> Tuple[bool, str]:
-    """Atualiza lugares/cor/tamanho/forma de uma mesa e regenera o seu ícone para corresponder."""
+                          altura: Optional[int] = None, forma: Optional[str] = None,
+                          nome: Optional[str] = None, novo_id: Optional[int] = None) -> Tuple[bool, str]:
+    """Atualiza número, nome, lugares, cor, tamanho e forma de uma mesa e regenera o seu ícone."""
     detail = get_zona_detail(codigo)
     if not detail.get("available"):
         return False, detail.get("message") or f"Zona #{codigo} não disponível."
@@ -716,6 +717,8 @@ def update_objeto_props(codigo: int, objeto_id: int, lugares: Optional[int] = No
     new_altura = altura if altura is not None else obj["altura"]
     new_cor_hex = cor_hex or obj["cor_hex"]
     new_cor_int = hex_to_int_color(new_cor_hex)
+    new_nome = nome.strip() if nome and nome.strip() else obj["nome"]
+    target_id = novo_id if (novo_id and novo_id > 0) else objeto_id
 
     icon = _generate_icon_for_object(obj["tipoobjecto"], new_lugares, new_largura, new_altura, new_cor_hex, forma)
     icon_bytes = _bmp_bytes(icon)
@@ -723,18 +726,28 @@ def update_objeto_props(codigo: int, objeto_id: int, lugares: Optional[int] = No
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
+        
+        # Se alterou o ID (número oficial da mesa)
+        if target_id != objeto_id:
+            cursor.execute("UPDATE dbo.mapamesas SET id = ?, numeroobjecto = ? WHERE id = ? AND zona = ?", (target_id, target_id, objeto_id, codigo))
+            if obj["tipoobjecto"] == 0:
+                try:
+                    cursor.execute("UPDATE dbo.mesas SET mesa = ? WHERE mesa = ?", (target_id, objeto_id))
+                except Exception:
+                    pass
+
         cursor.execute(
-            "UPDATE dbo.mapamesas SET lugares = ?, largura = ?, altura = ?, corgrupo = ?, imagem = ? WHERE id = ? AND zona = ?",
-            (new_lugares, new_largura, new_altura, new_cor_int, icon_bytes, objeto_id, codigo)
+            "UPDATE dbo.mapamesas SET nomeobjecto = ?, lugares = ?, largura = ?, altura = ?, corgrupo = ?, imagem = ? WHERE id = ? AND zona = ?",
+            (new_nome, new_lugares, new_largura, new_altura, new_cor_int, icon_bytes, target_id, codigo)
         )
         if obj["tipoobjecto"] == 0:
             try:
-                cursor.execute("UPDATE dbo.mesas SET pessoas = ? WHERE mesa = ?", (new_lugares, objeto_id))
+                cursor.execute("UPDATE dbo.mesas SET nomemesa = ?, pessoas = ? WHERE mesa = ?", (new_nome, new_lugares, target_id))
             except Exception:
                 pass
         _trigger_zonesoft_sync(cursor, codigo)
         conn.commit()
-        return True, f"Mesa '{obj['nome']}' atualizada. Cópia de segurança: {backup_name}"
+        return True, f"Mesa '{new_nome}' (#{target_id}) atualizada. Cópia de segurança: {backup_name}"
     except Exception as e:
         conn.rollback()
         return False, f"Falha ao atualizar a mesa (nada foi alterado): {str(e)}"

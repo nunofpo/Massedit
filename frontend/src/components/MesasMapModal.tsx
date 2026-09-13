@@ -3,7 +3,7 @@ import {
   X, RefreshCw, MapPin, AlertCircle, Sparkles, Check, Upload, Move, Palette,
   Plus, Copy, Trash2, Grid, ZoomIn, ZoomOut, Settings, Layers, Square, Circle,
   LayoutGrid, Armchair, TreePine, Store, AlignLeft, AlignCenter, AlignRight,
-  MousePointer, Hand, ShieldAlert, Sparkle, Maximize2, Compass
+  MousePointer, Hand, ShieldAlert, Sparkle, Maximize2, Compass, Hash, Type
 } from 'lucide-react';
 
 interface MesasMapModalProps {
@@ -47,7 +47,6 @@ interface ZonaDetail {
 }
 
 type Tab = 'preset' | 'editor';
-type ToolMode = 'pointer' | 'lasso' | 'pan';
 
 const THEME_OPTIONS = [
   { key: 'claro', name: 'Claro Moderno', desc: 'Tom creme neutro com padrão de pontos subtil', icon: '🌿' },
@@ -67,12 +66,16 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
   const [isLoadingZonas, setIsLoadingZonas] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('editor');
-  const [toolMode, setToolMode] = useState<ToolMode>('pointer');
 
   // Modal de Criar/Editar Zona
   const [showZonaModal, setShowZonaModal] = useState(false);
   const [zonaForm, setZonaForm] = useState({ descricao: '', width: 900, height: 650, precozona: 1, tabelaiva: 1, centroproducao: 0 });
   const [isSavingZona, setIsSavingZona] = useState(false);
+
+  // Redimensionamento Direto do Chão / Sala
+  const [floorWidth, setFloorWidth] = useState<number>(900);
+  const [floorHeight, setFloorHeight] = useState<number>(650);
+  const [isSavingFloorSize, setIsSavingFloorSize] = useState(false);
 
   // Modal de Criar Mesa/Decorativo
   const [showCreateObjModal, setShowCreateObjModal] = useState(false);
@@ -92,13 +95,27 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
   // Editor tab state
   const [zonaDetail, setZonaDetail] = useState<ZonaDetail | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [positions, setPositions] = useState<Record<number, { posx: number; posy: number }>>({});
+  const [positions, setPositions] = useState<Record<number, { posx: number; posy: number; width?: number; height?: number }>>({});
   const [dirtyIds, setDirtyIds] = useState<Set<number>>(new Set());
   
   // Seleção Múltipla
   const [selectedObjIds, setSelectedObjIds] = useState<Set<number>>(new Set());
-  const [editForm, setEditForm] = useState<{ lugares: string; cor_hex: string; largura: string; altura: string; forma: string }>({
-    lugares: '', cor_hex: '#8B8578', largura: '', altura: '', forma: 'round'
+  const [editForm, setEditForm] = useState<{
+    novo_id: string;
+    nome: string;
+    lugares: string;
+    cor_hex: string;
+    largura: string;
+    altura: string;
+    forma: string;
+  }>({
+    novo_id: '',
+    nome: '',
+    lugares: '',
+    cor_hex: '#8B8578',
+    largura: '',
+    altura: '',
+    forma: 'round'
   });
   
   // Guias Inteligentes de Alinhamento (Smart Alignment Guides)
@@ -116,6 +133,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
   const [tileBg, setTileBg] = useState(false);
 
   const dragRef = useRef<{ id: number; startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
+  const resizeRef = useRef<{ id: number; startX: number; startY: number; origW: number; origH: number; handle: string } | null>(null);
 
   const loadZonasList = useCallback(async () => {
     setIsLoadingZonas(true);
@@ -156,8 +174,11 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
         return;
       }
       setZonaDetail(data);
-      const pos: Record<number, { posx: number; posy: number }> = {};
-      data.objetos.forEach(o => { pos[o.id] = { posx: o.posx, posy: o.posy }; });
+      setFloorWidth(data.width || 900);
+      setFloorHeight(data.height || 650);
+
+      const pos: Record<number, { posx: number; posy: number; width?: number; height?: number }> = {};
+      data.objetos.forEach(o => { pos[o.id] = { posx: o.posx, posy: o.posy, width: o.largura, height: o.altura }; });
       setPositions(pos);
       setDirtyIds(new Set());
     } catch {
@@ -200,6 +221,33 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
       setErrorMsg('Falha de rede ao criar zona.');
     } finally {
       setIsSavingZona(false);
+    }
+  };
+
+  // Handler de Redimensionar Chão / Sala
+  const handleSaveFloorSize = async (newW?: number, newH?: number) => {
+    if (selectedZona === null) return;
+    const targetW = newW || floorWidth;
+    const targetH = newH || floorHeight;
+    setIsSavingFloorSize(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/mesas-map/zona/${selectedZona}/props`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ width: targetW, height: targetH })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.detail || data.message || 'Falha ao alterar tamanho da sala.');
+        return;
+      }
+      onSuccess(data.message);
+      await loadZonaDetail(selectedZona);
+    } catch {
+      setErrorMsg('Falha de rede ao alterar tamanho da sala.');
+    } finally {
+      setIsSavingFloorSize(false);
     }
   };
 
@@ -363,7 +411,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
     }
   };
 
-  // --- Editor visual: arrastar objetos com Snap to Grid e Guias Inteligentes ---
+  // --- Editor visual: arrastar objetos ---
   const handlePointerDown = (obj: ObjetoMesa, e: React.PointerEvent) => {
     e.stopPropagation();
     if (!e.shiftKey && !selectedObjIds.has(obj.id)) {
@@ -378,6 +426,8 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
     }
 
     setEditForm({
+      novo_id: String(obj.id),
+      nome: obj.nome,
       lugares: String(obj.lugares || ''),
       cor_hex: obj.cor_hex && obj.cor_hex !== '#000000' ? obj.cor_hex : '#8B8578',
       largura: String(obj.largura || ''),
@@ -385,10 +435,60 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
       forma: obj.largura !== obj.altura && Math.abs(obj.largura - obj.altura) > 30 ? 'rectangle' : 'round'
     });
 
-    const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy };
+    const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy, width: obj.largura, height: obj.altura };
     dragRef.current = { id: obj.id, startX: e.clientX, startY: e.clientY, origX: pos.posx, origY: pos.posy, moved: false };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+  };
+
+  // --- Redimensionar Mesa diretamente no Canvas (Corner Drag Handles) ---
+  const handleResizeStart = (obj: ObjetoMesa, handle: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedObjIds(new Set([obj.id]));
+    const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy, width: obj.largura, height: obj.altura };
+    resizeRef.current = {
+      id: obj.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      origW: pos.width || obj.largura || 100,
+      origH: pos.height || obj.altura || 100,
+      handle
+    };
+    window.addEventListener('pointermove', handleResizeMove);
+    window.addEventListener('pointerup', handleResizeUp);
+  };
+
+  const handleResizeMove = (e: PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    const scale = zoomLevel / 100;
+    const dx = (e.clientX - r.startX) / scale;
+    const dy = (e.clientY - r.startY) / scale;
+
+    let newW = Math.max(40, r.origW + dx);
+    let newH = Math.max(40, r.origH + dy);
+
+    if (snapGrid > 0) {
+      newW = Math.round(newW / snapGrid) * snapGrid;
+      newH = Math.round(newH / snapGrid) * snapGrid;
+    }
+
+    setEditForm(prev => ({ ...prev, largura: String(newW), altura: String(newH) }));
+    setPositions(prev => {
+      const cur = prev[r.id] || { posx: 0, posy: 0 };
+      return { ...prev, [r.id]: { ...cur, width: newW, height: newH } };
+    });
+  };
+
+  const handleResizeUp = () => {
+    const r = resizeRef.current;
+    if (r) {
+      setDirtyIds(prev => new Set(prev).add(r.id));
+    }
+    resizeRef.current = null;
+    window.removeEventListener('pointermove', handleResizeMove);
+    window.removeEventListener('pointerup', handleResizeUp);
   };
 
   const handlePointerMove = (e: PointerEvent) => {
@@ -444,7 +544,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
     }
 
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) d.moved = true;
-    setPositions(prev => ({ ...prev, [d.id]: { posx: Math.max(0, newX), posy: Math.max(0, newY) } }));
+    setPositions(prev => ({ ...prev, [d.id]: { ...prev[d.id], posx: Math.max(0, newX), posy: Math.max(0, newY) } }));
   };
 
   const handlePointerUp = () => {
@@ -494,6 +594,8 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          nome: editForm.nome,
+          novo_id: editForm.novo_id ? parseInt(editForm.novo_id, 10) : null,
           lugares: editForm.lugares ? parseInt(editForm.lugares, 10) : null,
           cor_hex: editForm.cor_hex || null,
           largura: editForm.largura ? parseInt(editForm.largura, 10) : null,
@@ -579,7 +681,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
             <div>
               <h2 className="text-base font-bold text-white tracking-wide">Estúdio Profissional de Mapa de Mesas</h2>
               <p className="text-[11px] text-slate-400 font-medium">
-                Desenho Vetorial Realista & Sincronização Cloud ZoneSoft
+                Edição de Mesas, Tamanho da Sala (Chão), Nomes & Números — ZoneSoft
               </p>
             </div>
           </div>
@@ -620,6 +722,40 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
             >
               <Plus className="w-3.5 h-3.5" /> Nova Sala
             </button>
+
+            {/* Redimensionador Direto do Tamanho do Chão / Sala */}
+            {selectedZona !== null && (
+              <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700 text-xs">
+                <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="font-bold text-slate-300 text-[11px]">Chão (px):</span>
+                <input
+                  type="number"
+                  value={floorWidth}
+                  onChange={(e) => setFloorWidth(Number(e.target.value))}
+                  onBlur={() => handleSaveFloorSize()}
+                  className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 text-[11px] font-bold text-white text-center"
+                  title="Largura da Sala (px)"
+                />
+                <span className="text-slate-500">×</span>
+                <input
+                  type="number"
+                  value={floorHeight}
+                  onChange={(e) => setFloorHeight(Number(e.target.value))}
+                  onBlur={() => handleSaveFloorSize()}
+                  className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 text-[11px] font-bold text-white text-center"
+                  title="Altura da Sala (px)"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveFloorSize()}
+                  disabled={isSavingFloorSize}
+                  className="p-1 text-emerald-400 hover:bg-slate-700 rounded-lg"
+                  title="Aplicar Tamanho do Chão"
+                >
+                  {isSavingFloorSize ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )}
 
             {selectedZona !== null && (
               <button
@@ -837,10 +973,13 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
 
                     {/* Renderização Vetorial Interativa dos Objetos */}
                     {zonaDetail.objetos.map(obj => {
-                      const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy };
+                      const pos = positions[obj.id] || { posx: obj.posx, posy: obj.posy, width: obj.largura, height: obj.altura };
                       if (pos.posx === 0 && pos.posy === 0) return null;
                       const isSelected = selectedObjIds.has(obj.id);
                       const isDirty = dirtyIds.has(obj.id);
+                      const currentW = pos.width || obj.largura || 100;
+                      const currentH = pos.height || obj.altura || 100;
+
                       return (
                         <div
                           key={obj.id}
@@ -849,8 +988,8 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                           style={{
                             left: pos.posx,
                             top: pos.posy,
-                            width: obj.largura || 100,
-                            height: obj.altura || 100
+                            width: currentW,
+                            height: currentH
                           }}
                         >
                           {obj.imagem_base64 ? (
@@ -862,8 +1001,19 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                             </div>
                           )}
                           <span className="absolute -top-2.5 -left-2 bg-slate-950/90 text-emerald-400 border border-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-md">
-                            Mesa {obj.nome}
+                            Mesa #{obj.id} ({obj.nome})
                           </span>
+
+                          {/* Manipuladores Visuais de Redimensionamento nos Cantos da Mesa (Resize Handles) */}
+                          {isSelected && (
+                            <>
+                              <div
+                                onPointerDown={(e) => handleResizeStart(obj, 'br', e)}
+                                className="absolute -bottom-2 -right-2 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:scale-125 transition-transform z-30"
+                                title="Arrastar para Redimensionar Mesa"
+                              />
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -898,6 +1048,35 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                       <p className="text-[10px] text-slate-400">Registo oficial em dbo.mesas & mapamesas</p>
                     </div>
                     <span className="text-[10px] font-bold bg-slate-800 text-emerald-400 px-2 py-1 rounded-lg">ID #{selectedObj.id}</span>
+                  </div>
+
+                  {/* Número da Mesa e Nome / Rótulo */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1 mb-1">
+                        <Hash className="w-3.5 h-3.5 text-emerald-400" /> Número da Mesa (ID Oficial POS):
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.novo_id}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, novo_id: e.target.value }))}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-white"
+                        placeholder="Ex: 15"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1 mb-1">
+                        <Type className="w-3.5 h-3.5 text-emerald-400" /> Nome / Rótulo da Mesa:
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.nome}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, nome: e.target.value }))}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-white"
+                        placeholder="Ex: Esplanada 1 ou 15"
+                      />
+                    </div>
                   </div>
 
                   {/* Forma da Mesa / Objeto */}
@@ -1022,7 +1201,7 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
                   <div>
                     <h4 className="text-xs font-bold text-white">Nenhum Objeto Selecionado</h4>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Clica numa mesa no canvas para arrastar, duplicar, eliminar ou ajustar a forma e lugares.
+                      Clica numa mesa no canvas para arrastar, redimensionar no canto, alterar nome/número ou forma.
                     </p>
                   </div>
                 </div>
