@@ -51,7 +51,7 @@ def get_ementa_schema_info() -> Dict[str, Any]:
         has_familias = "ementa_digital_familias" in schema
 
         tables_info: Dict[str, Any] = {}
-        for tbl in ["ementa_digital_produtos", "ementa_digital_traducoes", "ementa_digital_paises", "ementa_digital_familias"]:
+        for tbl in ["ementa_digital_produtos", "ementa_digital_traducoes", "ementa_digital_paises", "ementa_digital_familias", "ementa_digital_seccoes", "ementa_digital_ementas", "ementa_digital_regras"]:
             if tbl in schema:
                 cursor.execute(f"""
                     SELECT c.name, ty.name, c.max_length, c.is_nullable
@@ -88,10 +88,32 @@ def get_ementa_schema_info() -> Dict[str, Any]:
             "has_traducoes": has_traducoes,
             "has_paises": has_paises,
             "has_familias": has_familias,
+            "has_seccoes": "ementa_digital_seccoes" in schema,
+            "has_ementas": "ementa_digital_ementas" in schema,
             "tables": tables_info
         }
     finally:
         conn.close()
+
+
+def ensure_ementa_digital_hierarchy(cursor):
+    """Garante que existem registos por omissão em ementas, secções e regras da Ementa Digital."""
+    try:
+        schema = db_manager.cached_schema()
+        if "ementa_digital_ementas" in schema:
+            cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_ementas WHERE codigo = 1) INSERT INTO dbo.ementa_digital_ementas (codigo, nome, sync) VALUES (1, 'Geral', 0)")
+
+        if "ementa_digital_seccoes" in schema:
+            cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_seccoes WHERE codigo = 1) INSERT INTO dbo.ementa_digital_seccoes (codigo, descricao, imagem, visivel, sync, ementa, image_url, posicao) VALUES (1, 'Geral', CONVERT(VARBINARY, ''), 1, 0, 1, '', 1)")
+
+        if "ementa_digital_regras" in schema:
+            cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_regras WHERE codigo = 1) INSERT INTO dbo.ementa_digital_regras (codigo, app, servico, ordem, zona, ementa, pvp, inicio, fim, sync) VALUES (1, 1, 1, 1, 0, 1, 0, '2021-01-01 00:00:00', '2099-12-31 23:59:59', 0)")
+
+        if "ementa_digital_refresh" in schema:
+            cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_refresh) INSERT INTO dbo.ementa_digital_refresh (refresh) VALUES (1)")
+    except Exception:
+        pass
+
 
 
 def ensure_traducoes_table(cursor) -> bool:
@@ -1883,6 +1905,7 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
         has_ed_fam = "ementa_digital_familias" in schema
         ed_fam_map = {}
         if has_ed_fam:
+            ensure_ementa_digital_hierarchy(cursor)
             cursor.execute("SELECT codigo, descricao FROM dbo.ementa_digital_familias")
             for code, desc in cursor.fetchall():
                 if desc:
