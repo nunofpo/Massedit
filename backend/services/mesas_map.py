@@ -533,6 +533,60 @@ def delete_mesa_objeto(codigo_zona: int, objeto_id: int) -> Tuple[bool, str]:
         conn.close()
 
 
+def clear_zona_objetos(codigo_zona: int) -> Tuple[bool, str]:
+    """Elimina TODOS os objetos/mesas da zona especificada, criando cópia de segurança prévia."""
+    detail = get_zona_detail(codigo_zona)
+    if not detail.get("available"):
+        return False, detail.get("message") or f"Zona #{codigo_zona} não disponível."
+
+    try:
+        backup_name = _save_mesas_backup(codigo_zona, detail)
+    except Exception as e:
+        return False, f"Não foi possível criar a cópia de segurança ({e}). Nada foi removido."
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM dbo.mapamesas WHERE zona = ?", (codigo_zona,))
+        _trigger_zonesoft_sync(cursor, codigo_zona)
+        conn.commit()
+        return True, f"Todos os objetos da zona #{codigo_zona} foram removidos com sucesso. Cópia de segurança: {backup_name}"
+    except Exception as e:
+        conn.rollback()
+        return False, f"Falha ao limpar objetos da zona: {str(e)}"
+    finally:
+        conn.close()
+
+
+def clear_all_mapamesas(clear_zonas: bool = False) -> Tuple[bool, str]:
+    """Elimina TODOS os objetos/mesas de TODAS as zonas da base de dados (e opcionalmente as próprias zonas)."""
+    zonas = get_mesas_zonas()
+    for z in zonas:
+        detail = get_zona_detail(z["codigo"])
+        if detail.get("available"):
+            try:
+                _save_mesas_backup(z["codigo"], detail)
+            except Exception:
+                pass
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM dbo.mapamesas")
+        if clear_zonas:
+            cursor.execute("DELETE FROM dbo.zonas")
+        _trigger_zonesoft_sync(cursor, 0)
+        conn.commit()
+        msg = "Todos os objetos e salas/zonas do mapa de mesas foram limpos." if clear_zonas else "Todos os objetos de todas as zonas foram limpos."
+        return True, msg
+    except Exception as e:
+        conn.rollback()
+        return False, f"Falha ao limpar o mapa de mesas: {str(e)}"
+    finally:
+        conn.close()
+
+
+
 def _render_zona(width: int, height: int, background_bytes: Optional[bytes], objetos: List[Dict[str, Any]],
                   icon_lookup, theme_key: str = "claro") -> bytes:
     """Compõe fundo + objetos nas posições reais e devolve um PNG (para pré-visualização)."""

@@ -44,7 +44,8 @@ from backend.services.mesas_map import (
     get_mesas_zonas, get_zona_detail, preview_preset as preview_mesas_preset, apply_preset as apply_mesas_preset,
     update_posicoes as update_mesas_posicoes, update_objeto_props as update_mesas_objeto_props,
     upload_objeto_imagem as upload_mesas_objeto_imagem, upload_zona_background as upload_mesas_zona_background,
-    create_zona, update_zona_props, delete_zona, create_mesa_objeto, duplicate_mesa_objeto, delete_mesa_objeto
+    create_zona, update_zona_props, delete_zona, create_mesa_objeto, duplicate_mesa_objeto, delete_mesa_objeto,
+    clear_zona_objetos, clear_all_mapamesas
 )
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
@@ -379,6 +380,26 @@ def mesas_map_duplicate_objeto_endpoint(codigo: int, objeto_id: int):
 def mesas_map_delete_objeto_endpoint(codigo: int, objeto_id: int):
     """Elimina um objeto de uma zona."""
     success, message = delete_mesa_objeto(codigo, objeto_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.delete("/api/mesas-map/zona/{codigo}/clear")
+@app.post("/api/mesas-map/zona/{codigo}/clear")
+def mesas_map_clear_zona_endpoint(codigo: int):
+    """Limpa todos os objetos/mesas da zona especificada (com cópia de segurança)."""
+    success, message = clear_zona_objetos(codigo)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@app.delete("/api/mesas-map/clear-all")
+@app.post("/api/mesas-map/clear-all")
+def mesas_map_clear_all_endpoint(clear_zonas: bool = Query(default=False)):
+    """Limpa todos os objetos de todas as zonas (e opcionalmente as zonas em si)."""
+    success, message = clear_all_mapamesas(clear_zonas=clear_zonas)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message}

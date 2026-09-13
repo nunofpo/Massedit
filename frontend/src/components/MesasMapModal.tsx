@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, RefreshCw, MapPin, AlertCircle, Sparkles, Check, Upload, Move, Palette,
-  Plus, Copy, Trash2, Grid, ZoomIn, ZoomOut, Settings, Layers, Square, Circle,
+  Plus, Copy, Trash2, Eraser, Grid, ZoomIn, ZoomOut, Settings, Layers, Square, Circle,
   LayoutGrid, Armchair, TreePine, Store, AlignLeft, AlignCenter, AlignRight,
   MousePointer, Hand, ShieldAlert, Sparkle, Maximize2, Compass, Hash, Type, Utensils
 } from 'lucide-react';
@@ -524,6 +524,46 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
     }
   };
 
+  // Handler de Limpar Todos os Objetos da Zona Ativa
+  const handleClearZona = async () => {
+    if (selectedZona === null) return;
+    if (!window.confirm(`ATENÇÃO: Pretende REMOVER TODOS os objetos/mesas da zona atual (#${selectedZona})?\nSerá criada uma cópia de segurança automática.`)) return;
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/mesas-map/zona/${selectedZona}/clear`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.detail || data.message || 'Falha ao limpar objetos da zona.');
+        return;
+      }
+      onSuccess(data.message);
+      setSelectedObjIds(new Set());
+      await loadZonaDetail(selectedZona);
+    } catch {
+      setErrorMsg('Falha de rede ao limpar a zona.');
+    }
+  };
+
+  // Handler de Limpar Todo o Mapa de Mesas (Todas as Zonas)
+  const handleClearAll = async () => {
+    if (!window.confirm('PERIGO: Pretende REMOVER ABSOLUTAMENTE TODOS OS OBJETOS E MESAS de TODAS as salas/zonas?\nCópia de segurança automática será gerada antes de limpar.')) return;
+    if (!window.confirm('Confirmação Final: Tem a certeza absoluta? Esta ação limpa o mapa de mesas por completo.')) return;
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/mesas-map/clear-all', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.detail || data.message || 'Falha ao limpar o mapa de mesas.');
+        return;
+      }
+      onSuccess(data.message);
+      setSelectedObjIds(new Set());
+      if (selectedZona !== null) await loadZonaDetail(selectedZona);
+    } catch {
+      setErrorMsg('Falha de rede ao limpar o mapa de mesas.');
+    }
+  };
+
   // --- Alinhamento de Objetos em Grupo ---
   const handleAlign = (type: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
     if (!zonaDetail || selectedObjIds.size < 2) return;
@@ -948,15 +988,34 @@ export const MesasMapModal: React.FC<MesasMapModalProps> = ({ isOpen, onClose, o
             )}
 
             {selectedZona !== null && (
-              <button
-                type="button"
-                onClick={handleDeleteZona}
-                className="flex items-center gap-1 text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded-xl text-xs font-semibold transition"
-                title="Eliminar Zona"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Eliminar Sala
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleDeleteZona}
+                  className="flex items-center gap-1 text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded-xl text-xs font-semibold transition"
+                  title="Eliminar Sala/Zona Inteira"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar Sala
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearZona}
+                  className="flex items-center gap-1 text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded-xl text-xs font-semibold transition border border-amber-500/20"
+                  title="Remover todas as mesas e objetos desta sala"
+                >
+                  <Eraser className="w-3.5 h-3.5" /> Limpar Sala
+                </button>
+              </>
             )}
+
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="flex items-center gap-1 text-rose-300 hover:bg-rose-600/20 px-2.5 py-1 rounded-xl text-xs font-bold transition border border-rose-500/30"
+              title="Remover absolutamente todas as mesas e objetos de todas as salas"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Limpar Tudo
+            </button>
 
             <div className="flex items-center gap-1.5 ml-4 border-l border-slate-800 pl-4">
               <button
