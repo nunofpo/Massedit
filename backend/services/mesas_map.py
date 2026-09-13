@@ -340,14 +340,9 @@ def apply_preset(codigo: int) -> Tuple[bool, str]:
 
 
 def _trigger_zonesoft_sync(cursor, codigo: int) -> None:
-    try:
-        cursor.execute(
-            "INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) "
-            "VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 2, 0)",
-            (codigo,)
-        )
-    except Exception:
-        pass
+    """Marca a sincronização cloud pendente. Não regista em dbo.produtos_historico aqui:
+    'codigo' é o código da zona/objeto do mapa de mesas, não um dbo.produtos.codigo real -
+    inserir aí faria a cloud pensar (sem necessidade) que um produto com esse código mudou."""
     try:
         cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
     except Exception:
