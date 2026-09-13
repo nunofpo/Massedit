@@ -893,8 +893,12 @@ def update_single_ementa_product(cod_produto: int, update_data: Any) -> Tuple[bo
             p_desc = update_data.descricao if update_data.descricao is not None else (pos_info[2] or "")
             p_ordem = pos_info[3] if (pos_info and pos_info[3]) else 0
             cursor.execute("""
-                INSERT INTO dbo.ementa_digital_produtos (cod_produto, familia, produto, descricao, visivel, posicao)
-                VALUES (?, ?, ?, ?, 1, ?)
+                INSERT INTO dbo.ementa_digital_produtos (
+                    cod_produto, familia, produto, descricao, imagem, visivel, highlight, image_url, model_url,
+                    alergenios, gluten, sal, lactose, picante, dieta, vegetariano, pessoas, calorias, tempo, posicao
+                ) VALUES (
+                    ?, ?, ?, ?, CONVERT(VARBINARY, ''), 1, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, ?
+                )
             """, (cod_produto, fam, p_name, p_desc, p_ordem))
             conn.commit()
             return True, f"Artigo #{cod_produto} criado e guardado na Ementa Digital."
@@ -977,8 +981,12 @@ def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str)
             fam = pos_info[0] if pos_info else 0
             p_name = (pos_info[1] or "")[:250] if pos_info else f"Artigo {cod_produto}"
             cursor.execute("""
-                INSERT INTO dbo.ementa_digital_produtos (cod_produto, familia, produto, visivel, posicao)
-                VALUES (?, ?, ?, 1, 0)
+                INSERT INTO dbo.ementa_digital_produtos (
+                    cod_produto, familia, produto, descricao, imagem, visivel, highlight, image_url, model_url,
+                    alergenios, gluten, sal, lactose, picante, dieta, vegetariano, pessoas, calorias, tempo, posicao
+                ) VALUES (
+                    ?, ?, ?, '', CONVERT(VARBINARY, ''), 1, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0
+                )
             """, (cod_produto, fam, p_name))
 
         if "sync" in ed_cols:
@@ -1010,8 +1018,12 @@ def set_product_image_url(cod_produto: int, image_url: str) -> Tuple[bool, str]:
             fam = pos_info[0] if pos_info else 0
             p_name = (pos_info[1] or "")[:250] if pos_info else f"Artigo {cod_produto}"
             cursor.execute("""
-                INSERT INTO dbo.ementa_digital_produtos (cod_produto, familia, produto, visivel, posicao)
-                VALUES (?, ?, ?, 1, 0)
+                INSERT INTO dbo.ementa_digital_produtos (
+                    cod_produto, familia, produto, descricao, imagem, visivel, highlight, image_url, model_url,
+                    alergenios, gluten, sal, lactose, picante, dieta, vegetariano, pessoas, calorias, tempo, posicao
+                ) VALUES (
+                    ?, ?, ?, '', CONVERT(VARBINARY, ''), 1, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0
+                )
             """, (cod_produto, fam, p_name))
 
         sync_part = ", sync = 1" if "sync" in schema["ementa_digital_produtos"] else ""
@@ -2023,7 +2035,14 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO dbo.ementa_digital_produtos (cod_produto, familia, produto, descricao, visivel, posicao) VALUES (?, ?, ?, ?, 1, ?)",
+                    """
+                    INSERT INTO dbo.ementa_digital_produtos (
+                        cod_produto, familia, produto, descricao, imagem, visivel, highlight, image_url, model_url,
+                        alergenios, gluten, sal, lactose, picante, dieta, vegetariano, pessoas, calorias, tempo, posicao
+                    ) VALUES (
+                        ?, ?, ?, ?, CONVERT(VARBINARY, ''), 1, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, ?
+                    )
+                    """,
                     (code, ed_fam_code, artigo_nome, desc_text, idx + 1)
                 )
 
