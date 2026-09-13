@@ -682,4 +682,32 @@ class MesaObjetoPropsRequest(BaseModel):
     cor_hex: Optional[str] = None
     largura: Optional[int] = None
     altura: Optional[int] = None
+    forma: Optional[str] = None
+
+class CreateZonaRequest(BaseModel):
+    descricao: str
+    width: Optional[int] = 800
+    height: Optional[int] = 600
+    precozona: Optional[int] = 1
+    tabelaiva: Optional[int] = 1
+    centroproducao: Optional[int] = 0
+
+class UpdateZonaPropsRequest(BaseModel):
+    descricao: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    precozona: Optional[int] = None
+    tabelaiva: Optional[int] = None
+    centroproducao: Optional[int] = None
+
+class CreateMesaObjetoRequest(BaseModel):
+    nome: str
+    tipoobjecto: int = 0
+    lugares: int = 4
+    forma: str = "round"
+    posx: int = 60
+    posy: int = 60
+    largura: int = 100
+    altura: int = 100
+    cor_hex: Optional[str] = None
 
