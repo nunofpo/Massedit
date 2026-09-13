@@ -394,11 +394,18 @@ export interface EmentaProductItem {
   ementa_seccao_desc?: string;
 }
 
+export interface EmentaDigitalMenu {
+  codigo: number;
+  nome: string;
+}
+
 export interface EmentaDigitalSection {
   codigo: number;
   descricao: string;
   visivel: number;
   posicao: number;
+  image_url?: string;
+  ementa?: number;
 }
 
 export interface EmentaDigitalFamily {
@@ -407,12 +414,31 @@ export interface EmentaDigitalFamily {
   descricao: string;
   visivel: number;
   posicao: number;
+  dose?: string;
+  meiadose?: string;
 }
 
 export interface EmentaDigitalStructureResponse {
   available: boolean;
+  menus?: EmentaDigitalMenu[];
   sections: EmentaDigitalSection[];
   families: EmentaDigitalFamily[];
+}
+
+export interface EmentaRuleItem {
+  codigo: number;
+  app: number;
+  servico: number;
+  ordem: number;
+  zona: number;
+  ementa: number;
+  pvp: number;
+  inicio: string;
+  fim: string;
+  app_label: string;
+  servico_label: string;
+  ementa_nome: string;
+  zona_nome: string;
 }
 
 export interface EmentaProductResponse {

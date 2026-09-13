@@ -20,7 +20,7 @@ from backend.models import (
     EmentaBulkEditRequest, EmentaImageUrlRequest,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
-    EmentaSuggestDescRequest,
+    EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
     CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest
 )
@@ -50,7 +50,8 @@ from backend.services.ementa_digital import (
     save_product_image_data, set_product_image_url, delete_product_image, get_product_image_bytes,
     get_ementa_languages, set_ementa_active_languages, get_product_translations, save_product_translations,
     translate_menu_texts, update_single_ementa_product,
-    auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR
+    auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
+    save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -497,6 +498,30 @@ def get_ementa_schema_endpoint():
 def get_ementa_structure_endpoint():
     """Devolve as secções e famílias ativas da ementa digital."""
     return get_ementa_digital_structure()
+
+
+@app.post("/api/ementa-digital/sections/save")
+def save_section_endpoint(data: Dict[str, Any]):
+    """Cria ou atualiza uma secção (categoria) da Ementa Digital."""
+    res = save_ementa_digital_section(data)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Erro ao guardar secção."))
+    return res
+
+
+@app.post("/api/ementa-digital/families/save")
+def save_family_endpoint(data: Dict[str, Any]):
+    """Cria ou atualiza uma família (subcategoria) da Ementa Digital."""
+    res = save_ementa_digital_family(data)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Erro ao guardar família."))
+    return res
+
+
+@app.get("/api/ementa-digital/rules", response_model=List[EmentaRuleItem])
+def get_rules_endpoint():
+    """Devolve a lista de regras de apresentação ativas da Ementa Digital."""
+    return get_ementa_digital_rules()
 
 
 @app.post("/api/ementa-digital/search", response_model=EmentaProductResponse)

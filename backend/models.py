@@ -417,11 +417,18 @@ class EmentaProductResponse(BaseModel):
     total_pages: int = 1
 
 
+class EmentaDigitalMenu(BaseModel):
+    codigo: int
+    nome: str
+
+
 class EmentaDigitalSection(BaseModel):
     codigo: int
     descricao: str
     visivel: int = 1
     posicao: int = 0
+    image_url: str = ""
+    ementa: int = 1
 
 
 class EmentaDigitalFamily(BaseModel):
@@ -430,12 +437,64 @@ class EmentaDigitalFamily(BaseModel):
     descricao: str
     visivel: int = 1
     posicao: int = 0
+    dose: str = ""
+    meiadose: str = ""
 
 
 class EmentaDigitalStructureResponse(BaseModel):
     available: bool = True
+    menus: List[EmentaDigitalMenu] = Field(default_factory=list)
     sections: List[EmentaDigitalSection] = Field(default_factory=list)
     families: List[EmentaDigitalFamily] = Field(default_factory=list)
+
+
+class SaveSectionRequest(BaseModel):
+    codigo: Optional[int] = None
+    descricao: str
+    image_url: str = ""
+    visivel: int = 1
+    posicao: int = 0
+    ementa: int = 1
+
+
+class SaveFamilyRequest(BaseModel):
+    codigo: Optional[int] = None
+    seccao: int
+    descricao: str
+    dose: str = ""
+    meiadose: str = ""
+    visivel: int = 1
+    posicao: int = 0
+
+
+class ReorderItem(BaseModel):
+    codigo: int
+    posicao: int
+
+
+class ReorderRequest(BaseModel):
+    items: List[ReorderItem]
+
+
+class EmentaRuleItem(BaseModel):
+    codigo: int
+    app: int = 1
+    servico: int = 1
+    ordem: int = 1
+    zona: int = 0
+    ementa: int = 1
+    pvp: int = 0
+    inicio: str = ""
+    fim: str = ""
+    app_label: str = "ZS Rest App / Kiosk"
+    servico_label: str = "Mesas"
+    ementa_nome: str = "Geral"
+    zona_nome: str = "Todas"
+
+
+class SaveSuggestionsRequest(BaseModel):
+    cod_produto: int
+    sugeridos: List[int]
 
 
 class EmentaImportFromPosRequest(BaseModel):

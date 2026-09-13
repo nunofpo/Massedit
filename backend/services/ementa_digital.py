@@ -148,29 +148,254 @@ def ensure_traducoes_table(cursor) -> bool:
 
 
 def get_ementa_digital_structure() -> Dict[str, Any]:
-    """Retorna a estrutura de secções e famílias da Ementa Digital."""
+    """Retorna a estrutura de menus, secções e famílias da Ementa Digital."""
     try:
         conn = db_manager.get_connection()
     except Exception as e:
-        return {"available": False, "sections": [], "families": [], "message": str(e)}
+        return {"available": False, "menus": [], "sections": [], "families": [], "message": str(e)}
     try:
         cursor = conn.cursor()
         schema = _schema(cursor)
         if "ementa_digital_familias" not in schema:
-            return {"available": False, "sections": [], "families": []}
+            return {"available": False, "menus": [], "sections": [], "families": []}
+
+        menus = []
+        if "ementa_digital_ementas" in schema:
+            cursor.execute("SELECT codigo, nome FROM dbo.ementa_digital_ementas ORDER BY codigo")
+            for r in cursor.fetchall():
+                menus.append({"codigo": int(r[0]), "nome": r[1] or ""})
 
         sections = []
         if "ementa_digital_seccoes" in schema:
-            cursor.execute("SELECT codigo, descricao, ISNULL(visivel, 1), ISNULL(posicao, 0) FROM dbo.ementa_digital_seccoes ORDER BY posicao, codigo")
+            sec_cols = schema["ementa_digital_seccoes"]
+            has_img_url = "image_url" in sec_cols
+            has_ementa_col = "ementa" in sec_cols
+            img_url_sql = "ISNULL(image_url, '')" if has_img_url else "''"
+            ementa_sql = "ISNULL(ementa, 1)" if has_ementa_col else "1"
+
+            cursor.execute(f"SELECT codigo, descricao, ISNULL(visivel, 1), ISNULL(posicao, 0), {img_url_sql}, {ementa_sql} FROM dbo.ementa_digital_seccoes ORDER BY posicao, codigo")
             for r in cursor.fetchall():
-                sections.append({"codigo": int(r[0]), "descricao": r[1] or "", "visivel": int(r[2] or 1), "posicao": int(r[3] or 0)})
+                sections.append({
+                    "codigo": int(r[0]),
+                    "descricao": r[1] or "",
+                    "visivel": int(r[2] or 1),
+                    "posicao": int(r[3] or 0),
+                    "image_url": r[4] or "",
+                    "ementa": int(r[5] or 1)
+                })
 
         families = []
-        cursor.execute("SELECT codigo, seccao, descricao, ISNULL(visivel, 1), ISNULL(posicao, 0) FROM dbo.ementa_digital_familias ORDER BY seccao, posicao, codigo")
-        for r in cursor.fetchall():
-            families.append({"codigo": int(r[0]), "seccao": int(r[1]), "descricao": r[2] or "", "visivel": int(r[3] or 1), "posicao": int(r[4] or 0)})
+        fam_cols = schema["ementa_digital_familias"]
+        has_dose_col = "dose" in fam_cols
+        dose_sql = "ISNULL(dose, '')" if has_dose_col else "''"
+        meiadose_sql = "ISNULL(meiadose, '')" if has_dose_col else "''"
 
-        return {"available": True, "sections": sections, "families": families}
+        cursor.execute(f"SELECT codigo, seccao, descricao, ISNULL(visivel, 1), ISNULL(posicao, 0), {dose_sql}, {meiadose_sql} FROM dbo.ementa_digital_familias ORDER BY seccao, posicao, codigo")
+        for r in cursor.fetchall():
+            families.append({
+                "codigo": int(r[0]),
+                "seccao": int(r[1]),
+                "descricao": r[2] or "",
+                "visivel": int(r[3] or 1),
+                "posicao": int(r[4] or 0),
+                "dose": r[5] or "",
+                "meiadose": r[6] or ""
+            })
+
+        return {"available": True, "menus": menus, "sections": sections, "families": families}
+    finally:
+        conn.close()
+
+
+def save_ementa_digital_section(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Cria ou atualiza uma secção (categoria) da Ementa Digital em dbo.ementa_digital_seccoes."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_seccoes" not in schema:
+            return {"success": False, "message": "Tabela dbo.ementa_digital_seccoes não existe."}
+        
+        codigo = data.get("codigo")
+        descricao = (data.get("descricao") or "").strip()
+        image_url = data.get("image_url") or ""
+        visivel = int(data.get("visivel", 1))
+        posicao = int(data.get("posicao", 0))
+        ementa = int(data.get("ementa", 1))
+
+        if not descricao:
+            return {"success": False, "message": "A descrição da secção é obrigatória."}
+
+        sec_cols = schema["ementa_digital_seccoes"]
+        has_image_url = "image_url" in sec_cols
+
+        if codigo and codigo > 0:
+            cursor.execute("SELECT 1 FROM dbo.ementa_digital_seccoes WHERE codigo = ?", (codigo,))
+            if cursor.fetchone():
+                if has_image_url:
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_seccoes
+                        SET descricao = ?, visivel = ?, posicao = ?, ementa = ?, image_url = ?, sync = 0
+                        WHERE codigo = ?
+                    """, (descricao, visivel, posicao, ementa, image_url, codigo))
+                else:
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_seccoes
+                        SET descricao = ?, visivel = ?, posicao = ?, ementa = ?, sync = 0
+                        WHERE codigo = ?
+                    """, (descricao, visivel, posicao, ementa, codigo))
+                conn.commit()
+                return {"success": True, "message": f"Secção #{codigo} ('{descricao}') atualizada.", "codigo": codigo}
+
+        # Criar nova secção
+        cursor.execute("SELECT ISNULL(MAX(codigo), 0) FROM dbo.ementa_digital_seccoes")
+        new_cod = int(cursor.fetchone()[0]) + 1
+
+        if has_image_url:
+            cursor.execute("""
+                INSERT INTO dbo.ementa_digital_seccoes (codigo, descricao, imagem, visivel, sync, ementa, image_url, posicao)
+                VALUES (?, ?, CONVERT(VARBINARY, ''), ?, 0, ?, ?, ?)
+            """, (new_cod, descricao, visivel, ementa, image_url, posicao or new_cod))
+        else:
+            cursor.execute("""
+                INSERT INTO dbo.ementa_digital_seccoes (codigo, descricao, imagem, visivel, sync, ementa, posicao)
+                VALUES (?, ?, CONVERT(VARBINARY, ''), ?, 0, ?, ?)
+            """, (new_cod, descricao, visivel, ementa, posicao or new_cod))
+        
+        conn.commit()
+        return {"success": True, "message": f"Secção #{new_cod} ('{descricao}') criada com sucesso.", "codigo": new_cod}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": f"Erro ao guardar secção: {str(e)}"}
+    finally:
+        conn.close()
+
+
+def save_ementa_digital_family(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Cria ou atualiza uma família (subcategoria) da Ementa Digital em dbo.ementa_digital_familias."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_familias" not in schema:
+            return {"success": False, "message": "Tabela dbo.ementa_digital_familias não existe."}
+        
+        codigo = data.get("codigo")
+        seccao = int(data.get("seccao", 1))
+        descricao = (data.get("descricao") or "").strip()
+        dose = data.get("dose") or ""
+        meiadose = data.get("meiadose") or ""
+        visivel = int(data.get("visivel", 1))
+        posicao = int(data.get("posicao", 0))
+
+        if not descricao:
+            return {"success": False, "message": "A descrição da família é obrigatória."}
+
+        fam_cols = schema["ementa_digital_familias"]
+        has_dose = "dose" in fam_cols
+
+        if codigo and codigo > 0:
+            cursor.execute("SELECT 1 FROM dbo.ementa_digital_familias WHERE codigo = ?", (codigo,))
+            if cursor.fetchone():
+                if has_dose:
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_familias
+                        SET seccao = ?, descricao = ?, dose = ?, meiadose = ?, visivel = ?, posicao = ?
+                        WHERE codigo = ?
+                    """, (seccao, descricao, dose, meiadose, visivel, posicao, codigo))
+                else:
+                    cursor.execute("""
+                        UPDATE dbo.ementa_digital_familias
+                        SET seccao = ?, descricao = ?, visivel = ?, posicao = ?
+                        WHERE codigo = ?
+                    """, (seccao, descricao, visivel, posicao, codigo))
+                conn.commit()
+                return {"success": True, "message": f"Família #{codigo} ('{descricao}') atualizada.", "codigo": codigo}
+
+        # Criar nova família
+        cursor.execute("SELECT ISNULL(MAX(codigo), 0) FROM dbo.ementa_digital_familias")
+        new_cod = int(cursor.fetchone()[0]) + 1
+
+        if has_dose:
+            cursor.execute("""
+                INSERT INTO dbo.ementa_digital_familias (codigo, seccao, descricao, dose, meiadose, visivel, posicao)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (new_cod, seccao, descricao, dose, meiadose, visivel, posicao or new_cod))
+        else:
+            cursor.execute("""
+                INSERT INTO dbo.ementa_digital_familias (codigo, seccao, descricao, visivel, posicao)
+                VALUES (?, ?, ?, ?, ?)
+            """, (new_cod, seccao, descricao, visivel, posicao or new_cod))
+        
+        conn.commit()
+        return {"success": True, "message": f"Família #{new_cod} ('{descricao}') criada com sucesso.", "codigo": new_cod}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": f"Erro ao guardar família: {str(e)}"}
+    finally:
+        conn.close()
+
+
+def get_ementa_digital_rules() -> List[Dict[str, Any]]:
+    """Obtém as regras de apresentação de ementas da ZoneSoft (dbo.ementa_digital_regras)."""
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_regras" not in schema:
+            return []
+
+        has_ementas = "ementa_digital_ementas" in schema
+        has_zonas = "zonas" in schema
+
+        ementa_join = "LEFT JOIN dbo.ementa_digital_ementas em ON r.ementa = em.codigo" if has_ementas else ""
+        zona_join = "LEFT JOIN dbo.zonas z ON r.zona = z.codigo" if has_zonas else ""
+        ementa_col = "ISNULL(em.nome, 'Geral')" if has_ementas else "'Geral'"
+        zona_col = "ISNULL(z.descricao, 'Todas')" if has_zonas else "'Todas'"
+
+        cursor.execute(f"""
+            SELECT
+                r.codigo,
+                ISNULL(r.app, 1) AS app,
+                ISNULL(r.servico, 1) AS servico,
+                ISNULL(r.ordem, 1) AS ordem,
+                ISNULL(r.zona, 0) AS zona,
+                ISNULL(r.ementa, 1) AS ementa,
+                ISNULL(r.pvp, 0) AS pvp,
+                r.inicio,
+                r.fim,
+                {ementa_col} AS ementa_nome,
+                {zona_col} AS zona_nome
+            FROM dbo.ementa_digital_regras r
+            {ementa_join}
+            {zona_join}
+            ORDER BY r.ordem ASC, r.codigo ASC
+        """)
+        rows = cursor.fetchall()
+        result = []
+        app_map = {1: "ZS Rest App / Kiosk", 2: "Biip App", 3: "Ementa Online"}
+        servico_map = {1: "Mesas", 2: "Takeaway", 3: "Delivery"}
+        for r in rows:
+            ini_str = r[7].strftime("%H:%M") if hasattr(r[7], 'strftime') else str(r[7] or "")
+            fim_str = r[8].strftime("%H:%M") if hasattr(r[8], 'strftime') else str(r[8] or "")
+            result.append({
+                "codigo": int(r[0]),
+                "app": int(r[1]),
+                "servico": int(r[2]),
+                "ordem": int(r[3]),
+                "zona": int(r[4]),
+                "ementa": int(r[5]),
+                "pvp": int(r[6]),
+                "inicio": ini_str,
+                "fim": fim_str,
+                "app_label": app_map.get(int(r[1]), f"App #{r[1]}"),
+                "servico_label": servico_map.get(int(r[2]), f"Serviço #{r[2]}"),
+                "ementa_nome": r[9] or "Geral",
+                "zona_nome": r[10] or "Todas"
+            })
+        return result
+    except Exception:
+        return []
     finally:
         conn.close()
 
