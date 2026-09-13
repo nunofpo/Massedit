@@ -2151,34 +2151,47 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
         if "ementa_digital_traducoes" not in schema:
             return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
 
-        for country, fields in req.translations.items():
-            c_code = country.upper()
-            for field, val in fields.items():
-                alt_field = "nome" if field == "produto" else ("produto" if field == "nome" else field)
-                if not val or not str(val).strip():
+        def _upsert_row(c_code: str, typeid: int, field_name: str, value_text: str):
+            if not value_text or not str(value_text).strip():
+                cursor.execute("""
+                    DELETE FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
+                """, (c_code, typeid, req.cod_produto, field_name))
+            else:
+                cursor.execute("""
+                    SELECT 1 FROM dbo.ementa_digital_traducoes
+                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
+                """, (c_code, typeid, req.cod_produto, field_name))
+                if cursor.fetchone():
                     cursor.execute("""
-                        DELETE FROM dbo.ementa_digital_traducoes
-                        WHERE id_country = ? AND typeid IN (1, 2) AND id1 = ? AND id2 = 0 AND field IN (?, ?)
-                    """, (c_code, req.cod_produto, field, alt_field))
+                        UPDATE dbo.ementa_digital_traducoes
+                        SET value = ?
+                        WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
+                    """, (value_text, c_code, typeid, req.cod_produto, field_name))
                 else:
                     cursor.execute("""
-                        SELECT typeid, field FROM dbo.ementa_digital_traducoes
-                        WHERE id_country = ? AND typeid IN (1, 2) AND id1 = ? AND id2 = 0 AND field IN (?, ?)
-                    """, (c_code, req.cod_produto, field, alt_field))
-                    found = cursor.fetchone()
-                    if found:
-                        tid, f_name = found[0], found[1]
-                        cursor.execute("""
-                            UPDATE dbo.ementa_digital_traducoes
-                            SET value = ?
-                            WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
-                        """, (val, c_code, tid, req.cod_produto, f_name))
-                    else:
-                        db_field = "nome" if field == "produto" else field
-                        cursor.execute("""
-                            INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
-                            VALUES (?, 2, ?, 0, ?, ?)
-                        """, (c_code, req.cod_produto, db_field, val))
+                        INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
+                        VALUES (?, ?, ?, 0, ?, ?)
+                    """, (c_code, typeid, req.cod_produto, field_name, value_text))
+
+        for country, fields in req.translations.items():
+            c_code = country.upper()
+            if c_code == "EN":
+                c_code = "GB"
+
+            for field, val in fields.items():
+                val_str = str(val).strip() if val else ""
+                if field in ("produto", "nome"):
+                    _upsert_row(c_code, 2, "produto", val_str)
+                    _upsert_row(c_code, 2, "nome", val_str)
+                    _upsert_row(c_code, 1, "produto", val_str)
+                    _upsert_row(c_code, 1, "nome", val_str)
+                elif field == "descricao":
+                    _upsert_row(c_code, 1, "descricao", val_str)
+                    _upsert_row(c_code, 2, "descricao", val_str)
+                else:
+                    _upsert_row(c_code, 1, field, val_str)
+                    _upsert_row(c_code, 2, field, val_str)
 
         conn.commit()
         return True, "Traduções gravadas com sucesso."
