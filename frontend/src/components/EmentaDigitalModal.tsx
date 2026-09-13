@@ -600,7 +600,12 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     </label>
                     <select
                       value={hasEmentaFilter}
-                      onChange={(e) => { setHasEmentaFilter(e.target.value); setPage(1); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setHasEmentaFilter(val);
+                        if (val === 'without_ementa') setSelectedEmentaFamily('all');
+                        setPage(1);
+                      }}
                       className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-indigo-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="with_ementa">Apenas Artigos da Ementa Digital</option>
@@ -617,7 +622,12 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     {digitalStructure?.families && digitalStructure.families.length > 0 ? (
                       <select
                         value={selectedEmentaFamily}
-                        onChange={(e) => { setSelectedEmentaFamily(e.target.value); setPage(1); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedEmentaFamily(val);
+                          if (val !== 'all') setHasEmentaFilter('with_ementa');
+                          setPage(1);
+                        }}
                         className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="all">Todas as Secções da Ementa</option>
