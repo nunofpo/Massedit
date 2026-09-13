@@ -2143,60 +2143,92 @@ def get_product_translations(cod_produto: int) -> Dict[str, Dict[str, str]]:
 
 def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool, str]:
     """Guarda as traduções de um produto na tabela dbo.ementa_digital_traducoes com salvaguarda."""
+    print(f"[SAVE_TRANSLATIONS] A gravar traduções do produto #{req.cod_produto} ({len(req.translations)} idiomas: {list(req.translations.keys())})...")
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         ensure_traducoes_table(cursor)
         schema = _schema(cursor)
         if "ementa_digital_traducoes" not in schema:
+            print(f"[SAVE_TRANSLATIONS] Erro: Tabela dbo.ementa_digital_traducoes não existe no esquema.")
             return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
 
-        def _upsert_row(c_code: str, typeid: int, field_name: str, value_text: str):
+        # Obter família do produto (ZoneSoft utiliza a família no campo id2)
+        prod_familia = 0
+        if "ementa_digital_produtos" in schema:
+            cursor.execute("SELECT familia FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (req.cod_produto,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                prod_familia = int(row[0])
+        if prod_familia == 0:
+            cursor.execute("SELECT familia FROM dbo.produtos WHERE codigo = ?", (req.cod_produto,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                prod_familia = int(row[0])
+
+        id2_targets = [prod_familia]
+        if prod_familia != 0:
+            id2_targets.append(0)
+
+        written_count = 0
+        def _upsert_row(c_code: str, typeid: int, target_id2: int, field_name: str, value_text: str):
+            nonlocal written_count
             if not value_text or not str(value_text).strip():
                 cursor.execute("""
                     DELETE FROM dbo.ementa_digital_traducoes
-                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
-                """, (c_code, typeid, req.cod_produto, field_name))
+                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = ? AND field = ?
+                """, (c_code, typeid, req.cod_produto, target_id2, field_name))
             else:
                 cursor.execute("""
                     SELECT 1 FROM dbo.ementa_digital_traducoes
-                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
-                """, (c_code, typeid, req.cod_produto, field_name))
+                    WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = ? AND field = ?
+                """, (c_code, typeid, req.cod_produto, target_id2, field_name))
                 if cursor.fetchone():
                     cursor.execute("""
                         UPDATE dbo.ementa_digital_traducoes
                         SET value = ?
-                        WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = 0 AND field = ?
-                    """, (value_text, c_code, typeid, req.cod_produto, field_name))
+                        WHERE id_country = ? AND typeid = ? AND id1 = ? AND id2 = ? AND field = ?
+                    """, (value_text, c_code, typeid, req.cod_produto, target_id2, field_name))
                 else:
                     cursor.execute("""
                         INSERT INTO dbo.ementa_digital_traducoes (id_country, typeid, id1, id2, field, value)
-                        VALUES (?, ?, ?, 0, ?, ?)
-                    """, (c_code, typeid, req.cod_produto, field_name, value_text))
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (c_code, typeid, req.cod_produto, target_id2, field_name, value_text))
+                written_count += 1
 
         for country, fields in req.translations.items():
             c_code = country.upper()
             if c_code == "EN":
                 c_code = "GB"
 
+            cursor.execute("""
+                SELECT DISTINCT id2 FROM dbo.ementa_digital_traducoes
+                WHERE id_country = ? AND id1 = ?
+            """, (c_code, req.cod_produto))
+            existing_id2s = set(r[0] for r in cursor.fetchall())
+            all_id2s = list(existing_id2s.union(id2_targets))
+
             for field, val in fields.items():
                 val_str = str(val).strip() if val else ""
-                if field in ("produto", "nome"):
-                    _upsert_row(c_code, 2, "produto", val_str)
-                    _upsert_row(c_code, 2, "nome", val_str)
-                    _upsert_row(c_code, 1, "produto", val_str)
-                    _upsert_row(c_code, 1, "nome", val_str)
-                elif field == "descricao":
-                    _upsert_row(c_code, 1, "descricao", val_str)
-                    _upsert_row(c_code, 2, "descricao", val_str)
-                else:
-                    _upsert_row(c_code, 1, field, val_str)
-                    _upsert_row(c_code, 2, field, val_str)
+                for target_id2 in all_id2s:
+                    if field in ("produto", "nome"):
+                        _upsert_row(c_code, 2, target_id2, "produto", val_str)
+                        _upsert_row(c_code, 2, target_id2, "nome", val_str)
+                        _upsert_row(c_code, 1, target_id2, "produto", val_str)
+                        _upsert_row(c_code, 1, target_id2, "nome", val_str)
+                    elif field == "descricao":
+                        _upsert_row(c_code, 1, target_id2, "descricao", val_str)
+                        _upsert_row(c_code, 2, target_id2, "descricao", val_str)
+                    else:
+                        _upsert_row(c_code, 1, target_id2, field, val_str)
+                        _upsert_row(c_code, 2, target_id2, field, val_str)
 
         conn.commit()
+        print(f"[SAVE_TRANSLATIONS] Sucesso: {written_count} registos atualizados/inseridos para o produto #{req.cod_produto} (família={prod_familia}).")
         return True, "Traduções gravadas com sucesso."
     except Exception as e:
         conn.rollback()
+        print(f"[SAVE_TRANSLATIONS] Erro ao gravar traduções do produto #{req.cod_produto}: {e}")
         return False, f"Falha ao gravar traduções: {str(e)}"
     finally:
         conn.close()
