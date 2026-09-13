@@ -23,8 +23,7 @@ from backend.models import (
     EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
     CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest,
-    ZSThemeTransformRequest, MesasPosicoesRequest, MesaObjetoPropsRequest,
-    CreateZonaRequest, UpdateZonaPropsRequest, CreateMesaObjetoRequest
+    ZSThemeTransformRequest
 )
 from backend.services.customers import (
     get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
@@ -40,13 +39,6 @@ from backend.services.products import (
 )
 from backend.services.reports import run_data_quality_report
 from backend.services.zstheme import analyze_zstheme, transform_zstheme
-from backend.services.mesas_map import (
-    get_mesas_zonas, get_zona_detail, preview_preset as preview_mesas_preset, apply_preset as apply_mesas_preset,
-    update_posicoes as update_mesas_posicoes, update_objeto_props as update_mesas_objeto_props,
-    upload_objeto_imagem as upload_mesas_objeto_imagem, upload_zona_background as upload_mesas_zona_background,
-    create_zona, update_zona_props, delete_zona, create_mesa_objeto, duplicate_mesa_objeto, delete_mesa_objeto,
-    clear_zona_objetos, clear_all_mapamesas
-)
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
@@ -315,147 +307,6 @@ async def zstheme_transform_endpoint(file: UploadFile = File(...), rules: str = 
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
     )
-
-
-@app.get("/api/mesas-map/zonas")
-def mesas_map_zonas_endpoint():
-    """Lista as zonas do mapa de mesas (dbo.zonas)."""
-    return get_mesas_zonas()
-
-
-@app.post("/api/mesas-map/zonas/criar")
-def mesas_map_create_zona_endpoint(req: CreateZonaRequest):
-    """Cria uma nova zona de mapa de mesas."""
-    success, message, new_codigo = create_zona(req.descricao, req.width or 800, req.height or 600, req.precozona or 1, req.tabelaiva or 1, req.centroproducao or 0)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message, "codigo": new_codigo}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/props")
-def mesas_map_update_zona_props_endpoint(codigo: int, req: UpdateZonaPropsRequest):
-    """Atualiza propriedades de uma zona."""
-    success, message = update_zona_props(codigo, req.descricao, req.width, req.height, req.precozona, req.tabelaiva, req.centroproducao)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.delete("/api/mesas-map/zona/{codigo}")
-@app.post("/api/mesas-map/zona/{codigo}/delete")
-def mesas_map_delete_zona_endpoint(codigo: int):
-    """Elimina uma zona de mapa de mesas e as respetivas mesas."""
-    success, message = delete_zona(codigo)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.get("/api/mesas-map/zona/{codigo}")
-def mesas_map_zona_endpoint(codigo: int):
-    """Detalhe de uma zona: fundo e objetos (mesas/decoração) com as imagens atuais."""
-    return get_zona_detail(codigo)
-
-
-@app.post("/api/mesas-map/zona/{codigo}/objeto/criar")
-def mesas_map_create_objeto_endpoint(codigo: int, req: CreateMesaObjetoRequest):
-    """Cria uma nova mesa ou objeto decorativo na zona."""
-    success, message, new_id = create_mesa_objeto(codigo, req.nome, req.tipoobjecto, req.lugares, req.forma, req.posx, req.posy, req.largura, req.altura, req.cor_hex)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message, "id": new_id}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/duplicar")
-def mesas_map_duplicate_objeto_endpoint(codigo: int, objeto_id: int):
-    """Duplica uma mesa/objeto na zona."""
-    success, message, new_id = duplicate_mesa_objeto(codigo, objeto_id)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message, "id": new_id}
-
-
-@app.delete("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}")
-@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/delete")
-def mesas_map_delete_objeto_endpoint(codigo: int, objeto_id: int):
-    """Elimina um objeto de uma zona."""
-    success, message = delete_mesa_objeto(codigo, objeto_id)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.delete("/api/mesas-map/zona/{codigo}/clear")
-@app.post("/api/mesas-map/zona/{codigo}/clear")
-def mesas_map_clear_zona_endpoint(codigo: int):
-    """Limpa todos os objetos/mesas da zona especificada (com cópia de segurança)."""
-    success, message = clear_zona_objetos(codigo)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.delete("/api/mesas-map/clear-all")
-@app.post("/api/mesas-map/clear-all")
-def mesas_map_clear_all_endpoint(clear_zonas: bool = Query(default=False)):
-    """Limpa todos os objetos de todas as zonas (e opcionalmente as zonas em si)."""
-    success, message = clear_all_mapamesas(clear_zonas=clear_zonas)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/preview-preset")
-def mesas_map_preview_preset_endpoint(codigo: int, theme_key: str = Query(default="claro")):
-    """Gera as imagens 'antes' e 'depois' do preset selecionado (claro, escuro, rustico, minimalista)."""
-    return preview_mesas_preset(codigo, theme_key)
-
-
-@app.post("/api/mesas-map/zona/{codigo}/apply-preset")
-def mesas_map_apply_preset_endpoint(codigo: int, theme_key: str = Query(default="claro")):
-    """Aplica o preset de tema à zona (com cópia de segurança e transação)."""
-    success, message = apply_mesas_preset(codigo, theme_key)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/posicoes")
-def mesas_map_posicoes_endpoint(codigo: int, req: MesasPosicoesRequest):
-    """Grava novas posições (posx/posy) de vários objetos de uma zona, em lote."""
-    success, message = update_mesas_posicoes(codigo, [u.model_dump() for u in req.updates])
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/props")
-def mesas_map_objeto_props_endpoint(codigo: int, objeto_id: int, req: MesaObjetoPropsRequest):
-    """Atualiza número, nome, lugares, cor, tamanho e forma de uma mesa e regenera o seu ícone."""
-    success, message = update_mesas_objeto_props(codigo, objeto_id, req.lugares, req.cor_hex, req.largura, req.altura, req.forma, req.nome, req.novo_id)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/objeto/{objeto_id}/imagem")
-async def mesas_map_objeto_imagem_endpoint(codigo: int, objeto_id: int, file: UploadFile = File(...)):
-    """Substitui o ícone de um objeto por uma imagem própria."""
-    image_bytes = await file.read()
-    success, message = upload_mesas_objeto_imagem(codigo, objeto_id, image_bytes)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
-
-
-@app.post("/api/mesas-map/zona/{codigo}/background")
-async def mesas_map_background_endpoint(codigo: int, file: UploadFile = File(...), tile: bool = Form(False)):
-    """Substitui o fundo de uma zona por uma imagem própria."""
-    image_bytes = await file.read()
-    success, message = upload_mesas_zona_background(codigo, image_bytes, tile)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {"success": True, "message": message}
 
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
