@@ -2167,51 +2167,76 @@ def apply_import(items: List[ImportRow]) -> Tuple[bool, str, int]:
                 iva_rate = float(target_iva or 23.0)
                 pvp_siva = round(pvp_val / (1.0 + (iva_rate / 100.0)), 4) if iva_rate >= 0 else pvp_val
 
+                subfam_code = getattr(imp, 'subfam', 0) or 0
+                sql_insert_template = f"""
+                INSERT INTO dbo.produtos (
+                    id, codigo, descricao, familia, subfam, unidade, iva, fornecedor, foto, precocompra, precovenda, 
+                    dataultcompra, ultprecocompra, datacriacao, obs, retalho, composto, ultprecovenda, topo, cozinha, grupo, 
+                    referencia, ivacompra, balanca, prodstock, qtdstock, compra, stocks, meiadose, precomeia, qtdmeia, 
+                    ordemtop, ordem, ordemlocal, listseparado, codbarras, armazem, tempoprep, maxopcoes, iva2, tara, 
+                    prepagamento, fundo, letra, descricaocurta, promocao, percentprom, margembruta, codigopp, revenda, 
+                    precorevenda, ivarevenda, autoquebra, pvp2, pvp3, pvp4, pvp5, pvpmeia2, pvpmeia3, pvpmeia4, pvpmeia5, 
+                    consumominimo, precominimo, excluirdescontos, vendersemstock, dosedesc, meiadosedesc, restricted, 
+                    pvp6, pvp7, pvp8, pvp9, pvp10, pvpmeia6, pvpmeia7, pvpmeia8, pvpmeia9, pvpmeia10, categoria, subcategoria, 
+                    retencao, percentagemretencao, isencao, pvp1siva, pvp2siva, pvp3siva, pvp4siva, pvp5siva, pvp6siva, pvp7siva, 
+                    pvp8siva, pvp9siva, pvp10siva, pvpmeia1siva, pvpmeia2siva, pvpmeia3siva, pvpmeia4siva, pvpmeia5siva, 
+                    pvpmeia6siva, pvpmeia7siva, pvpmeia8siva, pvpmeia9siva, pvpmeia10siva, tiposaft, uncompra, uninventario, 
+                    ordempedido, image_url, min_complementos, max_complementos, codigo_alf, edicao, transferivel, politicapreco, unrelacao
+                ) VALUES (
+                    1, ?, {sql_desc}, ?, ?, 1, ?, 0, CONVERT(VARBINARY, ''), 0.0000, ?, 
+                    '1899-12-30 00:00:00.000', 0.0000, GETDATE(), '', 1, 0, 0.0000, 0, 0, 0, 
+                    '', ?, 0, ?, 1.0000, 0, 1, 0, 0.0000, 0.0000, 
+                    9999, ?, 9999, 0, '', 0, '1899-12-30 00:00:00.000', 0, ?, 0.0000, 
+                    0, 12632256, 16777215, ?, 0, 0.0000, 0.0000, 0, 0, 
+                    0.0000, ?, 0, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 
+                    0, 0.0000, 0, 1, '', '', 0, 
+                    0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0, 0, 
+                    0, 0.0000, ?, ?, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 
+                    0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 'P', 1, 1, 
+                    0, NULL, 0.0000, 0.0000, 0, 0, 1, 0, 0
+                )
+                """
+
                 if sql_desc != "?":
                     cursor.execute(
-                        f"INSERT INTO dbo.produtos ("
-                        f"id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
-                        f"vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
-                        f"ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao, stocks, transferivel"
-                        f") VALUES (0, ?, {sql_desc}, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 0, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 1, 0, 0, 'P', 1, 1, 1)",
+                        sql_insert_template,
                         (
                             imp.codigo,
-                            prod_curta,
-                            pvp_val,
-                            pvp_siva,
                             fam_code,
+                            subfam_code,
                             target_iva,
+                            pvp_val,
+                            target_iva,
+                            imp.codigo,
                             idx + 1,
+                            target_iva,
+                            prod_curta,
+                            target_iva,
                             target_isencao,
-                            target_iva,
-                            target_iva,
-                            target_iva,
-                            imp.codigo
+                            pvp_siva
                         )
                     )
                 else:
                     cursor.execute(
-                        "INSERT INTO dbo.produtos ("
-                        "id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
-                        "vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
-                        "ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao, stocks, transferivel"
-                        ") VALUES (0, ?, ?, ?, ?, ?, ?, 0, ?, ?, 9999, 9999, 8421504, 16777215, 1, ?, 0, 1, 1, 1, 1, 0.0, GETDATE(), ?, ?, ?, 1.0, ?, 1, 0, 0, 'P', 1, 1, 1)",
+                        sql_insert_template,
                         (
                             imp.codigo,
                             prod_desc,
-                            prod_curta,
-                            pvp_val,
-                            pvp_siva,
                             fam_code,
+                            subfam_code,
                             target_iva,
+                            pvp_val,
+                            target_iva,
+                            imp.codigo,
                             idx + 1,
+                            target_iva,
+                            prod_curta,
+                            target_iva,
                             target_isencao,
-                            target_iva,
-                            target_iva,
-                            target_iva,
-                            imp.codigo
+                            pvp_siva
                         )
                     )
+
 
                 try:
                     cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.produtosfamilias WHERE produto = ? AND familia = ?) INSERT INTO dbo.produtosfamilias (produto, familia) VALUES (?, ?)", (imp.codigo, fam_code, imp.codigo, fam_code))

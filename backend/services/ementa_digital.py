@@ -1947,12 +1947,35 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                 pvp_v = float(price_val or 0.0)
                 pvp_s = round(pvp_v / 1.23, 4)
                 cursor.execute(
-                    "INSERT INTO dbo.produtos ("
-                    "id, codigo, descricao, descricaocurta, precovenda, pvp1siva, familia, subfam, iva, ordem, ordemtop, ordemlocal, fundo, letra, "
-                    "vendersemstock, isencao, restricted, unidade, uncompra, uninventario, fornecedor, precocompra, datacriacao, "
-                    "ivacompra, iva2, ivarevenda, qtdstock, prodstock, retalho, composto, cozinha, tiposaft, edicao, stocks, transferivel"
-                    ") VALUES (0, ?, ?, '', ?, ?, ?, 0, 23, ?, 9999, 9999, 8421504, 16777215, 1, '', 0, 1, 1, 1, 1, 0.0, GETDATE(), 23, 23, 23, 1.0, ?, 1, 0, 0, 'P', 1, 1, 1)",
-                    (code, artigo_nome, pvp_v, pvp_s, fam_code, idx + 1, code)
+                    """
+                    INSERT INTO dbo.produtos (
+                        id, codigo, descricao, familia, subfam, unidade, iva, fornecedor, foto, precocompra, precovenda, 
+                        dataultcompra, ultprecocompra, datacriacao, obs, retalho, composto, ultprecovenda, topo, cozinha, grupo, 
+                        referencia, ivacompra, balanca, prodstock, qtdstock, compra, stocks, meiadose, precomeia, qtdmeia, 
+                        ordemtop, ordem, ordemlocal, listseparado, codbarras, armazem, tempoprep, maxopcoes, iva2, tara, 
+                        prepagamento, fundo, letra, descricaocurta, promocao, percentprom, margembruta, codigopp, revenda, 
+                        precorevenda, ivarevenda, autoquebra, pvp2, pvp3, pvp4, pvp5, pvpmeia2, pvpmeia3, pvpmeia4, pvpmeia5, 
+                        consumominimo, precominimo, excluirdescontos, vendersemstock, dosedesc, meiadosedesc, restricted, 
+                        pvp6, pvp7, pvp8, pvp9, pvp10, pvpmeia6, pvpmeia7, pvpmeia8, pvpmeia9, pvpmeia10, categoria, subcategoria, 
+                        retencao, percentagemretencao, isencao, pvp1siva, pvp2siva, pvp3siva, pvp4siva, pvp5siva, pvp6siva, pvp7siva, 
+                        pvp8siva, pvp9siva, pvp10siva, pvpmeia1siva, pvpmeia2siva, pvpmeia3siva, pvpmeia4siva, pvpmeia5siva, 
+                        pvpmeia6siva, pvpmeia7siva, pvpmeia8siva, pvpmeia9siva, pvpmeia10siva, tiposaft, uncompra, uninventario, 
+                        ordempedido, image_url, min_complementos, max_complementos, codigo_alf, edicao, transferivel, politicapreco, unrelacao
+                    ) VALUES (
+                        1, ?, ?, ?, 0, 1, 23.0000, 0, CONVERT(VARBINARY, ''), 0.0000, ?, 
+                        '1899-12-30 00:00:00.000', 0.0000, GETDATE(), '', 1, 0, 0.0000, 0, 0, 0, 
+                        '', 23.0000, 0, ?, 1.0000, 0, 1, 0, 0.0000, 0.0000, 
+                        9999, ?, 9999, 0, '', 0, '1899-12-30 00:00:00.000', 0, 23.0000, 0.0000, 
+                        0, 12632256, 16777215, '', 0, 0.0000, 0.0000, 0, 0, 
+                        0.0000, 23.0000, 0, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 
+                        0, 0.0000, 0, 1, '', '', 0, 
+                        0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0, 0, 
+                        0, 0.0000, '', ?, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 
+                        0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 'P', 1, 1, 
+                        0, NULL, 0.0000, 0.0000, 0, 0, 1, 0, 0
+                    )
+                    """,
+                    (code, artigo_nome, fam_code, pvp_v, code, idx + 1, pvp_s)
                 )
 
             try:
