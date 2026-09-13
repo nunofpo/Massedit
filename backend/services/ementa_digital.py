@@ -97,7 +97,7 @@ def get_ementa_schema_info() -> Dict[str, Any]:
 
 
 def ensure_ementa_digital_hierarchy(cursor):
-    """Garante que existem registos por omissão em ementas, secções e regras da Ementa Digital."""
+    """Garante que existem registos por omissão em ementas, secções, famílias e regras da Ementa Digital."""
     try:
         schema = db_manager.cached_schema()
         if "ementa_digital_ementas" in schema:
@@ -105,6 +105,9 @@ def ensure_ementa_digital_hierarchy(cursor):
 
         if "ementa_digital_seccoes" in schema:
             cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_seccoes WHERE codigo = 1) INSERT INTO dbo.ementa_digital_seccoes (codigo, descricao, imagem, visivel, sync, ementa, image_url, posicao) VALUES (1, 'Geral', CONVERT(VARBINARY, ''), 1, 0, 1, '', 1)")
+
+        if "ementa_digital_familias" in schema:
+            cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_familias WHERE codigo = 1) INSERT INTO dbo.ementa_digital_familias (codigo, seccao, descricao, dose, meiadose, visivel, posicao) VALUES (1, 1, 'Geral', '', '', 1, 0)")
 
         if "ementa_digital_regras" in schema:
             cursor.execute("IF NOT EXISTS (SELECT 1 FROM dbo.ementa_digital_regras WHERE codigo = 1) INSERT INTO dbo.ementa_digital_regras (codigo, app, servico, ordem, zona, ementa, pvp, inicio, fim, sync) VALUES (1, 1, 1, 1, 0, 1, 0, '2021-01-01 00:00:00', '2099-12-31 23:59:59', 0)")
@@ -1919,7 +1922,7 @@ def import_csv_data(req: EmentaImportCsvRequest) -> EmentaImportResponse:
                     ed_fam_map[k] = max_ed_fam
                     try:
                         cursor.execute(
-                            "INSERT INTO dbo.ementa_digital_familias (codigo, seccao, descricao, visivel, posicao) VALUES (?, 1, ?, 1, ?)",
+                            "INSERT INTO dbo.ementa_digital_familias (codigo, seccao, descricao, dose, meiadose, visivel, posicao) VALUES (?, 1, ?, '', '', 1, ?)",
                             (max_ed_fam, f_name, max_ed_fam)
                         )
                     except Exception:
