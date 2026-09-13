@@ -58,7 +58,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
   // Filters (Default to 'with_ementa' so only Ementa Digital items are listed by default)
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('with_ementa');
+  const [hasEmentaFilter, setHasEmentaFilter] = useState<string>('all');
   const [selectedFamily, setSelectedFamily] = useState<string>('all');
   const [selectedEmentaFamily, setSelectedEmentaFamily] = useState<string>('all');
 
@@ -608,8 +608,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       }}
                       className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-indigo-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="with_ementa">Apenas Artigos da Ementa Digital</option>
                       <option value="all">Todos os Artigos (POS + Ementa)</option>
+                      <option value="with_ementa">Apenas Com Registo na Ementa Digital</option>
                       <option value="without_ementa">Apenas Sem Registo na Ementa</option>
                     </select>
                   </div>
@@ -625,7 +625,6 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                         onChange={(e) => {
                           const val = e.target.value;
                           setSelectedEmentaFamily(val);
-                          if (val !== 'all') setHasEmentaFilter('with_ementa');
                           setPage(1);
                         }}
                         className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"

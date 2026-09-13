@@ -445,10 +445,10 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
             params.append(filter_req.familia)
 
         if filter_req.ementa_familia is not None:
-            conditions.append("ed.familia = ?")
-            params.append(filter_req.ementa_familia)
-            conditions.append("ed.cod_produto IS NOT NULL")
-        elif filter_req.has_ementa_filter == "with_ementa":
+            conditions.append("(ed.familia = ? OR p.familia = ?)")
+            params.extend([filter_req.ementa_familia, filter_req.ementa_familia])
+
+        if filter_req.has_ementa_filter == "with_ementa":
             conditions.append("ed.cod_produto IS NOT NULL")
         elif filter_req.has_ementa_filter == "without_ementa":
             conditions.append("ed.cod_produto IS NULL")
