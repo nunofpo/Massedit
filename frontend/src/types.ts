@@ -451,10 +451,11 @@ export interface EmentaProductResponse {
 }
 
 export interface EmentaLanguage {
-  id: string;
+  id?: string;
   name: string;
   code: string;
   visivel?: number;
+  is_active?: number;
 }
 
 export interface EmentaSchemaInfo {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, QrCode, Users } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenMenuImport: () => void;
   onOpenCustomers: () => void;
   onRefresh: () => void;
+  isRefreshing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,7 +29,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenEmentaDigital,
   onOpenMenuImport,
   onOpenCustomers,
-  onRefresh
+  onRefresh,
+  isRefreshing = false
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-sm">
@@ -64,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 transition shadow-sm"
           title="Atualizar lista de artigos"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
+          <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin' : ''}`} />
           Atualizar
         </button>
 
@@ -88,11 +90,11 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenEmentaDigital}
-          className="flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-teal-200 transition shadow-sm"
-          title="Gestão da Ementa Digital (QR Code ZoneSoft) e Assistente de Tradução"
+          className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-indigo-200 transition shadow-sm"
+          title="Assistente de Tradução Multilíngue (ZoneSoft POS & Ementa Digital)"
         >
-          <QrCode className="w-3.5 h-3.5 text-teal-600" />
-          Ementa Digital
+          <Languages className="w-3.5 h-3.5 text-indigo-600" />
+          Traduções
         </button>
 
         <button
