@@ -2617,10 +2617,13 @@ def get_product_translations(cod_produto: int) -> Dict[str, Dict[str, str]]:
         if "ementa_digital_traducoes" not in schema:
             return {}
 
+        # Só typeid=2: o typeid=1 indexa famílias da ementa digital e o id1 partilha
+        # o espaço de códigos com os produtos (família 4 e produto 4 colidem),
+        # pelo que incluí-lo trazia nomes de família para dentro do produto.
         cursor.execute("""
             SELECT id_country, field, value
             FROM dbo.ementa_digital_traducoes
-            WHERE id1 = ? AND typeid IN (1, 2)
+            WHERE id1 = ? AND typeid = 2
         """, (cod_produto,))
 
         translations: Dict[str, Dict[str, str]] = {}
@@ -2650,15 +2653,17 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             print(f"[SAVE_TRANSLATIONS] Erro: Tabela dbo.ementa_digital_traducoes não existe no esquema.")
             return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
 
-        # Obter família do produto (ZoneSoft utiliza a família no campo id2)
+        # Obter família do produto (ZoneSoft utiliza a família no campo id2).
+        # Tem de ser a família da EMENTA DIGITAL: (id1, id2) é a chave primária da
+        # tabela traduzida, e para produtos essa chave é
+        # ementa_digital_produtos (cod_produto, familia).
+        # NÃO usar dbo.produtos.familia como alternativa: é a numeração do POS, um
+        # espaço de códigos diferente (produto 4 é família 2 no POS e 3 na ementa
+        # digital), e escrevê-la aqui afirma uma ligação produto/família que não
+        # existe. Se o produto não está na ementa digital, fica só o id2=0.
         prod_familia = 0
         if "ementa_digital_produtos" in schema:
             cursor.execute("SELECT familia FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (req.cod_produto,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                prod_familia = int(row[0])
-        if prod_familia == 0:
-            cursor.execute("SELECT familia FROM dbo.produtos WHERE codigo = ?", (req.cod_produto,))
             row = cursor.fetchone()
             if row and row[0] is not None:
                 prod_familia = int(row[0])
@@ -2698,12 +2703,11 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             if c_code == "EN":
                 c_code = "GB"
 
-            cursor.execute("""
-                SELECT DISTINCT id2 FROM dbo.ementa_digital_traducoes
-                WHERE id_country = ? AND id1 = ?
-            """, (c_code, req.cod_produto))
-            existing_id2s = set(r[0] for r in cursor.fetchall())
-            all_id2s = list(existing_id2s.union(id2_targets))
+            # Escrever apenas nos id2 que o produto tem hoje (0 e a sua família).
+            # Antes juntava-se aqui todos os id2 já existentes para o id1, sem filtrar
+            # typeid: apanhava secções das linhas de família e famílias antigas, e como
+            # cada gravação voltava a juntar o que encontrava, a tabela só crescia.
+            all_id2s = sorted(set(id2_targets))
 
             for field, val in fields.items():
                 val_str = str(val).strip() if val else ""
