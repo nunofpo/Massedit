@@ -866,8 +866,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-[1500px] h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 animate-in fade-in">
+      <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -1405,8 +1405,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       {/* Overlay: Traduzir Estrutura (Ementa/Menus e Familias) */}
       {showStructureTranslator && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2">
+          <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
             <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Globe className="w-4 h-4 text-sky-600" />
@@ -1716,8 +1716,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       {/* Modal de Pré-visualização & Edição dos 81 Termos Gerais da Interface */}
       {showGeneralTermsTranslator && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-6xl h-[88vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-amber-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-2 animate-in fade-in">
+          <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-amber-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-amber-200 flex items-center justify-between bg-amber-50">
               <div className="flex items-center gap-3">
@@ -1868,8 +1868,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       {/* Translation Review & Preview Panel Overlay */}
       {showReviewPanel && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 animate-in fade-in zoom-in duration-150">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-2">
+          <div className="bg-white border border-slate-200 rounded-2xl w-[98vw] max-w-[98vw] h-[95vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 animate-in fade-in zoom-in duration-150">
             {/* Modal Header */}
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-3">
