@@ -534,24 +534,91 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     let successCount = 0;
 
     try {
-      for (const item of reviewItems) {
-        if (item.type === 'artigo' && item.code) {
-          const saveRes = await fetch('/api/ementa-digital/translations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cod_produto: item.code,
-              translations: item.translations
-            })
-          });
-          if (saveRes.ok) {
-            const saveData = await saveRes.json();
-            if (saveData.success) successCount++;
+      // 1. Artigos
+      const artigoItems = reviewItems.filter(i => i.type === 'artigo' && i.code);
+      for (const item of artigoItems) {
+        const saveRes = await fetch('/api/ementa-digital/translations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cod_produto: item.code,
+            translations: item.translations
+          })
+        });
+        if (saveRes.ok) {
+          const saveData = await saveRes.json();
+          if (saveData.success) successCount++;
+        }
+      }
+
+      // 2. Estrutura (ementas, famílias, complementares, pos_families, menu_niveis, opções)
+      const ementaPayload: Record<string, Record<string, string>> = {};
+      const familyPayload: Record<string, Record<string, string>> = {};
+      const compPayload: Record<string, Record<string, string>> = {};
+      const posFamPayload: Record<string, Record<string, string>> = {};
+      const menuNivelPayload: Record<string, Record<string, string>> = {};
+      const opcaoPayload: Record<string, Record<string, string>> = {};
+
+      reviewItems.forEach(item => {
+        if (item.id.startsWith('ementa-') && item.code) {
+          ementaPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('fam-') && item.code) {
+          familyPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('comp-') && item.code) {
+          compPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('posfam-') && item.code) {
+          posFamPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('mnivel-')) {
+          const key = item.id.replace('mnivel-', '').replace('-', ':');
+          menuNivelPayload[key] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('opc-')) {
+          const key = item.id.replace('opc-', '').replace('-', ':');
+          opcaoPayload[key] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        }
+      });
+
+      const hasStructureItems =
+        Object.keys(ementaPayload).length > 0 ||
+        Object.keys(familyPayload).length > 0 ||
+        Object.keys(compPayload).length > 0 ||
+        Object.keys(posFamPayload).length > 0 ||
+        Object.keys(menuNivelPayload).length > 0 ||
+        Object.keys(opcaoPayload).length > 0;
+
+      if (hasStructureItems) {
+        const sRes = await fetch('/api/ementa-digital/structure-translations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ementas: ementaPayload,
+            families: familyPayload,
+            complementares: compPayload,
+            pos_families: posFamPayload,
+            menu_niveis: menuNivelPayload,
+            opcoes: opcaoPayload
+          })
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (sData.success) {
+            successCount += reviewItems.length - artigoItems.length;
           }
         }
       }
 
-      onSuccess(`${successCount} de ${reviewItems.length} traduções revistas e gravadas no ZoneSoft com sucesso!`);
+      onSuccess(`${reviewItems.length} traduções revistas e gravadas no ZoneSoft com sucesso!`);
       setShowReviewPanel(false);
       fetchProducts();
     } catch (err) {
@@ -641,7 +708,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     loadStructureTranslations();
   };
 
-  // AI Auto-Translate all Ementa/Family names for every active language in one go
+  // AI Auto-Translate all Ementa/Family names for every active language and open Review Panel FIRST
   const handleAutoTranslateStructure = async () => {
     const targetLangs = Array.from(selectedLangCodes);
     if (targetLangs.length === 0) return;
@@ -671,75 +738,95 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       const data = await res.json();
       const translations = data.translations || {};
 
-      setStructureEdits(prev => {
-        const next = {
-          ementas: { ...prev.ementas },
-          families: { ...prev.families },
-          complementares: { ...prev.complementares },
-          pos_families: { ...prev.pos_families },
-          menu_niveis: { ...prev.menu_niveis },
-          opcoes: { ...prev.opcoes }
-        };
-        structureEmentas.forEach(e => {
-          const map = translations[e.nome] || {};
-          const current = { ...(next.ementas[String(e.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.ementas[String(e.codigo)] = current;
+      const generatedItems: {
+        id: string;
+        type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+        typeLabel: string;
+        code?: number;
+        originalText: string;
+        source: 'dicionario' | 'ia_online';
+        translations: Record<string, { produto: string; descricao?: string }>;
+      }[] = [];
+
+      // Ementas
+      structureEmentas.forEach(e => {
+        const map = translations[e.nome] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || e.nome };
         });
-        structureFamilies.forEach(f => {
-          const map = translations[f.descricao] || {};
-          const current = { ...(next.families[String(f.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.families[String(f.codigo)] = current;
+        generatedItems.push({
+          id: `ementa-${e.codigo}`,
+          type: 'seccao',
+          typeLabel: 'Ementa / Menu',
+          code: e.codigo,
+          originalText: e.nome,
+          source: 'ia_online',
+          translations: trPayload
         });
-        structureComplementares.forEach(c => {
-          const map = translations[c.descricao] || {};
-          const current = { ...(next.complementares[String(c.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.complementares[String(c.codigo)] = current;
-        });
-        structurePosFamilies.forEach(f => {
-          const map = translations[f.descricao] || {};
-          const current = { ...(next.pos_families[String(f.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.pos_families[String(f.codigo)] = current;
-        });
-        structureMenuNiveis.forEach(m => {
-          const map = translations[m.descricao] || {};
-          const key = `${m.menu}:${m.nivel}`;
-          const current = { ...(next.menu_niveis[key] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.menu_niveis[key] = current;
-        });
-        structureOpcoes.forEach(o => {
-          const map = translations[o.descricao] || {};
-          const key = `${o.grupo}:${o.codigo}`;
-          const current = { ...(next.opcoes[key] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.opcoes[key] = current;
-        });
-        return next;
       });
 
-      onSuccess('Tradução automática gerada! Revê os textos e clica em "Gravar no ZoneSoft".');
+      // Famílias Ementa
+      structureFamilies.forEach(f => {
+        const map = translations[f.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || f.descricao };
+        });
+        generatedItems.push({
+          id: `fam-${f.codigo}`,
+          type: 'familia',
+          typeLabel: 'Família Ementa',
+          code: f.codigo,
+          originalText: f.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      // Complementares
+      structureComplementares.forEach(c => {
+        const map = translations[c.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || c.descricao };
+        });
+        generatedItems.push({
+          id: `comp-${c.codigo}`,
+          type: 'opcao',
+          typeLabel: 'Complementar',
+          code: c.codigo,
+          originalText: c.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      // Famílias POS
+      structurePosFamilies.forEach(f => {
+        const map = translations[f.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || f.descricao };
+        });
+        generatedItems.push({
+          id: `posfam-${f.codigo}`,
+          type: 'familia',
+          typeLabel: 'Família POS',
+          code: f.codigo,
+          originalText: f.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      setReviewItems(generatedItems);
+      setShowReviewPanel(true);
+      onSuccess('Traduções da estrutura geradas! Revê os termos no painel de pré-visualização antes de gravar.');
     } catch (err) {
       alert('Falha de rede ao traduzir a estrutura.');
     } finally {

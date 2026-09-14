@@ -2344,13 +2344,9 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
                     if field in ("produto", "nome"):
                         _upsert_row(c_code, 2, target_id2, "produto", val_str)
                         _upsert_row(c_code, 2, target_id2, "nome", val_str)
-                        _upsert_row(c_code, 1, target_id2, "produto", val_str)
-                        _upsert_row(c_code, 1, target_id2, "nome", val_str)
                     elif field == "descricao":
-                        _upsert_row(c_code, 1, target_id2, "descricao", val_str)
                         _upsert_row(c_code, 2, target_id2, "descricao", val_str)
                     else:
-                        _upsert_row(c_code, 1, target_id2, field, val_str)
                         _upsert_row(c_code, 2, target_id2, field, val_str)
 
         # Regista a alteração para o ZoneSoft sincronizar com o backoffice/cloud
