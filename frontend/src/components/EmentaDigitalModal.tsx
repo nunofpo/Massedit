@@ -105,6 +105,22 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [isLoadingGeneralTerms, setIsLoadingGeneralTerms] = useState<boolean>(false);
   const [isSavingGeneralTerms, setIsSavingGeneralTerms] = useState<boolean>(false);
 
+  // Review & Preview Panel State
+  const [showReviewPanel, setShowReviewPanel] = useState<boolean>(false);
+  const [reviewItems, setReviewItems] = useState<{
+    id: string;
+    type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+    typeLabel: string;
+    code?: number;
+    originalText: string;
+    originalDesc?: string;
+    source: 'dicionario' | 'ia_online';
+    translations: Record<string, { produto: string; descricao?: string }>;
+  }[]>([]);
+  const [reviewSearchTerm, setReviewSearchTerm] = useState<string>('');
+  const [reviewFilterType, setReviewFilterType] = useState<string>('all');
+  const [isSavingReviewItems, setIsSavingReviewItems] = useState<boolean>(false);
+
   // Toggle active language selection
   const toggleLangCode = (code: string) => {
     const lower = code.toLowerCase();
@@ -420,40 +436,53 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
-  // AI Batch Auto-Translate selected products
+  // AI Batch Auto-Translate selected products (Opens Review Panel First)
   const handleBatchAutoTranslate = async () => {
     if (selectedCodes.size === 0) return;
     const targetProds = products.filter(p => selectedCodes.has(p.codigo));
     if (targetProds.length === 0) return;
 
     setIsTranslating(true);
-    let successCount = 0;
-
     try {
       const targetLangs = Array.from(selectedLangCodes);
+      const allTextsSet = new Set<string>();
 
-      for (const prod of targetProds) {
+      targetProds.forEach(prod => {
         const textToTranslate = prod.produto || prod.pos_descricao;
-        const descToTranslate = prod.descricao || '';
-        const texts = [textToTranslate];
-        if (descToTranslate.trim()) texts.push(descToTranslate);
+        if (textToTranslate && textToTranslate.trim()) allTextsSet.add(textToTranslate.trim());
+        if (prod.descricao && prod.descricao.trim()) allTextsSet.add(prod.descricao.trim());
+      });
 
-        const res = await fetch('/api/ementa-digital/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            texts,
-            target_langs: targetLangs,
-            source_lang: 'pt'
-          })
-        });
+      const res = await fetch('/api/ementa-digital/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          texts: Array.from(allTextsSet),
+          target_langs: targetLangs,
+          source_lang: 'pt'
+        })
+      });
 
-        if (res.ok) {
-          const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        const generatedItems: {
+          id: string;
+          type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+          typeLabel: string;
+          code?: number;
+          originalText: string;
+          originalDesc?: string;
+          source: 'dicionario' | 'ia_online';
+          translations: Record<string, { produto: string; descricao?: string }>;
+        }[] = [];
+
+        targetProds.forEach(prod => {
+          const textToTranslate = prod.produto || prod.pos_descricao;
+          const descToTranslate = prod.descricao || '';
           const nameMap = data.translations[textToTranslate] || {};
           const descMap = descToTranslate ? (data.translations[descToTranslate] || {}) : {};
 
-          const trPayload: Record<string, { produto: string; descricao: string }> = {};
+          const trPayload: Record<string, { produto: string; descricao?: string }> = {};
           targetLangs.forEach(lang => {
             const cUpper = lang.toUpperCase();
             const lLower = lang.toLowerCase();
@@ -463,15 +492,58 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
             };
           });
 
+          generatedItems.push({
+            id: `prod-${prod.codigo}`,
+            type: 'artigo',
+            typeLabel: 'Artigo',
+            code: prod.codigo,
+            originalText: textToTranslate,
+            originalDesc: descToTranslate,
+            source: 'ia_online',
+            translations: trPayload
+          });
+        });
+
+        setReviewItems(generatedItems);
+        setShowReviewPanel(true);
+      } else {
+        alert('Erro ao obter traduções da API.');
+      }
+    } catch (err) {
+      alert('Erro durante a geração da pré-visualização de traduções.');
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const handleUpdateReviewItemTranslation = (itemId: string, langUpper: string, val: string) => {
+    setReviewItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const nextTr = { ...item.translations };
+      nextTr[langUpper] = {
+        ...nextTr[langUpper],
+        produto: val
+      };
+      return { ...item, translations: nextTr };
+    }));
+  };
+
+  const handleConfirmAndSaveReviewItems = async () => {
+    if (reviewItems.length === 0) return;
+    setIsSavingReviewItems(true);
+    let successCount = 0;
+
+    try {
+      for (const item of reviewItems) {
+        if (item.type === 'artigo' && item.code) {
           const saveRes = await fetch('/api/ementa-digital/translations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              cod_produto: prod.codigo,
-              translations: trPayload
+              cod_produto: item.code,
+              translations: item.translations
             })
           });
-
           if (saveRes.ok) {
             const saveData = await saveRes.json();
             if (saveData.success) successCount++;
@@ -479,14 +551,13 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         }
       }
 
-      onSuccess(`${successCount} de ${targetProds.length} artigos traduzidos e gravados com sucesso!`);
-      if (selectedProductForTranslation && selectedCodes.has(selectedProductForTranslation.codigo)) {
-        handleSelectProductForTranslation(selectedProductForTranslation);
-      }
+      onSuccess(`${successCount} de ${reviewItems.length} traduções revistas e gravadas no ZoneSoft com sucesso!`);
+      setShowReviewPanel(false);
+      fetchProducts();
     } catch (err) {
-      alert('Erro durante a tradução em lote.');
+      alert('Erro ao gravar traduções revistas no banco de dados.');
     } finally {
-      setIsTranslating(false);
+      setIsSavingReviewItems(false);
     }
   };
 
@@ -1703,6 +1774,180 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   Gravar no ZoneSoft (QR Sync)
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Translation Review & Preview Panel Overlay */}
+      {showReviewPanel && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 animate-in fade-in zoom-in duration-150">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-600 p-2.5 rounded-xl shadow-md">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    Painel de Pré-Visualização e Revisão de Traduções
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Inspeção prévia: altere ou ajuste qualquer termo gerado antes de gravar no banco de dados SQL Server do ZoneSoft.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowReviewPanel(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+                title="Fechar revisão sem gravar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Toolbar & Filters */}
+            <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3 flex-1 max-w-md">
+                <div className="relative w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por código, termo original ou tradução..."
+                    value={reviewSearchTerm}
+                    onChange={(e) => setReviewSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-600">Filtrar por Tipo:</span>
+                <select
+                  value={reviewFilterType}
+                  onChange={(e) => setReviewFilterType(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700"
+                >
+                  <option value="all">Todos os Tipos ({reviewItems.length})</option>
+                  <option value="artigo">Artigos / Produtos ({reviewItems.filter(i => i.type === 'artigo').length})</option>
+                  <option value="familia">Famílias ({reviewItems.filter(i => i.type === 'familia').length})</option>
+                  <option value="seccao">Secções / Menus ({reviewItems.filter(i => i.type === 'seccao').length})</option>
+                  <option value="opcao">Opções / Complementos ({reviewItems.filter(i => i.type === 'opcao').length})</option>
+                  <option value="termo_geral">Termos Gerais ({reviewItems.filter(i => i.type === 'termo_geral').length})</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Language Selector Bar inside Review Panel */}
+            <div className="bg-indigo-50/70 border-b border-indigo-100 px-6 py-2 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-indigo-950">Idiomas em Revisão:</span>
+                {Array.from(selectedLangCodes).map(code => (
+                  <span key={code} className="px-2 py-0.5 bg-white border border-indigo-200 rounded text-indigo-900 font-bold font-mono uppercase">
+                    {code === 'gb' ? '🇬🇧 EN' : code === 'de' ? '🇩🇪 DE' : code === 'es' ? '🇪🇸 ES' : code === 'fr' ? '🇫🇷 FR' : code === 'it' ? '🇮🇹 IT' : code.toUpperCase()}
+                  </span>
+                ))}
+              </div>
+              <span className="text-slate-500 font-medium">
+                Total de <strong className="text-indigo-900">{reviewItems.length}</strong> registos de tradução a rever
+              </span>
+            </div>
+
+            {/* Items Review Table */}
+            <div className="flex-1 overflow-auto p-6 bg-slate-100/50">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold sticky top-0 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3 w-24">Tipo</th>
+                      <th className="px-4 py-3">Termo Original (PT)</th>
+                      {Array.from(selectedLangCodes).map(code => (
+                        <th key={code} className="px-4 py-3 min-w-[200px]">
+                          {code === 'gb' ? '🇬🇧 Inglês' : code === 'de' ? '🇩🇪 Alemão' : code === 'es' ? '🇪🇸 Espanhol' : code === 'fr' ? '🇫🇷 Francês' : code === 'it' ? '🇮🇹 Italiano' : code.toUpperCase()}
+                        </th>
+                      ))}
+                      <th className="px-4 py-3 w-28 text-center">Origem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {reviewItems
+                      .filter(item => {
+                        const matchesSearch = !reviewSearchTerm ||
+                          item.originalText.toLowerCase().includes(reviewSearchTerm.toLowerCase()) ||
+                          (item.code && item.code.toString().includes(reviewSearchTerm)) ||
+                          Object.values(item.translations).some(t => t.produto.toLowerCase().includes(reviewSearchTerm.toLowerCase()));
+                        const matchesType = reviewFilterType === 'all' || item.type === reviewFilterType;
+                        return matchesSearch && matchesType;
+                      })
+                      .map(item => (
+                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase border ${
+                              item.type === 'artigo' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' :
+                              item.type === 'familia' ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                              item.type === 'seccao' ? 'bg-sky-50 border-sky-200 text-sky-900' :
+                              'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            }`}>
+                              {item.typeLabel}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-900">
+                            {item.code ? <span className="text-slate-400 font-mono text-[11px] mr-1.5">#{item.code}</span> : null}
+                            {item.originalText}
+                          </td>
+                          {Array.from(selectedLangCodes).map(code => {
+                            const cKey = code.toUpperCase();
+                            const val = item.translations[cKey]?.produto || item.translations[code.toLowerCase()]?.produto || '';
+                            return (
+                              <td key={code} className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  value={val}
+                                  onChange={(e) => handleUpdateReviewItemTranslation(item.id, cKey, e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 text-xs shadow-2xs"
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              item.source === 'dicionario'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                            }`}>
+                              {item.source === 'dicionario' ? '🟢 Dicionário' : '🔵 IA Motor'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowReviewPanel(false)}
+                className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-slate-700 font-bold text-xs shadow-xs transition"
+              >
+                Cancelar sem Gravar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmAndSaveReviewItems}
+                disabled={isSavingReviewItems}
+                className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50"
+              >
+                {isSavingReviewItems ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {isSavingReviewItems ? 'A Gravar na Base de Dados...' : `Confirmar e Gravar no ZoneSoft (${reviewItems.length} Itens)`}
+              </button>
             </div>
           </div>
         </div>
