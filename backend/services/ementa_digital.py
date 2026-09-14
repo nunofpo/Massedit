@@ -1579,6 +1579,29 @@ CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
     "cafe americano": {
         "en": "Americano Coffee", "gb": "Americano Coffee", "es": "Café Americano", "fr": "Café Américain", "de": "Amerikanischer Kaffee", "it": "Caffè Americano", "nl": "Americano Koffie", "ru": "Кофе Американо"
     },
+    "iced americano": {
+        "en": "Iced Americano", "gb": "Iced Americano", "es": "Americano Helado", "fr": "Americano Glacé", "de": "Iced Americano", "it": "Americano Freddo", "nl": "Iced Americano", "ru": "Айс Американо"
+    },
+    # "Expresso" é a grafia portuguesa de "espresso": sem estas entradas o motor
+    # online devolvia "Express" / "Macchiato Express".
+    "expresso": {
+        "en": "Espresso", "gb": "Espresso", "es": "Espresso", "fr": "Espresso", "de": "Espresso", "it": "Espresso", "nl": "Espresso", "ru": "Эспрессо"
+    },
+    "espresso": {
+        "en": "Espresso", "gb": "Espresso", "es": "Espresso", "fr": "Espresso", "de": "Espresso", "it": "Espresso", "nl": "Espresso", "ru": "Эспрессо"
+    },
+    "expresso duplo": {
+        "en": "Double Espresso", "gb": "Double Espresso", "es": "Espresso Doble", "fr": "Double Espresso", "de": "Doppelter Espresso", "it": "Espresso Doppio", "nl": "Dubbele Espresso", "ru": "Двойной Эспрессо"
+    },
+    "espresso duplo": {
+        "en": "Double Espresso", "gb": "Double Espresso", "es": "Espresso Doble", "fr": "Double Espresso", "de": "Doppelter Espresso", "it": "Espresso Doppio", "nl": "Dubbele Espresso", "ru": "Двойной Эспрессо"
+    },
+    "expresso macchiato": {
+        "en": "Espresso Macchiato", "gb": "Espresso Macchiato", "es": "Espresso Macchiato", "fr": "Espresso Macchiato", "de": "Espresso Macchiato", "it": "Espresso Macchiato", "nl": "Espresso Macchiato", "ru": "Эспрессо Макиато"
+    },
+    "espresso macchiato": {
+        "en": "Espresso Macchiato", "gb": "Espresso Macchiato", "es": "Espresso Macchiato", "fr": "Espresso Macchiato", "de": "Espresso Macchiato", "it": "Espresso Macchiato", "nl": "Espresso Macchiato", "ru": "Эспрессо Макиато"
+    },
     "latte": {
         "en": "Caffè Latte", "gb": "Caffè Latte", "es": "Café con Leche", "fr": "Café au Lait", "de": "Caffè Latte", "it": "Caffè Latte", "nl": "Caffè Latte", "ru": "Кофе Латте"
     },
@@ -2121,6 +2144,34 @@ CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
         "fr": "Pancakes",
         "de": "Pfannkuchen",
         "it": "Pancake"
+    },
+    # Pratos compostos desta ementa: sem entrada propria o motor online traduzia
+    # "Panqueca Bacon" para "Frittella Di Pancetta" (IT) e "Crepe Au Bacon" (FR).
+    "panqueca bacon": {
+        "en": "Bacon Pancake", "gb": "Bacon Pancake", "es": "Tortita con Bacon", "fr": "Pancake au Bacon", "de": "Speck-Pfannkuchen", "it": "Pancake al Bacon"
+    },
+    "panqueca frutos vermelhos": {
+        "en": "Red Berry Pancake", "gb": "Red Berry Pancake", "es": "Tortita de Frutos Rojos", "fr": "Pancake aux Fruits Rouges", "de": "Beeren-Pfannkuchen", "it": "Pancake ai Frutti di Bosco"
+    },
+    "panqueca nutella": {
+        "en": "Nutella Pancake", "gb": "Nutella Pancake", "es": "Tortita de Nutella", "fr": "Pancake au Nutella", "de": "Nutella-Pfannkuchen", "it": "Pancake alla Nutella"
+    },
+    # "Eggs Benedict" e nome proprio de prato: nao se traduz "Benedict".
+    "benedict de salmao": {
+        "en": "Salmon Eggs Benedict", "gb": "Salmon Eggs Benedict", "es": "Huevos Benedict con Salmón", "fr": "Œufs Bénédicte au Saumon", "de": "Eggs Benedict mit Lachs", "it": "Uova alla Benedict con Salmone"
+    },
+    "benedict de bacon": {
+        "en": "Bacon Eggs Benedict", "gb": "Bacon Eggs Benedict", "es": "Huevos Benedict con Bacon", "fr": "Œufs Bénédicte au Bacon", "de": "Eggs Benedict mit Speck", "it": "Uova alla Benedict con Bacon"
+    },
+    "benedict vegetariano": {
+        "en": "Vegetarian Eggs Benedict", "gb": "Vegetarian Eggs Benedict", "es": "Huevos Benedict Vegetarianos", "fr": "Œufs Bénédicte Végétariens", "de": "Vegetarische Eggs Benedict", "it": "Uova alla Benedict Vegetariane"
+    },
+    # Especialidade portuguesa: mantem o nome original, com glosa em DE/FR.
+    "pastel de nata": {
+        "en": "Pastel de Nata", "gb": "Pastel de Nata", "es": "Pastel de Nata", "fr": "Pastel de Nata", "de": "Pastel de Nata", "it": "Pastel de Nata"
+    },
+    "pasteis de nata": {
+        "en": "Pastéis de Nata", "gb": "Pastéis de Nata", "es": "Pastéis de Nata", "fr": "Pastéis de Nata", "de": "Pastéis de Nata", "it": "Pastéis de Nata"
     },
     "garrafa": {
         "en": "Bottle", "gb": "Bottle",
