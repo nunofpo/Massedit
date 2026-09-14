@@ -1528,6 +1528,111 @@ DEFAULT_LANGUAGES = [
 
 # Dicionário gastronómico português especializado para restauração
 CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
+    # Termos de estrutura de menu, categorias e secções gerais
+    "outro": {
+        "en": "Others", "gb": "Others", "es": "Otros", "fr": "Autres", "de": "Sonstiges", "it": "Altri", "nl": "Overige", "ru": "Другое"
+    },
+    "outros": {
+        "en": "Others", "gb": "Others", "es": "Otros", "fr": "Autres", "de": "Sonstiges", "it": "Altri", "nl": "Overige", "ru": "Другое"
+    },
+    "geral": {
+        "en": "General", "gb": "General", "es": "General", "fr": "Général", "de": "Allgemein", "it": "Generale", "nl": "Algemeen", "ru": "Общий"
+    },
+    "entradas": {
+        "en": "Starters", "gb": "Starters", "es": "Entrantes", "fr": "Entrées", "de": "Vorspeisen", "it": "Antipasti", "nl": "Voorgerechten", "ru": "Закуски"
+    },
+    "entrada": {
+        "en": "Starter", "gb": "Starter", "es": "Entrante", "fr": "Entrée", "de": "Vorspeise", "it": "Antipasto", "nl": "Voorgerecht", "ru": "Закуска"
+    },
+    "pratos principais": {
+        "en": "Main Courses", "gb": "Main Courses", "es": "Platos Principales", "fr": "Plats Principaux", "de": "Hauptgerichte", "it": "Piatti Principali", "nl": "Hoofdgerechten", "ru": "Основные блюда"
+    },
+    "prato principal": {
+        "en": "Main Course", "gb": "Main Course", "es": "Plato Principal", "fr": "Plat Principal", "de": "Hauptgericht", "it": "Piatto Principale", "nl": "Hoofdgerecht", "ru": "Основное блюдо"
+    },
+    "pratos": {
+        "en": "Dishes", "gb": "Dishes", "es": "Platos", "fr": "Plats", "de": "Gerichte", "it": "Piatti", "nl": "Gerechten", "ru": "Блюда"
+    },
+    "sobremesas": {
+        "en": "Desserts", "gb": "Desserts", "es": "Postres", "fr": "Desserts", "de": "Nachspeisen", "it": "Dolci", "nl": "Nagerechten", "ru": "Десерты"
+    },
+    "sobremesa": {
+        "en": "Dessert", "gb": "Dessert", "es": "Postre", "fr": "Dessert", "de": "Nachspeise", "it": "Dolce", "nl": "Nagerecht", "ru": "Десерт"
+    },
+    "bebidas": {
+        "en": "Beverages", "gb": "Beverages", "es": "Bebidas", "fr": "Boissons", "de": "Getränke", "it": "Bevande", "nl": "Dranken", "ru": "Напитки"
+    },
+    "bebida": {
+        "en": "Beverage", "gb": "Beverage", "es": "Bebida", "fr": "Boisson", "de": "Getränk", "it": "Bevanda", "nl": "Drank", "ru": "Напиток"
+    },
+    "cafetaria": {
+        "en": "Coffee & Tea", "gb": "Coffee & Tea", "es": "Cafetería", "fr": "Café & Thé", "de": "Kaffee & Tee", "it": "Caffetteria", "nl": "Koffie & Thee", "ru": "Кофе и Чай"
+    },
+    "composicao de menus": {
+        "en": "Menu Composition", "gb": "Menu Composition", "es": "Composición de Menús", "fr": "Composition des Menus", "de": "Menüzusammenstellung", "it": "Composizione Menu", "nl": "Menusamenstelling", "ru": "Состав меню"
+    },
+
+    # Bebidas, Cafés, Chás e Sumos
+    "americano": {
+        "en": "Americano Coffee", "gb": "Americano Coffee", "es": "Café Americano", "fr": "Café Américain", "de": "Amerikanischer Kaffee", "it": "Caffè Americano", "nl": "Americano Koffie", "ru": "Кофе Американо"
+    },
+    "cafe americano": {
+        "en": "Americano Coffee", "gb": "Americano Coffee", "es": "Café Americano", "fr": "Café Américain", "de": "Amerikanischer Kaffee", "it": "Caffè Americano", "nl": "Americano Koffie", "ru": "Кофе Американо"
+    },
+    "latte": {
+        "en": "Caffè Latte", "gb": "Caffè Latte", "es": "Café con Leche", "fr": "Café au Lait", "de": "Caffè Latte", "it": "Caffè Latte", "nl": "Caffè Latte", "ru": "Кофе Латте"
+    },
+    "cappuccino": {
+        "en": "Cappuccino", "gb": "Cappuccino", "es": "Capuchino", "fr": "Cappuccino", "de": "Cappuccino", "it": "Cappuccino", "nl": "Cappuccino", "ru": "Капучино"
+    },
+    "chocolate quente": {
+        "en": "Hot Chocolate", "gb": "Hot Chocolate", "es": "Chocolate Caliente", "fr": "Chocolat Chaud", "de": "Heiße Schokolade", "it": "Cioccolata Calda", "nl": "Warme Chocolademelk", "ru": "Горячий Шоколад"
+    },
+    "cha 1 pessoa": {
+        "en": "Tea for 1 person", "gb": "Tea for 1 person", "es": "Té (1 persona)", "fr": "Thé (1 personne)", "de": "Tee (1 Person)", "it": "Tè (1 persona)", "nl": "Thee (1 person)", "ru": "Чай (1 персон)"
+    },
+    "cha": {
+        "en": "Tea", "gb": "Tea", "es": "Té", "fr": "Thé", "de": "Tee", "it": "Tè", "nl": "Thee", "ru": "Чай"
+    },
+    "sumo de laranja": {
+        "en": "Orange Juice", "gb": "Orange Juice", "es": "Zumo de Naranja", "fr": "Jus d'Orange", "de": "Orangensaft", "it": "Spremuta d'Arancia", "nl": "Sinaasappelsap", "ru": "Апельсиновый сок"
+    },
+    "sumo do dia": {
+        "en": "Juice of the Day", "gb": "Juice of the Day", "es": "Zumo del Día", "fr": "Jus du Jour", "de": "Saft des Tages", "it": "Spremuta del Giorno", "nl": "Sap van de Dag", "ru": "Сок дня"
+    },
+    "sumo": {
+        "en": "Juice", "gb": "Juice", "es": "Zumo", "fr": "Jus", "de": "Saft", "it": "Spremuta", "nl": "Sap", "ru": "Сок"
+    },
+    "sumos": {
+        "en": "Juices", "gb": "Juices", "es": "Zumos", "fr": "Jus", "de": "Säfte", "it": "Spremute", "nl": "Sappen", "ru": "Соки"
+    },
+    "mimosa": {
+        "en": "Mimosa Cocktail", "gb": "Mimosa Cocktail", "es": "Cóctel Mimosa", "fr": "Cocktail Mimosa", "de": "Mimosa Cocktail", "it": "Cocktail Mimosa", "nl": "Mimosa Cocktail", "ru": "Коктейль Мимоза"
+    },
+
+    # Abreviaturas e Artigos POS em formato reduzido (B = Burger / Baguete)
+    "b salmao": {
+        "en": "Salmon Burger / Baguette", "gb": "Salmon Burger / Baguette", "es": "Hamburguesa de Salmón", "fr": "Burger au Saumon", "de": "Lachs-Burger", "it": "Burger al Salmone", "nl": "Zalm Burger", "ru": "Бургер с лососем"
+    },
+    "b vegetariano": {
+        "en": "Vegetarian Burger / Baguette", "gb": "Vegetarian Burger / Baguette", "es": "Hamburguesa Vegetariana", "fr": "Burger Végétarien", "de": "Vegetarischer Burger", "it": "Burger Vegetariano", "nl": "Vegetarische Burger", "ru": "Вегетарианский бургер"
+    },
+    "b bacon": {
+        "en": "Bacon Burger / Baguette", "gb": "Bacon Burger / Baguette", "es": "Hamburguesa con Bacon", "fr": "Burger au Bacon", "de": "Bacon-Burger", "it": "Burger con Bacon", "nl": "Bacon Burger", "ru": "Бургер с беконом"
+    },
+    "b alice": {
+        "en": "Alice Special Burger", "gb": "Alice Special Burger", "es": "Hamburguesa Especial Alice", "fr": "Burger Spécial Alice", "de": "Alice Spezial-Burger", "it": "Burger Speciale Alice", "nl": "Alice Speciale Burger", "ru": "Специальный бургер Алиса"
+    },
+    "salmao": {
+        "en": "Salmon", "gb": "Salmon", "es": "Salmón", "fr": "Saumon", "de": "Lachs", "it": "Salmone", "nl": "Zalm", "ru": "Лосось"
+    },
+    "vegetariano": {
+        "en": "Vegetarian", "gb": "Vegetarian", "es": "Vegetariano", "fr": "Végétarien", "de": "Vegetarisch", "it": "Vegetariano", "nl": "Vegetarisch", "ru": "Вегетарианский"
+    },
+    "bacon": {
+        "en": "Bacon", "gb": "Bacon", "es": "Bacon", "fr": "Bacon", "de": "Speck / Bacon", "it": "Pancetta / Bacon", "nl": "Bacon", "ru": "Бекон"
+    },
+
     # Pratos e confeções completas
     "dourada assada": {
         "en": "Roasted Sea Bream", "gb": "Roasted Sea Bream",
@@ -1917,9 +2022,30 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
+    # Pré-processamento de texto abreviado típico de POS
+    query_text = text.strip()
+    query_text = re.sub(r'^[bB]\s+', 'Burger ', query_text)
+    query_text = re.sub(r'^[hH]\s+', 'Hamburguer ', query_text)
+    query_text = re.sub(r'\b1\s*p(?:essoa)?\b', '1 pessoa', query_text, flags=re.IGNORECASE)
+    query_text = re.sub(r'\bc/\b', 'com ', query_text, flags=re.IGNORECASE)
+    query_text = re.sub(r'\bs/\b', 'sem ', query_text, flags=re.IGNORECASE)
+
+    # Fix para palavras únicas genéricas de categorias (ex: "Outro", "Outros")
+    if query_text.lower() in ("outro", "outros"):
+        if t_lang == "de":
+            return "Sonstiges"
+        elif t_lang == "en":
+            return "Others"
+        elif t_lang == "es":
+            return "Otros"
+        elif t_lang == "fr":
+            return "Autres"
+        elif t_lang == "it":
+            return "Altri"
+
     # 1. Google Translate GTX Endpoint
     try:
-        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={s_lang}&tl={t_lang}&dt=t&q=" + urllib.parse.quote(text)
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={s_lang}&tl={t_lang}&dt=t&q=" + urllib.parse.quote(query_text)
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
@@ -1929,6 +2055,8 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
                     res_text = "".join([item[0] for item in data[0] if item and item[0]])
                     if res_text and res_text.strip():
                         res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        if t_lang == "de" and res_clean.islower() and len(res_clean) > 1:
+                            res_clean = res_clean.capitalize()
                         TRANSLATION_CACHE[cache_key] = res_clean
                         return res_clean
     except Exception:
@@ -1936,7 +2064,7 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
 
     # 2. MyMemory Translation API
     try:
-        url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode({"q": text, "langpair": f"{s_lang}|{t_lang}"})
+        url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode({"q": query_text, "langpair": f"{s_lang}|{t_lang}"})
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
@@ -1945,6 +2073,8 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
                     res_text = data["responseData"]["translatedText"]
                     if res_text and res_text.strip() and not res_text.startswith("MYMEMORY WARNING"):
                         res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        if t_lang == "de" and res_clean.islower() and len(res_clean) > 1:
+                            res_clean = res_clean.capitalize()
                         TRANSLATION_CACHE[cache_key] = res_clean
                         return res_clean
     except Exception:
