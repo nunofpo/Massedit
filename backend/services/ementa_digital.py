@@ -2719,9 +2719,13 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             if row and row[0] is not None:
                 prod_familia = int(row[0])
 
+        # Um único endereço por produto. Confirmado no ZoneSoft nativo (diálogo
+        # "Produto para Secção de Ementa", artigo #131 nos 5 idiomas): a tradução
+        # é lida em id2 = família da ementa digital. Escrever também em id2=0 era
+        # uma segurança que só duplicava as linhas — 705 de cada vez.
+        # Produtos fora da ementa digital ficam em id2=0, que é o que prod_familia
+        # já vale nesse caso.
         id2_targets = [prod_familia]
-        if prod_familia != 0:
-            id2_targets.append(0)
 
         written_count = 0
         def _upsert_row(c_code: str, typeid: int, target_id2: int, field_name: str, value_text: str):
