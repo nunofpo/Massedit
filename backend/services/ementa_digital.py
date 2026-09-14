@@ -1966,13 +1966,302 @@ CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
     "alho": {"en": "garlic", "gb": "garlic", "es": "ajo", "fr": "ail", "de": "Knoblauch"},
     "cebola": {"en": "onion", "gb": "onion", "es": "cebolla", "fr": "oignon", "de": "Zwiebel"},
     "tomate": {"en": "tomato", "gb": "tomato", "es": "tomate", "fr": "tomate", "de": "Tomate"},
-    "marisco": {"en": "seafood", "gb": "seafood", "es": "marisco", "fr": "fruits de mer", "de": "Meeresfrüchte"},
-    "ameijoas": {"en": "clams", "gb": "clams", "es": "almejas", "fr": "palourdes", "de": "Muscheln"},
-    "vinho da casa": {"en": "house wine", "gb": "house wine", "es": "vino de la casa", "fr": "vin de la maison", "de": "Hauswein"},
-    "sobremesa do dia": {"en": "dessert of the day", "gb": "dessert of the day", "es": "postre del día", "fr": "dessert du jour", "de": "Dessert des Tages"},
-    "pao": {"en": "bread", "gb": "bread", "es": "pan", "fr": "pain", "de": "Brot"},
-    "manteiga": {"en": "butter", "gb": "butter", "es": "mantequilla", "fr": "beurre", "de": "Butter"},
-    "azeitonas": {"en": "olives", "gb": "olives", "es": "aceitunas", "fr": "olives", "de": "Oliven"},
+    "marisco": {"en": "seafood", "gb": "seafood", "es": "marisco", "fr": "fruits de mer", "de": "Meeresfrüchte", "it": "frutti di mare"},
+    "ameijoas": {"en": "clams", "gb": "clams", "es": "almejas", "fr": "palourdes", "de": "Muscheln", "it": "vongole"},
+    "vinho da casa": {"en": "house wine", "gb": "house wine", "es": "vino de la casa", "fr": "vin de la maison", "de": "Hauswein", "it": "vino della casa"},
+    "sobremesa do dia": {"en": "dessert of the day", "gb": "dessert of the day", "es": "postre del día", "fr": "dessert du jour", "de": "Dessert des Tages", "it": "dolce del giorno"},
+    "pao": {"en": "bread", "gb": "bread", "es": "pan", "fr": "pain", "de": "Brot", "it": "pane"},
+    "manteiga": {"en": "butter", "gb": "butter", "es": "mantequilla", "fr": "beurre", "de": "Butter", "it": "burro"},
+    "azeitonas": {"en": "olives", "gb": "olives", "es": "aceitunas", "fr": "olives", "de": "Oliven", "it": "olive"},
+
+    # Artigos de Pastelaria, Cafetaria, Brunch, Bebidas e Sobremesas
+    "croissant de amendoa": {
+        "en": "Almond Croissant", "gb": "Almond Croissant",
+        "es": "Croissant de almendra",
+        "fr": "Croissant aux amandes",
+        "de": "Mandelcroissant",
+        "it": "Croissant alle mandorle"
+    },
+    "croissant de amêndoa": {
+        "en": "Almond Croissant", "gb": "Almond Croissant",
+        "es": "Croissant de almendra",
+        "fr": "Croissant aux amandes",
+        "de": "Mandelcroissant",
+        "it": "Croissant alle mandorle"
+    },
+    "chai latte": {
+        "en": "Chai Latte", "gb": "Chai Latte",
+        "es": "Chai Latte",
+        "fr": "Chai Latte",
+        "de": "Chai Latte",
+        "it": "Chai Latte"
+    },
+    "iced morango matcha": {
+        "en": "Iced Strawberry Matcha", "gb": "Iced Strawberry Matcha",
+        "es": "Matcha helado con fresa",
+        "fr": "Matcha glacé à la fraise",
+        "de": "Iced Erdbeer-Matcha",
+        "it": "Matcha freddo alla fragola"
+    },
+    "torrada com ovos mexidos": {
+        "en": "Toast with Scrambled Eggs", "gb": "Toast with Scrambled Eggs",
+        "es": "Tostada con huevos revueltos",
+        "fr": "Toast aux œufs brouillés",
+        "de": "Toast mit Rührei",
+        "it": "Toast con uova strapazzate"
+    },
+    "cerveja garrafa": {
+        "en": "Bottled Beer", "gb": "Bottled Beer",
+        "es": "Cerveza en botella",
+        "fr": "Bière en bouteille",
+        "de": "Flaschenbier",
+        "it": "Birra in bottiglia"
+    },
+    "panqueca alice": {
+        "en": "Alice Pancake", "gb": "Alice Pancake",
+        "es": "Pancake Alice",
+        "fr": "Pancake Alice",
+        "de": "Alice Pfannkuchen",
+        "it": "Pancake Alice"
+    },
+    "bagel de bacon": {
+        "en": "Bacon Bagel", "gb": "Bacon Bagel",
+        "es": "Bagel de bacon",
+        "fr": "Bagel au bacon",
+        "de": "Bacon-Bagel",
+        "it": "Bagel al bacon"
+    },
+    "ice tea manga": {
+        "en": "Mango Ice Tea", "gb": "Mango Ice Tea",
+        "es": "Té helado de mango",
+        "fr": "Thé glacé à la mangue",
+        "de": "Mango-Eistee",
+        "it": "Tè freddo al mango"
+    },
+    "ovos mexidos": {
+        "en": "Scrambled Eggs", "gb": "Scrambled Eggs",
+        "es": "Huevos revueltos",
+        "fr": "Œufs brouillés",
+        "de": "Rührei",
+        "it": "Uova strapazzate"
+    },
+    "ovo mexido": {
+        "en": "Scrambled Egg", "gb": "Scrambled Egg",
+        "es": "Huevo revuelto",
+        "fr": "Œuf brouillé",
+        "de": "Rührei",
+        "it": "Uovo strapazzato"
+    },
+    "torrada": {
+        "en": "Toast", "gb": "Toast",
+        "es": "Tostada",
+        "fr": "Toast",
+        "de": "Toast",
+        "it": "Toast"
+    },
+    "torradas": {
+        "en": "Toasts", "gb": "Toasts",
+        "es": "Tostadas",
+        "fr": "Toasts",
+        "de": "Toasts",
+        "it": "Toast"
+    },
+    "amendoa": {
+        "en": "Almond", "gb": "Almond",
+        "es": "Almendra",
+        "fr": "Amande",
+        "de": "Mandel",
+        "it": "Mandorla"
+    },
+    "amêndoa": {
+        "en": "Almond", "gb": "Almond",
+        "es": "Almendra",
+        "fr": "Amande",
+        "de": "Mandel",
+        "it": "Mandorla"
+    },
+    "morango": {
+        "en": "Strawberry", "gb": "Strawberry",
+        "es": "Fresa",
+        "fr": "Fraise",
+        "de": "Erdbeere",
+        "it": "Fragola"
+    },
+    "massa mae": {
+        "en": "Sourdough", "gb": "Sourdough",
+        "es": "Masa madre",
+        "fr": "Levain",
+        "de": "Sauerteig",
+        "it": "Lievito madre"
+    },
+    "massa mãe": {
+        "en": "Sourdough", "gb": "Sourdough",
+        "es": "Masa madre",
+        "fr": "Levain",
+        "de": "Sauerteig",
+        "it": "Lievito madre"
+    },
+    "pao de massa mae": {
+        "en": "Sourdough Bread", "gb": "Sourdough Bread",
+        "es": "Pan de masa madre",
+        "fr": "Pain au levain",
+        "de": "Sauerteigbrot",
+        "it": "Pane al lievito madre"
+    },
+    "panqueca": {
+        "en": "Pancake", "gb": "Pancake",
+        "es": "Tortita",
+        "fr": "Pancake",
+        "de": "Pfannkuchen",
+        "it": "Pancake"
+    },
+    "panquecas": {
+        "en": "Pancakes", "gb": "Pancakes",
+        "es": "Tortitas",
+        "fr": "Pancakes",
+        "de": "Pfannkuchen",
+        "it": "Pancake"
+    },
+    "garrafa": {
+        "en": "Bottle", "gb": "Bottle",
+        "es": "Botella",
+        "fr": "Bouteille",
+        "de": "Flasche",
+        "it": "Bottiglia"
+    },
+    "sumo": {
+        "en": "Juice", "gb": "Juice",
+        "es": "Zumo",
+        "fr": "Jus",
+        "de": "Saft",
+        "it": "Succo"
+    },
+    "sumo do dia": {
+        "en": "Juice of the Day", "gb": "Juice of the Day",
+        "es": "Zumo del día",
+        "fr": "Jus du jour",
+        "de": "Saft des Tages",
+        "it": "Succo del giorno"
+    },
+    "sumo natural": {
+        "en": "Fresh Juice", "gb": "Fresh Juice",
+        "es": "Zumo natural",
+        "fr": "Jus frais",
+        "de": "Frischer Saft",
+        "it": "Spremuta fresca"
+    },
+    "frutos vermelhos": {
+        "en": "Red Berries", "gb": "Red Berries",
+        "es": "Frutos rojos",
+        "fr": "Fruits rouges",
+        "de": "Beeren",
+        "it": "Frutti di bosco"
+    },
+    "manga": {
+        "en": "Mango", "gb": "Mango",
+        "es": "Mango",
+        "fr": "Mangue",
+        "de": "Mango",
+        "it": "Mango"
+    },
+    "cerveja": {
+        "en": "Beer", "gb": "Beer",
+        "es": "Cerveza",
+        "fr": "Bière",
+        "de": "Bier",
+        "it": "Birra"
+    },
+    "sidra": {
+        "en": "Cider", "gb": "Cider",
+        "es": "Sidra",
+        "fr": "Cidre",
+        "de": "Cider",
+        "it": "Sidro"
+    },
+    "cha": {
+        "en": "Tea", "gb": "Tea",
+        "es": "Té",
+        "fr": "Thé",
+        "de": "Tee",
+        "it": "Tè"
+    },
+    "ice tea": {
+        "en": "Ice Tea", "gb": "Ice Tea",
+        "es": "Té helado",
+        "fr": "Thé glacé",
+        "de": "Eistee",
+        "it": "Tè freddo"
+    },
+    "iced tea": {
+        "en": "Ice Tea", "gb": "Ice Tea",
+        "es": "Té helado",
+        "fr": "Thé glacé",
+        "de": "Eistee",
+        "it": "Tè freddo"
+    },
+    "cafe": {
+        "en": "Coffee", "gb": "Coffee",
+        "es": "Café",
+        "fr": "Café",
+        "de": "Kaffee",
+        "it": "Caffè"
+    },
+    "descafeinado": {
+        "en": "Decaf Coffee", "gb": "Decaf Coffee",
+        "es": "Descafeinado",
+        "fr": "Décaféiné",
+        "de": "Entkoffeinierter Kaffee",
+        "it": "Decaffeinato"
+    },
+    "galao": {
+        "en": "Latte", "gb": "Latte",
+        "es": "Café con leche",
+        "fr": "Grand café au lait",
+        "de": "Milchkaffee",
+        "it": "Caffellatte"
+    },
+    "meia de leite": {
+        "en": "White Coffee", "gb": "White Coffee",
+        "es": "Café con leche",
+        "fr": "Café au lait",
+        "de": "Milchkaffee",
+        "it": "Caffè con latte"
+    },
+    "chocolate quente": {
+        "en": "Hot Chocolate", "gb": "Hot Chocolate",
+        "es": "Chocolate caliente",
+        "fr": "Chocolat chaud",
+        "de": "Heiße Schokolade",
+        "it": "Cioccolata calda"
+    },
+    "abacate": {
+        "en": "Avocado", "gb": "Avocado",
+        "es": "Aguacate",
+        "fr": "Avocat",
+        "de": "Avocado",
+        "it": "Avocado"
+    },
+    "bacon": {
+        "en": "Bacon", "gb": "Bacon",
+        "es": "Bacon",
+        "fr": "Bacon",
+        "de": "Speck",
+        "it": "Bacon"
+    },
+    "cogumelos": {
+        "en": "Mushrooms", "gb": "Mushrooms",
+        "es": "Champiñones",
+        "fr": "Champignons",
+        "de": "Pilze",
+        "it": "Funghi"
+    },
+    "espinafres": {
+        "en": "Spinach", "gb": "Spinach",
+        "es": "Espinacas",
+        "fr": "Épinards",
+        "de": "Spinat",
+        "it": "Spinaci"
+    }
 }
 
 
@@ -1981,6 +2270,87 @@ def _clean_key(text: str) -> str:
     import unicodedata
     n = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9 ]', ' ', n).strip()
+
+
+def _lookup_culinary_dictionary(text: str, target_lang: str) -> Optional[str]:
+    """Procura uma tradução exata ou normalizada no dicionário gastronómico local."""
+    if not text or not text.strip():
+        return None
+    k = _clean_key(text)
+    entry = CULINARY_DICTIONARY.get(k)
+    if entry:
+        val = _get_lang_val(entry, target_lang)
+        if val:
+            if text.isupper() and len(text) > 1:
+                return val.upper()
+            if text[0].isupper() and not val[0].isupper():
+                return val.capitalize()
+            return val
+    return None
+
+
+def _post_process_translation(translated_text: str, target_lang: str, original_text: str = "") -> str:
+    """
+    Pós-processa a tradução garantindo substituição de termos portugueses remanescentes
+    e corrigindo combinações gramaticais.
+    """
+    if not translated_text:
+        return translated_text or ""
+
+    t_lang = "en" if target_lang.lower() in ("gb", "en") else target_lang.lower()
+    res = translated_text
+
+    replacements_pt = [
+        ("croissant de amêndoa", {"en": "Almond Croissant", "es": "Croissant de almendra", "fr": "Croissant aux amandes", "de": "Mandelcroissant", "it": "Croissant alle mandorle"}),
+        ("croissant de amendoa", {"en": "Almond Croissant", "es": "Croissant de almendra", "fr": "Croissant aux amandes", "de": "Mandelcroissant", "it": "Croissant alle mandorle"}),
+        ("iced morango matcha", {"en": "Iced Strawberry Matcha", "es": "Matcha helado con fresa", "fr": "Matcha glacé à la fraise", "de": "Iced Erdbeer-Matcha", "it": "Matcha freddo alla fragola"}),
+        ("ice tea manga", {"en": "Mango Ice Tea", "es": "Té helado de mango", "fr": "Thé glacé à la mangue", "de": "Mango-Eistee", "it": "Tè freddo al mango"}),
+        ("torrada com ovos mexidos", {"en": "Toast with Scrambled Eggs", "es": "Tostada con huevos revueltos", "fr": "Toast aux œufs brouillés", "de": "Toast mit Rührei", "it": "Toast con uova strapazzate"}),
+        ("cerveja garrafa", {"en": "Bottled Beer", "es": "Cerveza en botella", "fr": "Bière en bouteille", "de": "Flaschenbier", "it": "Birra in bottiglia"}),
+        ("ovos mexidos", {"en": "scrambled eggs", "es": "huevos revueltos", "fr": "œufs brouillés", "de": "Rührei", "it": "uova strapazzate"}),
+        ("ovo mexido", {"en": "scrambled egg", "es": "huevo revuelto", "fr": "œuf brouillé", "de": "Rührei", "it": "uovo strapazzato"}),
+        ("torrada com", {"en": "Toast with", "es": "Tostada con", "fr": "Toast aux", "de": "Toast mit", "it": "Toast con"}),
+        ("torrada", {"en": "toast", "es": "tostada", "fr": "toast", "de": "Toast", "it": "toast"}),
+        ("torradas", {"en": "toasts", "es": "tostadas", "fr": "toasts", "de": "Toasts", "it": "toast"}),
+        ("amêndoa", {"en": "almond", "es": "almendra", "fr": "amande", "de": "Mandel", "it": "mandorla"}),
+        ("amendoa", {"en": "almond", "es": "almendra", "fr": "amande", "de": "Mandel", "it": "mandorla"}),
+        ("morango", {"en": "strawberry", "es": "fresa", "fr": "fraise", "de": "Erdbeere", "it": "fragola"}),
+        ("massa mãe", {"en": "sourdough", "es": "masa madre", "fr": "levain", "de": "Sauerteig", "it": "lievito madre"}),
+        ("massa mae", {"en": "sourdough", "es": "masa madre", "fr": "levain", "de": "Sauerteig", "it": "lievito madre"}),
+        ("panqueca", {"en": "pancake", "es": "tortita", "fr": "pancake", "de": "Pfannkuchen", "it": "pancake"}),
+        ("panquecas", {"en": "pancakes", "es": "tortitas", "fr": "pancakes", "de": "Pfannkuchen", "it": "pancake"}),
+        ("garrafa", {"en": "bottle", "es": "botella", "fr": "bouteille", "de": "Flasche", "it": "bottiglia"}),
+        ("sumo do dia", {"en": "Juice of the day", "es": "Zumo del día", "fr": "Jus du jour", "de": "Saft des Tages", "it": "Succo del giorno"}),
+        ("sumo natural", {"en": "Fresh juice", "es": "Zumo natural", "fr": "Jus frais", "de": "Frischer Saft", "it": "Spremuta fresca"}),
+        ("sumo", {"en": "juice", "es": "zumo", "fr": "jus", "de": "Saft", "it": "succo"}),
+        ("frutos vermelhos", {"en": "red berries", "es": "frutos rojos", "fr": "fruits rouges", "de": "Beeren", "it": "frutti di bosco"}),
+    ]
+
+    for pt_term, target_map in replacements_pt:
+        target_val = target_map.get(t_lang) or target_map.get("en")
+        if target_val:
+            pattern = re.compile(r'\b' + re.escape(pt_term) + r'\b', flags=re.IGNORECASE)
+            if pattern.search(res):
+                res = pattern.sub(target_val, res)
+
+    if t_lang in ("en", "gb"):
+        res = re.sub(r'\bToast with with\b', 'Toast with', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bCroissant of Almond\b', 'Almond Croissant', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bCroissant of almond\b', 'Almond Croissant', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bTea of Mango\b', 'Mango Ice Tea', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bBeer Bottle\b', 'Bottled Beer', res, flags=re.IGNORECASE)
+    elif t_lang == "es":
+        res = re.sub(r'\bChai Café con leche\b', 'Chai Latte', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bTorrada con\b', 'Tostada con', res, flags=re.IGNORECASE)
+    elif t_lang == "fr":
+        res = re.sub(r'\bCroissant de amande\b', 'Croissant aux amandes', res, flags=re.IGNORECASE)
+    elif t_lang == "de":
+        res = re.sub(r'\bToast mit Ovos Mexidos\b', 'Toast mit Rührei', res, flags=re.IGNORECASE)
+
+    if original_text and original_text[0].isupper() and len(res) > 0:
+        res = res[0].upper() + res[1:]
+
+    return res
 
 
 def _build_accent_regex(term: str) -> str:
@@ -2022,7 +2392,6 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
-    # Pré-processamento de texto abreviado típico de POS
     query_text = text.strip()
     query_text = re.sub(r'^[bB]\s+', 'Burger ', query_text)
     query_text = re.sub(r'^[hH]\s+', 'Hamburguer ', query_text)
@@ -2030,7 +2399,6 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
     query_text = re.sub(r'\bc/\b', 'com ', query_text, flags=re.IGNORECASE)
     query_text = re.sub(r'\bs/\b', 'sem ', query_text, flags=re.IGNORECASE)
 
-    # Fix para palavras únicas genéricas de categorias (ex: "Outro", "Outros")
     if query_text.lower() in ("outro", "outros"):
         if t_lang == "de":
             return "Sonstiges"
@@ -2104,28 +2472,26 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
         tr_map: Dict[str, str] = {}
         desc_map: Dict[str, str] = {}
 
-        # 1. Verificar correspondência exata no dicionário gastronómico local
         dict_entry = CULINARY_DICTIONARY.get(cleaned)
 
         for lang in target_langs:
             translated_val = None
 
-            # Tentar obter do dicionário gastronómico se for um termo/prato fixo bem definido
-            if dict_entry:
-                translated_val = _get_lang_val(dict_entry, lang)
-                if "desc" in dict_entry and isinstance(dict_entry["desc"], dict):
-                    d_val = _get_lang_val(dict_entry["desc"], lang)
-                    if d_val:
-                        desc_map[lang] = d_val
-                        if lang in ("en", "gb"):
-                            desc_map["gb"] = d_val
-                            desc_map["en"] = d_val
+            # 1. Procura no dicionário gastronómico local (normalizado)
+            translated_val = _lookup_culinary_dictionary(raw, lang)
+            if dict_entry and "desc" in dict_entry and isinstance(dict_entry["desc"], dict):
+                d_val = _get_lang_val(dict_entry["desc"], lang)
+                if d_val:
+                    desc_map[lang] = d_val
+                    if lang in ("en", "gb"):
+                        desc_map["gb"] = d_val
+                        desc_map["en"] = d_val
 
-            # Se não houver tradução estática exata no dicionário, obter via motor de tradução online (Google Translate / MyMemory)
+            # 2. Se não houver tradução estática exata no dicionário, obter via motor de tradução online
             if not translated_val:
                 translated_val = _fetch_online_translation(raw, lang, source_lang=req.source_lang or "pt")
 
-            # Fallback final: heurística local com substituição por regex usando CULINARY_DICTIONARY
+            # 3. Fallback final: heurística local com substituição por regex usando CULINARY_DICTIONARY
             if not translated_val:
                 def replacer(match, target_lang=lang):
                     m_text = match.group(0)
@@ -2141,7 +2507,8 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
 
                 translated_val = combined_pattern.sub(replacer, raw)
 
-            final_text = translated_val or raw
+            # 4. Pós-processamento final de limpeza de termos não traduzidos
+            final_text = _post_process_translation(translated_val or raw, lang, original_text=raw)
             tr_map[lang] = final_text
             if lang in ("en", "gb"):
                 tr_map["gb"] = final_text
