@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
 
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
