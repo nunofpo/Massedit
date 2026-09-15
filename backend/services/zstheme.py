@@ -110,8 +110,10 @@ def transform_zstheme(
                 if fontcolor_el is not None and rule.get("new_font_color"):
                     fontcolor_el.text = rule["new_font_color"]
 
-        if rounding is not None and tag in ROUNDABLE_TAGS and el.find("Rounding") is None:
-            rounding_el = ET.SubElement(el, "Rounding")
+        if rounding is not None and tag in ROUNDABLE_TAGS:
+            rounding_el = el.find("Rounding")
+            if rounding_el is None:
+                rounding_el = ET.SubElement(el, "Rounding")
             rounding_el.text = str(rounding)
 
         for child in list(el):
