@@ -106,6 +106,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [generalTermsEdits, setGeneralTermsEdits] = useState<Record<string, Record<string, string>>>({});
   const [isLoadingGeneralTerms, setIsLoadingGeneralTerms] = useState<boolean>(false);
   const [isSavingGeneralTerms, setIsSavingGeneralTerms] = useState<boolean>(false);
+  const [isFixingBorders, setIsFixingBorders] = useState<boolean>(false);
 
   // Review & Preview Panel State
   const [showReviewPanel, setShowReviewPanel] = useState<boolean>(false);
@@ -540,6 +541,44 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       alert('Erro durante a geração da pré-visualização de traduções.');
     } finally {
       setIsTranslating(false);
+    }
+  };
+
+  // Batch Fix / Trim Image Borders for Selected Products or All Products
+  const handleBatchFixBorders = async (targetCodes?: number[]) => {
+    const codesToFix = targetCodes || Array.from(selectedCodes);
+    const isAll = !targetCodes && selectedCodes.size === 0;
+
+    const confirmMsg = isAll
+      ? 'Deseja analisar e otimizar todas as imagens da Ementa Digital (remover bordas cinzentas, aplicar fundo branco puro e limitar a 600x600 px)?'
+      : `Deseja analisar e remover bordas cinzentas das imagens dos ${codesToFix.length} artigos selecionados?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsFixingBorders(true);
+    try {
+      const res = await fetch('/api/ementa-digital/batch-fix-image-borders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cod_produtos: codesToFix.length > 0 ? codesToFix : null,
+          fit_square: false,
+          force_all: false
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onSuccess(data.message || `${data.fixed} imagens otimizadas com sucesso!`);
+        fetchProducts();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Falha ao processar imagens em lote.');
+      }
+    } catch (e: any) {
+      alert(`Erro de ligação: ${e.message}`);
+    } finally {
+      setIsFixingBorders(false);
     }
   };
 
@@ -1088,6 +1127,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       <option value="all">Todos os Artigos (POS + Ementa)</option>
                       <option value="with_ementa">Apenas Com Registo na Ementa Digital</option>
                       <option value="without_ementa">Apenas Sem Registo na Ementa</option>
+                      <option value="with_image">Apenas Com Imagem Cadastrada</option>
+                      <option value="without_image">Apenas Sem Imagem</option>
                     </select>
                   </div>
 
@@ -1303,21 +1344,53 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                   )}
 
                   {selectedCodes.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleBatchAutoTranslate}
-                      disabled={isTranslating}
-                      className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
-                      title={`Traduzir todos os ${selectedCodes.size} artigos selecionados na lista`}
-                    >
-                      {isTranslating ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      )}
-                      Traduzir {selectedCodes.size} em Lote
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleBatchAutoTranslate}
+                        disabled={isTranslating}
+                        className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        title={`Traduzir todos os ${selectedCodes.size} artigos selecionados na lista`}
+                      >
+                        {isTranslating ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                        <span>Traduzir {selectedCodes.size} em Lote</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBatchFixBorders()}
+                        disabled={isFixingBorders}
+                        className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        title={`Recortar bordas cinzentas e otimizar imagens dos ${selectedCodes.size} artigos selecionados`}
+                      >
+                        {isFixingBorders ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-3.5 h-3.5" />
+                        )}
+                        <span>Corrigir Bordas ({selectedCodes.size})</span>
+                      </button>
+                    </>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleBatchFixBorders()}
+                    disabled={isFixingBorders}
+                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                    title="Analisar e otimizar todas as imagens da ementa (remover bordas cinzentas / fundo branco / máx 600x600 px)"
+                  >
+                    {isFixingBorders ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>Otimizar Bordas Imagens</span>
+                  </button>
 
                   <button
                     type="button"

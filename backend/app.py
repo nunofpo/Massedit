@@ -55,7 +55,8 @@ from backend.services.ementa_digital import (
     auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
     save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules,
     get_structure_translations, save_structure_translations,
-    get_general_ui_terms, save_general_ui_terms
+    get_general_ui_terms, save_general_ui_terms,
+    detect_products_with_image_issues, batch_fix_product_image_borders
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -693,6 +694,29 @@ def set_product_image_url_endpoint(cod_produto: int, req: EmentaImageUrlRequest)
         "success": True,
         "message": message
     }
+
+
+class DetectImageIssuesRequest(BaseModel):
+    cod_produtos: Optional[List[int]] = None
+
+class BatchFixImageBordersRequest(BaseModel):
+    cod_produtos: Optional[List[int]] = None
+    fit_square: bool = False
+    force_all: bool = False
+
+@app.post("/api/ementa-digital/detect-image-issues")
+def detect_image_issues_endpoint(req: DetectImageIssuesRequest):
+    """Deteta imagens com bordas cinzentas, transparência não composta ou dimensões > 600x600 px."""
+    return detect_products_with_image_issues(req.cod_produtos)
+
+@app.post("/api/ementa-digital/batch-fix-image-borders")
+def batch_fix_image_borders_endpoint(req: BatchFixImageBordersRequest):
+    """Executa a deteção e correção de bordas em lote com fundo branco puro e ajuste máx 600x600 px."""
+    return batch_fix_product_image_borders(
+        cod_produtos=req.cod_produtos,
+        fit_square=req.fit_square,
+        force_all=req.force_all
+    )
 
 
 @app.delete("/api/ementa-digital/image/{cod_produto}")

@@ -474,6 +474,32 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
                 conditions.append("ed.cod_produto IS NULL")
             else:
                 conditions.append("1=1")
+        elif filter_req.has_ementa_filter == "with_image":
+            if has_ementa:
+                img_conds = []
+                if has_image_url_col:
+                    img_conds.append("(ed.image_url IS NOT NULL AND ed.image_url <> '')")
+                if has_image_col:
+                    img_conds.append("(ed.imagem IS NOT NULL AND DATALENGTH(ed.imagem) > 0)")
+                if img_conds:
+                    conditions.append(f"({' OR '.join(img_conds)})")
+                else:
+                    conditions.append("1=0")
+            else:
+                conditions.append("1=0")
+        elif filter_req.has_ementa_filter == "without_image":
+            if has_ementa:
+                no_img_conds = []
+                if has_image_url_col:
+                    no_img_conds.append("(ed.image_url IS NULL OR ed.image_url = '')")
+                if has_image_col:
+                    no_img_conds.append("(ed.imagem IS NULL OR DATALENGTH(ed.imagem) = 0)")
+                if no_img_conds:
+                    conditions.append(f"({' AND '.join(no_img_conds)})")
+                else:
+                    conditions.append("1=1")
+            else:
+                conditions.append("1=1")
 
         if filter_req.visivel_filter == "visible":
             if has_ementa:
@@ -1656,6 +1682,169 @@ def get_product_image_bytes(cod_produto: int) -> Tuple[Optional[bytes], Optional
         return None, None
     finally:
         conn.close()
+
+
+def detect_products_with_image_issues(
+    cod_produtos: Optional[List[int]] = None
+) -> Dict[str, Any]:
+    """
+    Deteta quais os artigos cujas imagens possuem bordas cinzentas, transparências não compostas ou dimensões > 600x600 px.
+    """
+    import io
+    from PIL import Image
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_produtos" not in schema:
+            return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "issues": [], "total_scanned": 0, "issue_count": 0}
+
+        if cod_produtos and len(cod_produtos) > 0:
+            placeholders = ",".join("?" for _ in cod_produtos)
+            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+        else:
+            cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+
+        prods = cursor.fetchall()
+        conn.close()
+
+        issues = []
+        for row in prods:
+            cod = int(row[0])
+            name = row[1] or f"Artigo {cod}"
+            url = row[2]
+
+            raw_bytes, mime = get_product_image_bytes(cod)
+            if not raw_bytes:
+                continue
+
+            try:
+                img = Image.open(io.BytesIO(raw_bytes))
+                w, h = img.size
+                reasons = []
+
+                if w > 600 or h > 600:
+                    reasons.append(f"Dimensão superior a 600x600 ({w}x{h} px)")
+
+                if img.mode not in ("RGB", "RGBA"):
+                    img_rgb = img.convert("RGB")
+                else:
+                    img_rgb = img
+
+                bg_color = img_rgb.getpixel((0, 0))
+                if isinstance(bg_color, tuple) and len(bg_color) >= 3:
+                    r, g, b = bg_color[:3]
+                    is_neutral = max(abs(r - g), abs(r - b), abs(g - b)) < 20
+                    if is_neutral and (r < 240 or r > 252):
+                        reasons.append(f"Borda neutra/cinzenta detetada (cor RGB: {r},{g},{b})")
+
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    reasons.append("Canal de transparência (deve ser composto em fundo branco puro)")
+
+                if reasons:
+                    issues.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "image_url": url,
+                        "reasons": reasons,
+                        "width": w,
+                        "height": h
+                    })
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "total_scanned": len(prods),
+            "issue_count": len(issues),
+            "issues": issues
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao detetar imagens: {str(e)}", "issues": [], "total_scanned": 0, "issue_count": 0}
+
+
+def batch_fix_product_image_borders(
+    cod_produtos: Optional[List[int]] = None,
+    fit_square: bool = False,
+    force_all: bool = False
+) -> Dict[str, Any]:
+    """
+    Varre os artigos da ementa digital que possuem imagem, deteta bordas cinzentas / artefactos / dimensões excessivas
+    e re-processa com ajuste automático (remoção de bordas cinzentas, fundo branco puro para transparências, máx 600x600 px).
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_produtos" not in schema:
+            return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "total": 0, "fixed": 0, "details": []}
+
+        if cod_produtos and len(cod_produtos) > 0:
+            placeholders = ",".join("?" for _ in cod_produtos)
+            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+        else:
+            cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+
+        prods = cursor.fetchall()
+        conn.close()
+
+        total = len(prods)
+        fixed_count = 0
+        unmodified_count = 0
+        details = []
+
+        for row in prods:
+            cod = int(row[0])
+            name = row[1] or f"Artigo {cod}"
+
+            raw_bytes, mime = get_product_image_bytes(cod)
+            if not raw_bytes:
+                continue
+
+            processed_bytes, out_mime, final_w, final_h = process_and_resize_image(
+                raw_bytes, max_dim=600, fit_square=fit_square, trim_grey_borders=True
+            )
+
+            is_changed = force_all or (abs(len(processed_bytes) - len(raw_bytes)) > 30) or (final_w > 0 and final_h > 0)
+
+            if is_changed and processed_bytes:
+                ok, msg, new_url, w, h = save_product_image_data(
+                    cod_produto=cod,
+                    image_bytes=processed_bytes,
+                    filename=f"fixed_{cod}.jpg",
+                    fit_square=fit_square,
+                    trim_grey_borders=True
+                )
+                if ok:
+                    fixed_count += 1
+                    details.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "status": "fixed",
+                        "image_url": new_url,
+                        "width": w,
+                        "height": h
+                    })
+                else:
+                    details.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "status": "error",
+                        "reason": msg
+                    })
+            else:
+                unmodified_count += 1
+
+        return {
+            "success": True,
+            "message": f"Processamento concluído. {fixed_count} imagens otimizadas/corrigidas de {total} analisadas.",
+            "total": total,
+            "fixed": fixed_count,
+            "unmodified": unmodified_count,
+            "details": details
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Erro durante deteção/correção em lote: {str(e)}", "total": 0, "fixed": 0, "details": []}
 
 
 # ======================================================================
