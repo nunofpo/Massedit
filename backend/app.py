@@ -17,7 +17,7 @@ from backend.models import (
     EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
     EmentaDigitalStructureResponse,
     EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
-    EmentaBulkEditRequest, EmentaImageUrlRequest,
+    EmentaBulkEditRequest, EmentaImageUrlRequest, EmentaEditImageRequest,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
     EmentaSuggestDescRequest, EmentaRuleItem,
@@ -49,7 +49,7 @@ from backend.services.menu_ai import (
 from backend.services.ementa_digital import (
     get_ementa_schema_info, get_ementa_digital_structure, search_ementa_products, import_products_to_ementa, import_csv_data,
     preview_ementa_bulk_edit, apply_ementa_bulk_edit,
-    save_product_image_data, set_product_image_url, delete_product_image, get_product_image_bytes,
+    save_product_image_data, edit_existing_product_image, set_product_image_url, delete_product_image, get_product_image_bytes,
     get_ementa_languages, set_ementa_active_languages, get_product_translations, save_product_translations,
     translate_menu_texts, update_single_ementa_product,
     auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
@@ -642,18 +642,44 @@ def suggest_description_endpoint(req: EmentaSuggestDescRequest):
 
 
 @app.post("/api/ementa-digital/upload-image/{cod_produto}")
-async def upload_product_image_endpoint(cod_produto: int, file: UploadFile = File(...)):
-    """Upload e associação de imagem para um artigo da ementa digital."""
+async def upload_product_image_endpoint(
+    cod_produto: int,
+    file: UploadFile = File(...),
+    rotate_deg: int = Form(0),
+    fit_square: bool = Form(False)
+):
+    """Upload e associação de imagem para um artigo da ementa digital com ajuste automático (máx 600x600 px)."""
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="A imagem excede o tamanho máximo de 10 MB.")
-    success, message, url = save_product_image_data(cod_produto, contents, file.filename or "image.jpg")
+    success, message, url, w, h = save_product_image_data(
+        cod_produto, contents, file.filename or "image.jpg", rotate_deg=rotate_deg, fit_square=fit_square
+    )
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {
         "success": True,
         "message": message,
-        "image_url": url
+        "image_url": url,
+        "width": w,
+        "height": h
+    }
+
+
+@app.post("/api/ementa-digital/edit-image/{cod_produto}")
+def edit_product_image_endpoint(cod_produto: int, req: EmentaEditImageRequest):
+    """Edita (roda/enquadra) a imagem existente de um artigo ajustando para máx 600x600 px."""
+    success, message, url, w, h = edit_existing_product_image(
+        cod_produto, rotate_deg=req.rotate_deg, fit_square=req.fit_square
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "image_url": url,
+        "width": w,
+        "height": h
     }
 
 

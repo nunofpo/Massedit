@@ -1328,26 +1328,102 @@ def suggest_description_for_product(codigo: int, nome: str) -> str:
 # ======================================================================
 # Gestão e Colocação de Imagens
 # ======================================================================
+# Gestão e Edição de Imagens (Ajuste Automático Máx. 600x600 px)
+# ======================================================================
 
-def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str) -> Tuple[bool, str, Optional[str]]:
-    """Grava os bytes da imagem no SQL Server (coluna imagem) ou no disco com URL gerado."""
+def process_and_resize_image(
+    image_bytes: bytes,
+    max_dim: int = 600,
+    fit_square: bool = False,
+    rotate_deg: int = 0
+) -> Tuple[bytes, str, int, int]:
+    """
+    Processa e ajusta automaticamente qualquer imagem enviada para a ementa digital:
+    - Rotação opcional (0, 90, 180, 270 graus).
+    - Redimensionamento proporcional para máximo max_dim (por omissão 600x600 px).
+    - Enquadramento opcional em tela quadrada 1:1 de 600x600 px.
+    - Otimização de compressão (JPEG/PNG).
+    Retorna (bytes_processados, mime_type, largura_final, altura_final).
+    """
+    try:
+        from PIL import Image, ImageOps
+
+        img = Image.open(io.BytesIO(image_bytes))
+        img = ImageOps.exif_transpose(img)
+
+        if rotate_deg in (90, 180, 270):
+            img = img.rotate(-rotate_deg, expand=True)
+
+        w, h = img.size
+
+        if fit_square:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            nw, nh = img.size
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 0))
+            else:
+                canvas = Image.new("RGB", (max_dim, max_dim), (255, 255, 255))
+            paste_x = (max_dim - nw) // 2
+            paste_y = (max_dim - nh) // 2
+            canvas.paste(img, (paste_x, paste_y))
+            final_img = canvas
+            fw, fh = max_dim, max_dim
+        else:
+            if w > max_dim or h > max_dim:
+                img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            final_img = img
+            fw, fh = final_img.size
+
+        buf = io.BytesIO()
+        has_alpha = final_img.mode in ("RGBA", "LA") or (final_img.mode == "P" and "transparency" in final_img.info)
+
+        if has_alpha:
+            final_img.save(buf, format="PNG", optimize=True)
+            mime = "image/png"
+        else:
+            if final_img.mode != "RGB":
+                final_img = final_img.convert("RGB")
+            final_img.save(buf, format="JPEG", quality=90, optimize=True)
+            mime = "image/jpeg"
+
+        out_bytes = buf.getvalue()
+        return out_bytes, mime, fw, fh
+    except Exception:
+        return image_bytes, "image/jpeg", 0, 0
+
+
+def save_product_image_data(
+    cod_produto: int,
+    image_bytes: bytes,
+    filename: str,
+    rotate_deg: int = 0,
+    fit_square: bool = False
+) -> Tuple[bool, str, Optional[str], int, int]:
+    """
+    Grava os bytes da imagem no SQL Server (coluna imagem) e no disco com URL gerado,
+    redimensionando automaticamente para no máximo 600x600 px.
+    """
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         schema = _schema(cursor)
         if "ementa_digital_produtos" not in schema:
-            return False, "A tabela dbo.ementa_digital_produtos não existe.", None
+            return False, "A tabela dbo.ementa_digital_produtos não existe.", None, 0, 0
 
         ed_cols = schema["ementa_digital_produtos"]
         has_imagem = "imagem" in ed_cols
         has_image_url = "image_url" in ed_cols
 
-        # Guardar também em ficheiro local para pré-visualização rápida no browser
-        ext = os.path.splitext(filename)[1].lower() or ".jpg"
+        # Ajuste automático de dimensão para máx 600x600 px
+        processed_bytes, mime_type, final_w, final_h = process_and_resize_image(
+            image_bytes, max_dim=600, fit_square=fit_square, rotate_deg=rotate_deg
+        )
+
+        ext = ".png" if mime_type == "image/png" else ".jpg"
         local_filename = f"prod_{cod_produto}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}"
         local_path = os.path.join(IMAGES_DIR, local_filename)
         with open(local_path, "wb") as f:
-            f.write(image_bytes)
+            f.write(processed_bytes)
 
         generated_url = f"/api/ementa-digital/image-file/{local_filename}"
 
@@ -1355,15 +1431,14 @@ def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str)
         params = []
         if has_imagem:
             sets.append("imagem = ?")
-            params.append(image_bytes)
+            params.append(processed_bytes)
         if has_image_url:
             sets.append("image_url = ?")
             params.append(generated_url)
 
         if not sets:
-            return False, "A tabela ementa_digital_produtos não tem as colunas 'imagem' ou 'image_url'.", None
+            return False, "A tabela ementa_digital_produtos não tem as colunas 'imagem' ou 'image_url'.", None, 0, 0
 
-        # Garante que o artigo existe na ementa
         cursor.execute("SELECT cod_produto FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (cod_produto,))
         if not cursor.fetchone():
             cursor.execute("SELECT familia, descricao FROM dbo.produtos WHERE codigo = ?", (cod_produto,))
@@ -1384,12 +1459,32 @@ def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str)
 
         cursor.execute(f"UPDATE dbo.ementa_digital_produtos SET {', '.join(sets)} WHERE cod_produto = ?", params + [cod_produto])
         conn.commit()
-        return True, "Imagem guardada com sucesso.", generated_url
+        return True, "Imagem processada (máx 600x600 px) e guardada com sucesso.", generated_url, final_w, final_h
     except Exception as e:
         conn.rollback()
-        return False, f"Falha ao gravar imagem: {str(e)}", None
+        return False, f"Falha ao gravar imagem: {str(e)}", None, 0, 0
     finally:
         conn.close()
+
+
+def edit_existing_product_image(
+    cod_produto: int,
+    rotate_deg: int = 0,
+    fit_square: bool = False
+) -> Tuple[bool, str, Optional[str], int, int]:
+    """
+    Edita a imagem existente de um artigo (rotação ou enquadramento 1:1) com ajuste automático para 600x600 px max.
+    """
+    raw_bytes, mime = get_product_image_bytes(cod_produto)
+    if not raw_bytes:
+        return False, "O artigo não possui imagem para editar.", None, 0, 0
+    return save_product_image_data(
+        cod_produto=cod_produto,
+        image_bytes=raw_bytes,
+        filename=f"edited_{cod_produto}.jpg",
+        rotate_deg=rotate_deg,
+        fit_square=fit_square
+    )
 
 
 def set_product_image_url(cod_produto: int, image_url: str) -> Tuple[bool, str]:

@@ -13,7 +13,8 @@ import {
   Square,
   ChevronLeft,
   ChevronRight,
-  Filter
+  Filter,
+  Image as ImageIcon
 } from 'lucide-react';
 import {
   EmentaProductItem,
@@ -23,6 +24,7 @@ import {
   BulkEditPreviewResponse,
   EmentaDigitalStructureResponse
 } from '../types';
+import { ImageEditorModal } from './ImageEditorModal';
 
 interface EmentaDigitalModalProps {
   isOpen: boolean;
@@ -120,6 +122,31 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [reviewSearchTerm, setReviewSearchTerm] = useState<string>('');
   const [reviewFilterType, setReviewFilterType] = useState<string>('all');
   const [isSavingReviewItems, setIsSavingReviewItems] = useState<boolean>(false);
+
+  // Image Editor State (Ajuste 600x600 px)
+  const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
+  const [selectedProductForImage, setSelectedProductForImage] = useState<EmentaProductItem | null>(null);
+
+  const handleImageSaveSuccess = (updatedUrl: string | null) => {
+    if (selectedProductForImage) {
+      const code = selectedProductForImage.codigo;
+      setProducts(prev => prev.map(p => {
+        if (p.codigo !== code) return p;
+        return {
+          ...p,
+          image_url: updatedUrl || undefined,
+          has_image_bytes: !!updatedUrl
+        };
+      }));
+      if (selectedProductForTranslation?.codigo === code) {
+        setSelectedProductForTranslation(prev => prev ? {
+          ...prev,
+          image_url: updatedUrl || undefined,
+          has_image_bytes: !!updatedUrl
+        } : null);
+      }
+    }
+  };
 
   // Toggle active language selection
   const toggleLangCode = (code: string) => {
@@ -1182,7 +1209,28 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProductForImage(prod);
+                              setShowImageEditor(true);
+                            }}
+                            className={`w-8 h-8 rounded-lg border overflow-hidden flex items-center justify-center transition group relative ${
+                              prod.image_url
+                                ? 'border-amber-400 bg-amber-50 shadow-2xs'
+                                : 'border-slate-200 bg-slate-100 hover:border-amber-400 hover:bg-slate-200'
+                            }`}
+                            title={prod.image_url ? 'Editar imagem (máx 600x600px)' : 'Adicionar imagem (máx 600x600px)'}
+                          >
+                            {prod.image_url ? (
+                              <img src={prod.image_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <ImageIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-600 transition" />
+                            )}
+                          </button>
+
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
                             Traduzir
                           </span>
@@ -1239,6 +1287,21 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {selectedProductForTranslation && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProductForImage(selectedProductForTranslation);
+                        setShowImageEditor(true);
+                      }}
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                      title="Abrir editor de imagem com ajuste automático (máx 600x600px)"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Imagem (600x600px)</span>
+                    </button>
+                  )}
+
                   {selectedCodes.size > 0 && (
                     <button
                       type="button"
@@ -2039,6 +2102,15 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Edição de Imagem da Ementa Digital */}
+      <ImageEditorModal
+        isOpen={showImageEditor}
+        onClose={() => setShowImageEditor(false)}
+        product={selectedProductForImage}
+        onSaveSuccess={handleImageSaveSuccess}
+        onSuccessMsg={onSuccess}
+      />
     </div>
   );
 };

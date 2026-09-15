@@ -573,6 +573,12 @@ class EmentaImageUrlRequest(BaseModel):
     image_url: str
 
 
+class EmentaEditImageRequest(BaseModel):
+    rotate_deg: int = 0
+    fit_square: bool = False
+
+
+
 class EmentaTranslateRequest(BaseModel):
     texts: List[str]
     target_langs: List[str] = Field(default_factory=lambda: ["en", "es", "fr", "de"])
