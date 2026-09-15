@@ -1331,18 +1331,51 @@ def suggest_description_for_product(codigo: int, nome: str) -> str:
 # Gestão e Edição de Imagens (Ajuste Automático Máx. 600x600 px)
 # ======================================================================
 
+def auto_trim_borders(img: Any, tolerance: int = 25) -> Any:
+    """Detecta e remove bordas cinzentas ou neutras das margens de imagens de produtos."""
+    try:
+        from PIL import Image, ImageChops
+        if img.mode not in ("RGB", "RGBA"):
+            img_rgb = img.convert("RGB")
+        else:
+            img_rgb = img
+
+        bg_color = img_rgb.getpixel((0, 0))
+        if isinstance(bg_color, tuple) and len(bg_color) >= 3:
+            r, g, b = bg_color[:3]
+            is_neutral = max(abs(r - g), abs(r - b), abs(g - b)) < 20
+            # Se a cor do canto for um cinzento ou fundo neutro que não branco puro
+            if is_neutral and (r < 240 or r > 252):
+                bg = Image.new(img_rgb.mode, img_rgb.size, bg_color)
+                diff = ImageChops.difference(img_rgb, bg)
+                diff = ImageChops.add(diff, diff, 2.0, -tolerance)
+                bbox = diff.getbbox()
+                if bbox:
+                    min_w = int(img.width * 0.4)
+                    min_h = int(img.height * 0.4)
+                    crop_w = bbox[2] - bbox[0]
+                    crop_h = bbox[3] - bbox[1]
+                    if crop_w >= min_w and crop_h >= min_h:
+                        return img.crop(bbox)
+    except Exception:
+        pass
+    return img
+
+
 def process_and_resize_image(
     image_bytes: bytes,
     max_dim: int = 600,
     fit_square: bool = False,
-    rotate_deg: int = 0
+    rotate_deg: int = 0,
+    trim_grey_borders: bool = True
 ) -> Tuple[bytes, str, int, int]:
     """
     Processa e ajusta automaticamente qualquer imagem enviada para a ementa digital:
+    - Trunca bordas cinzentas ou neutras espúrias.
     - Rotação opcional (0, 90, 180, 270 graus).
     - Redimensionamento proporcional para máximo max_dim (por omissão 600x600 px).
-    - Enquadramento opcional em tela quadrada 1:1 de 600x600 px.
-    - Otimização de compressão (JPEG/PNG).
+    - Enquadramento opcional em tela quadrada 1:1 com fundo BRANCO puro (255, 255, 255).
+    - Converte transparências em fundo branco puro em vez de cinzento.
     Retorna (bytes_processados, mime_type, largura_final, altura_final).
     """
     try:
@@ -1351,40 +1384,54 @@ def process_and_resize_image(
         img = Image.open(io.BytesIO(image_bytes))
         img = ImageOps.exif_transpose(img)
 
+        # 1. Truncar bordas cinzentas se ativado
+        if trim_grey_borders:
+            img = auto_trim_borders(img)
+
+        # 2. Rotação manual
         if rotate_deg in (90, 180, 270):
             img = img.rotate(-rotate_deg, expand=True)
 
         w, h = img.size
 
+        # 3. Fit Square 600x600 com fundo BRANCO puro
         if fit_square:
             img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             nw, nh = img.size
+
             if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-                canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 0))
+                canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 255))
+                img_rgba = img.convert("RGBA")
+                paste_x = (max_dim - nw) // 2
+                paste_y = (max_dim - nh) // 2
+                canvas.paste(img_rgba, (paste_x, paste_y), mask=img_rgba)
+                final_img = canvas.convert("RGB")
             else:
                 canvas = Image.new("RGB", (max_dim, max_dim), (255, 255, 255))
-            paste_x = (max_dim - nw) // 2
-            paste_y = (max_dim - nh) // 2
-            canvas.paste(img, (paste_x, paste_y))
-            final_img = canvas
+                paste_x = (max_dim - nw) // 2
+                paste_y = (max_dim - nh) // 2
+                canvas.paste(img.convert("RGB"), (paste_x, paste_y))
+                final_img = canvas
+
             fw, fh = max_dim, max_dim
         else:
             if w > max_dim or h > max_dim:
                 img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-            final_img = img
+
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                img_rgba = img.convert("RGBA")
+                final_img = Image.alpha_composite(bg, img_rgba).convert("RGB")
+            elif img.mode != "RGB":
+                final_img = img.convert("RGB")
+            else:
+                final_img = img
+
             fw, fh = final_img.size
 
         buf = io.BytesIO()
-        has_alpha = final_img.mode in ("RGBA", "LA") or (final_img.mode == "P" and "transparency" in final_img.info)
-
-        if has_alpha:
-            final_img.save(buf, format="PNG", optimize=True)
-            mime = "image/png"
-        else:
-            if final_img.mode != "RGB":
-                final_img = final_img.convert("RGB")
-            final_img.save(buf, format="JPEG", quality=90, optimize=True)
-            mime = "image/jpeg"
+        final_img.save(buf, format="JPEG", quality=90, optimize=True)
+        mime = "image/jpeg"
 
         out_bytes = buf.getvalue()
         return out_bytes, mime, fw, fh
@@ -1397,11 +1444,12 @@ def save_product_image_data(
     image_bytes: bytes,
     filename: str,
     rotate_deg: int = 0,
-    fit_square: bool = False
+    fit_square: bool = False,
+    trim_grey_borders: bool = True
 ) -> Tuple[bool, str, Optional[str], int, int]:
     """
     Grava os bytes da imagem no SQL Server (coluna imagem) e no disco com URL gerado,
-    redimensionando automaticamente para no máximo 600x600 px.
+    redimensionando automaticamente para no máximo 600x600 px e eliminando bordas cinzentas.
     """
     conn = db_manager.get_connection()
     try:
@@ -1414,9 +1462,9 @@ def save_product_image_data(
         has_imagem = "imagem" in ed_cols
         has_image_url = "image_url" in ed_cols
 
-        # Ajuste automático de dimensão para máx 600x600 px
+        # Ajuste automático de dimensão para máx 600x600 px e remoção de bordas cinzentas
         processed_bytes, mime_type, final_w, final_h = process_and_resize_image(
-            image_bytes, max_dim=600, fit_square=fit_square, rotate_deg=rotate_deg
+            image_bytes, max_dim=600, fit_square=fit_square, rotate_deg=rotate_deg, trim_grey_borders=trim_grey_borders
         )
 
         ext = ".png" if mime_type == "image/png" else ".jpg"

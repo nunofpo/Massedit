@@ -192,7 +192,7 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
           {/* Image Preview Canvas */}
           <div className="flex flex-col items-center justify-center bg-slate-950 rounded-xl p-6 border border-slate-800 min-h-[260px] relative group">
             {previewUrl ? (
-              <div className="relative flex items-center justify-center max-w-[280px] max-h-[280px] overflow-hidden rounded-lg border-2 border-dashed border-amber-500/50 shadow-lg">
+              <div className="relative flex items-center justify-center max-w-[280px] max-h-[280px] overflow-hidden rounded-lg border-2 border-dashed border-amber-500/50 shadow-lg bg-white">
                 <img
                   src={previewUrl}
                   alt="Pré-visualização"
@@ -201,7 +201,7 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
                     transition: 'transform 0.3s ease'
                   }}
                   className={`max-w-full max-h-[260px] object-contain ${
-                    fitSquare ? 'aspect-square bg-white/5 p-1' : ''
+                    fitSquare ? 'aspect-square bg-white p-1' : ''
                   }`}
                 />
                 <div className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 border border-slate-700">

@@ -254,7 +254,7 @@ export const EmentaSimulatorFrame: React.FC<EmentaSimulatorFrameProps> = ({
                     )}
 
                     {/* Image */}
-                    <div className="h-28 bg-slate-100 relative overflow-hidden flex items-center justify-center">
+                    <div className="h-28 bg-white relative overflow-hidden flex items-center justify-center">
                       {prod.image_url ? (
                         <img
                           src={prod.image_url}
@@ -324,7 +324,7 @@ export const EmentaSimulatorFrame: React.FC<EmentaSimulatorFrameProps> = ({
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs z-30 p-4 flex items-center justify-center">
               <div className="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[90%] animate-in fade-in zoom-in duration-200">
                 {/* Header Image */}
-                <div className="h-36 bg-slate-200 relative">
+                <div className="h-36 bg-white relative flex items-center justify-center">
                   {activeProductDetail.image_url ? (
                     <img
                       src={activeProductDetail.image_url}
