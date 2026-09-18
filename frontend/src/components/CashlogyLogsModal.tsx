@@ -111,7 +111,32 @@ interface Analysis {
   };
 }
 
-type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'operator' | 'times' | 'payments' | 'device';
+type TabId = 'summary' | 'investigate' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'operator' | 'times' | 'payments' | 'device';
+
+// Resposta de /api/cashlogy/investigate
+interface InvEvent { ts: string; source: string; source_label: string; kind: string; severity: 'error' | 'warning' | 'info' | 'ok'; title: string; detail: string }
+interface Investigation {
+  window: { center: string; start: string; end: string; before_min: number; after_min: number };
+  summary: { events: number; errors: number; warnings: number };
+  coverage: { name: string; kind: string; label: string; start: string | null; end: string | null; relation: 'overlap' | 'before' | 'after' | 'unknown' }[];
+  ignored: { name: string; reason: string }[];
+  quiet_sources: string[];
+  highlights: { severity: 'error' | 'warning'; source: string; source_label: string; title: string; detail: string; count: number; first: string; last: string }[];
+  context: string[];
+  events: InvEvent[];
+  events_truncated: boolean;
+}
+
+const SOURCE_STYLE: Record<string, string> = {
+  transactions: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+  times: 'bg-slate-100 text-slate-700 border-slate-300',
+  errors: 'bg-rose-50 text-rose-800 border-rose-200',
+  payments: 'bg-violet-50 text-violet-800 border-violet-200',
+  opos: 'bg-sky-50 text-sky-800 border-sky-200',
+  tran: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  com: 'bg-teal-50 text-teal-800 border-teal-200',
+  usr: 'bg-amber-50 text-amber-800 border-amber-200',
+};
 
 // ---- Formatação --------------------------------------------------------------
 
@@ -263,9 +288,54 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   const [tab, setTab] = useState<TabId>('summary');
   const [txFilter, setTxFilter] = useState<'all' | 'deposit' | 'dispense' | 'issues'>('all');
   const [txLimit, setTxLimit] = useState(200);
+  const [invDate, setInvDate] = useState('');
+  const [invTime, setInvTime] = useState('');
+  const [invBefore, setInvBefore] = useState(5);
+  const [invAfter, setInvAfter] = useState(5);
+  const [inv, setInv] = useState<Investigation | null>(null);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState<string | null>(null);
+  const [invCopied, setInvCopied] = useState(false);
+
+  const investigate = async () => {
+    setInvError(null);
+    const day = invDate || (data?.period.end ? data.period.end.slice(0, 10) : '');
+    if (!day || !invTime) { setInvError('Indique a data e a hora do incidente.'); return; }
+    setInvLoading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(f => formData.append('files', f));
+      formData.append('when', `${day} ${invTime}`);
+      formData.append('before', String(invBefore));
+      formData.append('after', String(invAfter));
+      const res = await fetch('/api/cashlogy/investigate', { method: 'POST', body: formData });
+      const body = await res.json();
+      if (!res.ok) { setInvError(typeof body.detail === 'string' ? body.detail : 'Não foi possível investigar o intervalo.'); return; }
+      setInv(body);
+    } catch {
+      setInvError('Falha de rede ao investigar o intervalo.');
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  const copyInvestigation = async () => {
+    if (!inv) return;
+    const lines = [
+      `Intervalo: ${inv.window.start} → ${inv.window.end} (${inv.summary.events} eventos, ${inv.summary.errors} erros, ${inv.summary.warnings} avisos)`,
+      '', 'O que se destaca:',
+      ...(inv.highlights.length ? inv.highlights.map(h => `- [${h.severity}] ${h.source_label}: ${h.title}${h.count > 1 ? ` ×${h.count}` : ''}${h.detail ? ` — ${h.detail}` : ''}`) : ['- nada']),
+      ...(inv.context.length ? ['', 'Contexto:', ...inv.context.map(c => `- ${c}`)] : []),
+      '', 'Linha do tempo:',
+      ...inv.events.map(e => `${e.ts.slice(11)}  [${e.source_label}]  ${e.title}${e.detail ? ` — ${e.detail}` : ''}`),
+    ];
+    try { await navigator.clipboard.writeText(lines.join('\n')); setInvCopied(true); setTimeout(() => setInvCopied(false), 2000); }
+    catch { setInvError('Não foi possível copiar para a área de transferência.'); }
+  };
 
   const analyze = async (next: File[]) => {
     setFiles(next);
+    setInv(null);
     setErrorMsg(null);
     if (next.length === 0) { setData(null); return; }
     setIsAnalyzing(true);
@@ -299,6 +369,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   const tx = data?.transactions;
   const tabs: { id: TabId; label: string; show: boolean; badge?: number }[] = [
     { id: 'summary', label: 'Resumo', show: true, badge: data?.findings.length },
+    { id: 'investigate', label: 'Investigar', show: !!data && data.files.length > 0 },
     { id: 'transactions', label: 'Transações', show: !!tx, badge: tx?.transactions.length },
     { id: 'alerts', label: 'Alertas', show: !!data?.errors },
     { id: 'levels', label: 'Níveis', show: !!data?.opos },
@@ -609,6 +680,142 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
           O OPOS só lê os níveis durante operações. Cada mudança é a que foi detetada entre duas leituras consecutivas, não o instante exato,
           e não dá para medir há quanto tempo um nível esteve em aviso.
         </p>
+      </div>
+    );
+  };
+
+  const renderInvestigate = () => {
+    if (!data) return null;
+    const defaultDate = data.period.end ? data.period.end.slice(0, 10) : '';
+    const rowTone = (s: InvEvent['severity']) => (s === 'error' ? 'bg-rose-50/60' : s === 'warning' ? 'bg-amber-50/60' : '');
+    const relationText = (c: Investigation['coverage'][number]) => {
+      if (c.relation === 'overlap') return `registos de ${c.start?.slice(11, 16)} a ${c.end?.slice(11, 16)} (dia ${c.start?.slice(8, 10)}/${c.start?.slice(5, 7)}${c.start?.slice(0, 10) !== c.end?.slice(0, 10) ? ' a ' + c.end?.slice(8, 10) + '/' + c.end?.slice(5, 7) : ''})`;
+      if (c.relation === 'before') return `último registo em ${dt(c.end)}, antes do intervalo`;
+      if (c.relation === 'after') return `primeiro registo em ${dt(c.start)}, depois do intervalo`;
+      return 'sem datas';
+    };
+    return (
+      <div className="space-y-5">
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs text-slate-600">
+            Indique quando ocorreu o problema. A app junta os eventos de todos os ficheiros carregados numa só linha do tempo, à volta dessa hora.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">Dia
+              <input type="date" value={invDate || defaultDate} onChange={(e) => setInvDate(e.target.value)}
+                     className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono bg-white" />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">Hora
+              <input type="time" step={1} value={invTime} onChange={(e) => setInvTime(e.target.value)}
+                     className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono bg-white" />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">Minutos antes
+              <input type="number" min={0} max={720} value={invBefore} onChange={(e) => setInvBefore(Math.max(0, Number(e.target.value) || 0))}
+                     className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono w-24 bg-white" />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">Minutos depois
+              <input type="number" min={0} max={720} value={invAfter} onChange={(e) => setInvAfter(Math.max(0, Number(e.target.value) || 0))}
+                     className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono w-24 bg-white" />
+            </label>
+            <button onClick={investigate} disabled={invLoading}
+                    className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition">
+              {invLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}Investigar
+            </button>
+          </div>
+          {invError && (
+            <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold px-3 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4 shrink-0" />{invError}
+            </div>
+          )}
+        </div>
+
+        {inv && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-bold text-slate-800">
+                {dt(inv.window.start)} → {inv.window.end.slice(11)}
+                <span className="ml-2 font-semibold text-slate-500">
+                  {inv.summary.events} evento(s) · <span className={inv.summary.errors ? 'text-rose-700' : ''}>{inv.summary.errors} erro(s)</span> · <span className={inv.summary.warnings ? 'text-amber-700' : ''}>{inv.summary.warnings} aviso(s)</span>
+                </span>
+              </div>
+              <button onClick={copyInvestigation} className="text-xs font-bold text-sky-700 hover:text-sky-900">
+                {invCopied ? 'Copiado!' : 'Copiar resumo'}
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">O que se destaca</h3>
+              {inv.highlights.length === 0 ? (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold px-3 py-2 rounded-xl">
+                  <Check className="w-4 h-4" /> Nenhum erro ou aviso registado neste intervalo, nos ficheiros carregados.
+                </div>
+              ) : inv.highlights.map((h, i) => {
+                const S = SEVERITY[h.severity];
+                return (
+                  <div key={i} className={`flex gap-2.5 border rounded-xl px-3 py-2 ${S.cls}`}>
+                    <S.Icon className={`w-4 h-4 mt-0.5 shrink-0 ${S.icon}`} />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold">
+                        <span className="opacity-70 font-semibold">{h.source_label} · </span>{h.title}{h.count > 1 ? ` ×${h.count}` : ''}
+                      </div>
+                      <div className="text-[11px] opacity-80 break-words">
+                        {h.first.slice(11)}{h.count > 1 ? ` → ${h.last.slice(11)}` : ''}{h.detail ? ` — ${h.detail}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {inv.context.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 space-y-0.5">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Estado conhecido</div>
+                  {inv.context.map((c, i) => <div key={i} className="text-[11px] text-slate-700">{c}</div>)}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Linha do tempo</h3>
+              {inv.events.length === 0 ? <Empty text="Nenhum evento nos ficheiros carregados neste intervalo." /> : (
+                <TableWrap>
+                  <thead><tr><Th>Hora</Th><Th>Fonte</Th><Th>Evento</Th><Th>Detalhe</Th></tr></thead>
+                  <tbody>
+                    {inv.events.map((e, i) => (
+                      <tr key={i} className={rowTone(e.severity)}>
+                        <Td mono>{e.ts.slice(11)}</Td>
+                        <Td><Badge cls={SOURCE_STYLE[e.source] || 'bg-slate-50 text-slate-700 border-slate-200'}>{e.source_label}</Badge></Td>
+                        <Td><span className={e.severity === 'error' ? 'font-bold text-rose-800' : e.severity === 'warning' ? 'font-semibold text-amber-800' : e.severity === 'ok' ? 'text-emerald-700' : ''}>{e.title}</span></Td>
+                        <Td>{e.detail || <span className="text-slate-300">—</span>}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </TableWrap>
+              )}
+              {inv.events_truncated && <p className="text-[11px] text-amber-700 font-semibold">Mostrados só os primeiros {inv.events.length} eventos; reduza o intervalo.</p>}
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Ficheiros e o intervalo</h3>
+              <div className="space-y-1">
+                {inv.coverage.map(c => (
+                  <div key={c.name} className="flex items-center justify-between gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                    <span className="font-bold truncate">{c.name}</span>
+                    <span className={`shrink-0 ${c.relation === 'overlap' ? 'text-slate-500' : 'text-amber-700 font-semibold'}`}>{relationText(c)}</span>
+                  </div>
+                ))}
+                {inv.ignored.length > 0 && (
+                  <div className="text-[11px] text-slate-400">Não lidos ({inv.ignored.length}): {inv.ignored.map(f => f.name).join(', ')}</div>
+                )}
+              </div>
+              {inv.quiet_sources.length > 0 && (
+                <p className="text-[11px] text-slate-500">Sem eventos neste intervalo: {inv.quiet_sources.join(', ')}.</p>
+              )}
+              <p className="text-[11px] text-slate-400">
+                Os ficheiros de eventos só registam quando algo acontece: um ficheiro cujo último registo é anterior ao intervalo não permite distinguir
+                «nada aconteceu» de «ficheiro cortado». A linha do tempo mostra o que foi registado, sem indicar causas.
+              </p>
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -955,6 +1162,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
           {!isAnalyzing && data && data.files.length > 0 && (
             <>
               {tab === 'summary' && renderSummary()}
+              {tab === 'investigate' && renderInvestigate()}
               {tab === 'transactions' && renderTransactions()}
               {tab === 'alerts' && renderAlerts()}
               {tab === 'levels' && renderLevels()}

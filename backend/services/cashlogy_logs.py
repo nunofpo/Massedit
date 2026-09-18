@@ -141,6 +141,26 @@ def denom_label(value: Any) -> str:
     return f"{n / 100:g} €" if n >= 100 else f"{n} c"
 
 
+def _eur(cents: int) -> str:
+    """1010 -> '10,10 €'"""
+    return f"{cents / 100:.2f}".replace(".", ",") + " €"
+
+
+def _counts_text(counts: Dict[Any, int]) -> str:
+    """{'10': 1, '1000': 1} ou {10: 1, 1000: 1} -> '1 × 0,10 € · 1 × 10,00 €'"""
+    return " · ".join(f"{q} × {_eur(int(d))}" for d, q in sorted(counts.items(), key=lambda kv: int(kv[0])) if q)
+
+
+def _fmt_ms(dt: datetime) -> str:
+    base = dt.strftime("%Y-%m-%d %H:%M:%S")
+    return base + (f".{dt.microsecond // 1000:03d}" if dt.microsecond else "")
+
+
+def _ev(dt: datetime, source: str, kind: str, severity: str, title: str, detail: str = "") -> Dict[str, Any]:
+    """Evento da linha do tempo (severity: error | warning | info | ok)."""
+    return {"dt": dt, "source": source, "kind": kind, "severity": severity, "title": title, "detail": detail}
+
+
 def _nonzero(counts: Dict[int, int]) -> Dict[str, int]:
     return {str(d): q for d, q in sorted(counts.items()) if q}
 
@@ -331,6 +351,8 @@ def parse_transactions(text: str) -> Dict[str, Any]:
     prev_total: Optional[Dict[int, int]] = None
     prev_ts: Optional[datetime] = None
     timestamps: List[datetime] = []
+    op_starts: List[Optional[datetime]] = []
+    events: List[Dict[str, Any]] = []
 
     for block in _blocks(text.splitlines()):
         stamps: List[datetime] = []
@@ -380,9 +402,14 @@ def parse_transactions(text: str) -> Dict[str, Any]:
             if delta:
                 external.append({"from": _fmt(prev_ts), "to": _fmt(start),
                                  "delta": {str(d): v for d, v in sorted(delta.items())}})
+                if start:
+                    events.append(_ev(start, "transactions", "external_change", "warning",
+                                      "Stock alterado fora de transações",
+                                      " · ".join(f"{_eur(d)}: {v:+d}" for d, v in sorted(delta.items()))))
 
         for o, b, a in block_ops:
             ops.append(_finish_op(o, b, a, start, end))
+            op_starts.append(start)
         last_snap = (block_ops[-1][2] or block_ops[-1][1]) if block_ops else before
         if _total_counts(last_snap) is not None:
             prev_total, prev_ts = _total_counts(last_snap), end or start
@@ -423,8 +450,32 @@ def parse_transactions(text: str) -> Dict[str, Any]:
         "mismatches": sum(1 for o in ops if o["reconciliation"]["status"] == "mismatch"),
         "external_stock_changes": len(external),
     }
+    for dt, o in zip(op_starts, ops):
+        if dt is None:
+            continue
+        kind_label = {"change": " (troco)", "cash": " (dinheiro)"}.get(o["subtype"] or "", "")
+        title = ("Depósito " if o["type"] == "deposit" else "Dispensa" + kind_label + " ") + _eur(o["amount"])
+        if o["requested"] is not None and o["requested"] != o["amount"]:
+            title += f" (pedido {_eur(o['requested'])})"
+        rej = o["rejected"]
+        parts = [_counts_text(o["counts"])]
+        if o["end_ts"] and o["end_ts"] != o["ts"]:
+            parts.append(f"fim {o['end_ts'][11:]}")
+        if o["result"] != "OK":
+            parts.append(f"resultado: {o['result'] or 'sem fim'}")
+        parts += o["issues"]
+        if rej["bills"] or rej["coins"]:
+            codes = ",".join(f"{k}-{v}" for k, v in rej["detail"].items())
+            parts.append(f"rejeitadas: {rej['bills']} nota(s), {rej['coins']} moeda(s)" + (f" ({codes})" if codes else ""))
+        if o["device_errors"]:
+            parts.append("dispositivos em erro: " + ", ".join(o["device_errors"]))
+        severity = "error" if o["issues"] or o["result"] != "OK" else "warning" if (rej["bills"] or rej["coins"] or o["device_errors"]) else "info"
+        events.append(_ev(dt, "transactions", o["type"], severity, title, " · ".join(p for p in parts if p)))
+
     truncated = len(ops) > MAX_TRANSACTIONS
     return {
+        "_events": events,
+        "_ops_full": list(zip(op_starts, ops)),
         "summary": summary,
         "transactions": ops[-MAX_TRANSACTIONS:],
         "transactions_truncated": truncated,
@@ -459,7 +510,7 @@ def parse_times(text: str) -> Dict[str, Any]:
             dt = _dt_from_groups(m.groups()[1:])
             if dt:
                 timestamps.append(dt)
-            cur = {"type": m.group(1).lower(), "ts": _fmt(dt), "phases": {}}
+            cur = {"type": m.group(1).lower(), "ts": _fmt(dt), "phases": {}, "_dt": dt}
             continue
         if cur is None:
             continue
@@ -475,7 +526,15 @@ def parse_times(text: str) -> Dict[str, Any]:
     if cur is not None:
         incomplete += 1
 
-    result: Dict[str, Any] = {"incomplete": incomplete, "_timestamps": timestamps}
+    events = []
+    for o in ops:
+        if o["_dt"] is None:
+            continue
+        top = sorted(o["phases"].items(), key=lambda kv: kv[1], reverse=True)[:3]
+        events.append(_ev(o["_dt"], "times", o["type"], "info",
+                          f"{'Depósito' if o['type'] == 'deposit' else 'Dispensa'}: {o['total_ms'] / 1000:.1f} s no total",
+                          "fases mais longas: " + ", ".join(f"{k} {v / 1000:.1f} s" for k, v in top) if top else ""))
+    result: Dict[str, Any] = {"incomplete": incomplete, "_timestamps": timestamps, "_events": events}
     for kind in ("deposit", "dispense"):
         rows = [o for o in ops if o["type"] == kind]
         totals = [o["total_ms"] for o in rows]
@@ -588,7 +647,24 @@ def parse_errors(text: str) -> Dict[str, Any]:
     clean_events = [{k: (info_by_key.get((e["code"], e["level"]), "") if k == "info" and not v else v)
                      for k, v in e.items() if k != "dt"} for e in events[-MAX_EVENTS:]]
 
+    timeline: List[Dict[str, Any]] = []
+    for e in events:
+        if e["dt"] is None:
+            continue
+        desc = e["info"] or info_by_key.get((e["code"], e["level"]), "")
+        extras = [e["product"]]
+        if e["items_in"] and not e["items_in"].startswith("0x0000"):
+            extras.append(f"admitidos {e['items_in']}")
+        if e["items_out"] and not e["items_out"].startswith("0x0000"):
+            extras.append(f"devolvidos {e['items_out']}")
+        if e["mismatch"]:
+            extras.append(f"Descuadre {e['mismatch']}")
+        severity = "ok" if e["clear"] else "error" if e["level"] == "ERROR" else "warning"
+        timeline.append(_ev(e["dt"], "errors", "hardware", severity, f"{e['code']} {desc}".strip(),
+                            " · ".join(x for x in extras if x)))
+
     return {
+        "_events": timeline,
         "total_events": len(events),
         "by_code": sorted(by_code.values(), key=lambda r: r["count"], reverse=True),
         "episodes": sorted(episodes, key=lambda r: r["count"], reverse=True),
@@ -620,6 +696,7 @@ def parse_payments(text: str) -> Dict[str, Any]:
     accounting_errors = 0
     accounting_path = ""
     timestamps: List[datetime] = []
+    events: List[Dict[str, Any]] = []
 
     for ln in text.splitlines():
         m = _P_ORDER.search(ln)
@@ -641,17 +718,28 @@ def parse_payments(text: str) -> Dict[str, Any]:
                     "duration_ms": round((end - start).total_seconds() * 1000),
                     "apagar": apagar,
                 })
+                result = (m.group(1) or "ok").lower()
+                events.append(_ev(start, "payments", "payment", "info" if result == "ok" else "warning",
+                                  f"Pagamento H500: {result}",
+                                  f"{round((end - start).total_seconds() * 1000)} ms" + (f" · APagar {apagar}" if apagar is not None else "")))
             start = None
             apagar = None
             continue
         m = _P_CTOR.match(ln)
         if m:
-            starts.append(_fmt(_dt_from_groups(m.groups())) or "")
+            ctor_dt = _dt_from_groups(m.groups())
+            starts.append(_fmt(ctor_dt) or "")
+            if ctor_dt:
+                events.append(_ev(ctor_dt, "payments", "start", "info", "Gestor de pagamentos iniciado"))
             continue
         m = _P_ACCOUNTING.match(ln)
         if m:
             accounting_errors += 1
             accounting_path = re.sub(r"\s+" + _TS + r"\s*$", "", m.group(1))
+            stamp = re.search(_TS, m.group(1))
+            acc_dt = _dt_from_groups(stamp.groups()) if stamp else None
+            if acc_dt:
+                events.append(_ev(acc_dt, "payments", "accounting", "warning", "Erro a ler Accounting", accounting_path))
 
     by_result = Counter(p["result"] for p in payments)
     warnings = [p for p in payments if p["result"] != "ok"]
@@ -664,6 +752,7 @@ def parse_payments(text: str) -> Dict[str, Any]:
         "accounting_read_errors": accounting_errors,
         "accounting_path": accounting_path,
         "_timestamps": timestamps,
+        "_events": events,
     }
 
 
@@ -797,15 +886,19 @@ def parse_opos(text: str) -> Dict[str, Any]:
     keys.sort(key=lambda k: (k == "STACKER", int(k) if k.isdigit() else 0))
 
     transitions: List[Dict[str, Any]] = []
+    events: List[Dict[str, Any]] = []
     rows: List[Dict[str, Any]] = []
     for key in keys:
         seq = [(dt, s[key]) for dt, s in reads if key in s]
         counts = Counter(state for _, state in seq)
         changes = 0
+        label = "Stacker" if key == "STACKER" else denom_label(key)
         for (_, before), (dt, after) in zip(seq, seq[1:]):
             if before != after:
                 changes += 1
                 transitions.append({"ts": _fmt(dt), "key": key, "from": before, "to": after})
+                events.append(_ev(dt, "opos", "level", "ok" if after == "OK" else "warning",
+                                  f"Nível {label}: {before} → {after}", "detetado entre duas leituras do OPOS"))
         rows.append({
             "key": key,
             "current": seq[-1][1],
@@ -823,6 +916,8 @@ def parse_opos(text: str) -> Dict[str, Any]:
         "transitions": transitions[-MAX_TRANSITIONS:],
         "transitions_truncated": len(transitions) > MAX_TRANSITIONS,
         "_timestamps": [dt for dt, _ in reads],
+        "_events": events,
+        "_reads": reads,
     }
 
 
@@ -862,12 +957,15 @@ def parse_tran(text: str) -> Dict[str, Any]:
     moves: List[Dict[str, Any]] = []
     backoffice: List[Dict[str, Any]] = []
     stamps: List[datetime] = []
+    events: List[Dict[str, Any]] = []
     for dt, payload in _conn_lines(text):
         stamps.append(dt)
         m = _TRAN_BACKOFFICE.match(payload)
         if m:
-            backoffice.append({"ts": _fmt(dt), "action": m.group(1), "dir": m.group(2).lower(),
-                               "amount": int(m.group(3)) * 100 + int(m.group(4))})
+            amount = int(m.group(3)) * 100 + int(m.group(4))
+            backoffice.append({"ts": _fmt(dt), "action": m.group(1), "dir": m.group(2).lower(), "amount": amount})
+            events.append(_ev(dt, "tran", "backoffice", "info",
+                              f"Backoffice: {m.group(1)} ({'entrada' if m.group(2) == 'IN' else 'saída'}) {_eur(amount)}"))
             continue
         m = _TRAN_MOVE.match(payload)
         if not m:
@@ -877,6 +975,9 @@ def parse_tran(text: str) -> Dict[str, Any]:
             counts[int(euros) * 100 + int(cents)] += int(qty)
         moves.append({"dt": dt, "ts": _fmt(dt), "dir": m.group(1).lower(), "_c": dict(counts),
                       "amount": _counts_value(dict(counts)), "counts": _nonzero(dict(counts))})
+        events.append(_ev(dt, "tran", m.group(1).lower(), "info",
+                          f"{'Entrada' if m.group(1) == 'IN' else 'Saída'} {_eur(moves[-1]['amount'])}",
+                          _counts_text(dict(counts))))
 
     ins = [x for x in moves if x["dir"] == "in"]
     outs = [x for x in moves if x["dir"] == "out"]
@@ -892,6 +993,7 @@ def parse_tran(text: str) -> Dict[str, Any]:
         "_moves": [(x["dt"], x["dir"], x["amount"]) for x in moves],
         "_moves_counts": [(x["dt"], x["dir"], x["_c"]) for x in moves],
         "_timestamps": stamps,
+        "_events": events,
     }
 
 
@@ -902,7 +1004,7 @@ def _ints(raw: str) -> List[int]:
     return [int(p) if re.fullmatch(r"-?\d+", p.strip()) else 0 for p in raw.split("#")]
 
 
-def _finish_com(rows: List[Dict[str, Any]], errors: List[Dict[str, Any]],
+def _finish_com(rows: List[Dict[str, Any]], errors: List[Dict[str, Any]], events: List[Dict[str, Any]],
                 req: Dict[str, Any], end: datetime, code: str, rest: str) -> None:
     f = _ints(rest)
 
@@ -915,6 +1017,7 @@ def _finish_com(rows: List[Dict[str, Any]], errors: List[Dict[str, Any]],
             "_start": req["dt"], "_end": end}
     if code.startswith("ER:"):
         errors.append({"ts": base["ts"], "cmd": cmd, "code": code})
+        events.append(_ev(req["dt"], "com", "error", "error", f"Connector respondeu {code} ao comando #{cmd}#"))
     if cmd == "C":  # cobrar: #C#op#caixa#valor#... -> #cód#automático#devolvido#manual#adicionado#
         amount = req["args"][2] if len(req["args"]) > 2 else 0
         introduced = field(0) + field(2)
@@ -940,6 +1043,7 @@ def parse_com(text: str) -> Dict[str, Any]:
     connections = delayed = orphans = 0
     pending: Optional[Dict[str, Any]] = None
     stamps: List[datetime] = []
+    events: List[Dict[str, Any]] = []
 
     for dt, payload in _conn_lines(text):
         stamps.append(dt)
@@ -949,17 +1053,19 @@ def parse_com(text: str) -> Dict[str, Any]:
                 connections += 1
             elif "Response delayed" in payload:
                 delayed += 1
+                events.append(_ev(dt, "com", "delayed", "warning", "Resposta atrasada do Winsock"))
             else:
                 m = _COM_STARTED.search(payload)
                 if m:
                     starts.append({"ts": _fmt(dt), "version": m.group(1)})
+                    events.append(_ev(dt, "com", "start", "warning", f"Connector arrancou (v{m.group(1)})"))
             continue
         m = _COM_RESPONSE.match(payload)
         if m:
             if pending is None:
                 orphans += 1
             else:
-                _finish_com(rows, errors, pending, dt, m.group(1), m.group(2))
+                _finish_com(rows, errors, events, pending, dt, m.group(1), m.group(2))
                 pending = None
             continue
         m = _COM_REQUEST.match(payload)
@@ -981,6 +1087,7 @@ def parse_com(text: str) -> Dict[str, Any]:
         "errors": errors[-MAX_EVENTS:],
         "starts": starts,
         "_timestamps": stamps,
+        "_events": events,
     }
 
 
@@ -1247,12 +1354,13 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
     return findings
 
 
-def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
-    """Recebe [(nome, bytes)] e devolve a análise agregada de todos os logs reconhecidos."""
+def _analyze(files: List[Tuple[str, bytes]], timeline: bool = False):
+    """Análise agregada. Com timeline=True devolve também todos os eventos (sem truncar)."""
     result: Dict[str, Any] = {}
     file_rows: List[Dict[str, Any]] = []
     ignored: List[Dict[str, str]] = []
     all_ts: List[datetime] = []
+    periods: Dict[str, Tuple[datetime, datetime]] = {}
     private: Dict[Tuple[str, str], Any] = {}
 
     for name, data in files:
@@ -1267,23 +1375,28 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
         for key in [k for k in parsed if k.startswith("_")]:  # dados internos, não vão na resposta
             private[(kind, key)] = parsed.pop(key)
         result[kind] = parsed
+        if ts:
+            periods[name] = (min(ts), max(ts))
         file_rows.append({
             "name": name, "kind": kind, "label": SUPPORTED_KINDS[kind],
             "size": len(data), "lines": text.count("\n") + 1,
             "start": _fmt(min(ts)) if ts else None, "end": _fmt(max(ts)) if ts else None,
         })
 
+    if "com" in result and ("tran", "_moves") in private:
+        result["com"]["crosscheck"] = _crosscheck_com_tran(result["com"]["operations"], private[("tran", "_moves")])
+    if "usr" in result and ("tran", "_moves_counts") in private:
+        result["usr"]["crosscheck"] = _crosscheck_usr_tran(result["usr"]["actions"], private[("tran", "_moves_counts")])
+
+    # os eventos da linha do tempo usam campos internos (_start, _dt) e têm de ser recolhidos antes da limpeza
+    events = _collect_events(result, private) if timeline else []
+
     if "com" in result:
-        if ("tran", "_moves") in private:
-            result["com"]["crosscheck"] = _crosscheck_com_tran(result["com"]["operations"], private[("tran", "_moves")])
         for row in result["com"]["operations"]:
             row.pop("_start", None)
             row.pop("_end", None)
         result["com"]["operations"] = result["com"]["operations"][-MAX_TRANSACTIONS:]
-
     if "usr" in result:
-        if ("tran", "_moves_counts") in private:
-            result["usr"]["crosscheck"] = _crosscheck_usr_tran(result["usr"]["actions"], private[("tran", "_moves_counts")])
         for row in result["usr"]["actions"]:
             row.pop("_dt", None)
             row.pop("_items", None)
@@ -1293,7 +1406,7 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
     device.update(result.get("transactions", {}).get("device", {}))
     device.update(result.get("versions", {}).get("device", {}))
 
-    return {
+    out = {
         "files": file_rows,
         "ignored": ignored,
         "period": {"start": _fmt(min(all_ts)) if all_ts else None,
@@ -1301,4 +1414,131 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
         "device": device,
         "findings": _build_findings(result),
         **result,
+    }
+    return out, events, periods, private
+
+
+def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
+    """Recebe [(nome, bytes)] e devolve a análise agregada de todos os logs reconhecidos."""
+    return _analyze(files)[0]
+
+
+# ---------------------------------------------------------------------------
+# Investigar um incidente: linha do tempo de todos os logs num intervalo
+# ---------------------------------------------------------------------------
+
+SOURCE_LABELS = {
+    "transactions": "Transações", "times": "Tempos", "errors": "Erros do hardware", "payments": "Pagamentos",
+    "opos": "Níveis (OPOS)", "tran": "LogTran", "com": "LogCom", "usr": "LogUsr",
+}
+MAX_TIMELINE = 1500
+_COM_RESULT_LABELS = {"0": "OK", "WR:CANCEL": "cancelada", "WR:LEVEL": "aviso de nível (WR:LEVEL)"}
+
+
+def _com_event(r: Dict[str, Any]) -> Dict[str, Any]:
+    tm = r.get("tran_match")
+    tran_note = f" · LogTran: entrou {_eur(r['tran_in'])} / saiu {_eur(r['tran_out'])}" if tm is False else ""
+    base = f"introduzido {_eur(r['introduced'])} · devolvido {_eur(r['returned'])}"
+    if r["kind"] == "charge":
+        label = _COM_RESULT_LABELS.get(r["result"], r["result"])
+        bad = not r["ok"] and not r["cancelled"]
+        detail = f"{base} · líquido {_eur(r['net'])} · {r['duration_ms'] / 1000:.1f} s"
+        if bad:
+            detail += " · o líquido não coincide com o valor pedido"
+        return _ev(r["_start"], "com", "charge", "error" if bad or tm is False else "info",
+                   f"Cobrança {_eur(r['amount'])} → {label}", detail + tran_note)
+    title = "Adicionar troco (Connector)" if r["cmd"] == "A" else "Backoffice (Connector)"
+    return _ev(r["_start"], "com", "backoffice", "error" if tm is False else "info", title, base + tran_note)
+
+
+def _usr_event(a: Dict[str, Any]) -> Dict[str, Any]:
+    tm = a.get("tran_match")
+    parts = []
+    if a.get("_items"):
+        parts.append(_counts_text(a["_items"]))
+    elif a.get("detail"):
+        parts.append(a["detail"])
+    if tm is False:
+        parts.append("sem saída correspondente no LogTran")
+    severity = "error" if tm is False else "warning" if a["kind"] == "message" else "info"
+    return _ev(a["_dt"], "usr", a["kind"], severity, a["label"], " · ".join(parts))
+
+
+def _collect_events(result: Dict[str, Any], private: Dict[Tuple[str, str], Any]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for kind in SOURCE_LABELS:
+        events.extend(private.get((kind, "_events"), []))
+    events.extend(_com_event(r) for r in result.get("com", {}).get("operations", []))
+    events.extend(_usr_event(a) for a in result.get("usr", {}).get("actions", []))
+    return events
+
+
+def _context_lines(private: Dict[Tuple[str, str], Any], end: datetime) -> List[str]:
+    """Estado conhecido mais recente até ao fim do intervalo (níveis e dispositivos em erro)."""
+    lines: List[str] = []
+    reads = [r for r in private.get(("opos", "_reads"), []) if r[0] <= end]
+    if reads:
+        dt, states = reads[-1]
+        off = [f"{'Stacker' if k == 'STACKER' else denom_label(k)} {v}" for k, v in states.items() if v != "OK"]
+        lines.append(f"Níveis na última leitura do OPOS ({_fmt(dt)}): " + (", ".join(off) if off else "todos OK"))
+    ops = [(dt, o) for dt, o in private.get(("transactions", "_ops_full"), []) if dt and dt <= end]
+    if ops:
+        dt, o = ops[-1]
+        if not reads and o["levels"]:
+            lines.append(f"Níveis no último registo de transações ({_fmt(dt)}): " + ", ".join(o["levels"]))
+        if o["device_errors"]:
+            lines.append(f"Dispositivos em erro no último registo de transações ({_fmt(dt)}): " + ", ".join(o["device_errors"]))
+    return lines
+
+
+def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int = 5, after_min: int = 5) -> Dict[str, Any]:
+    """Linha do tempo única de todos os logs recebidos no intervalo [when-before, when+after]."""
+    start = when - timedelta(minutes=before_min)
+    end = when + timedelta(minutes=after_min)
+    out, events, periods, private = _analyze(files, timeline=True)
+
+    inside = sorted((e for e in events if start <= e["dt"] <= end), key=lambda e: e["dt"])
+
+    # Só se descreve o que se sabe: a relação entre os registos do ficheiro e o intervalo. Os logs de
+    # eventos só escrevem quando algo acontece, por isso não se sabe até quando o ficheiro "cobre".
+    coverage = []
+    for f in out["files"]:
+        p = periods.get(f["name"])
+        relation = "unknown" if not p else "before" if p[1] < start else "after" if p[0] > end else "overlap"
+        coverage.append({"name": f["name"], "kind": f["kind"], "label": f["label"],
+                         "start": f["start"], "end": f["end"], "relation": relation})
+    with_events = {e["source"] for e in inside}
+    quiet = [SOURCE_LABELS[c["kind"]] for c in coverage
+             if c["kind"] in SOURCE_LABELS and c["relation"] == "overlap" and c["kind"] not in with_events]
+
+    groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for e in inside:
+        if e["severity"] not in ("error", "warning"):
+            continue
+        g = groups.setdefault((e["source"], e["title"]), {
+            "severity": e["severity"], "source": e["source"], "source_label": SOURCE_LABELS[e["source"]],
+            "title": e["title"], "detail": e["detail"], "count": 0, "first": e["dt"], "last": e["dt"]})
+        g["count"] += 1
+        g["last"] = e["dt"]
+        if e["severity"] == "error":
+            g["severity"] = "error"
+    highlights = sorted(groups.values(), key=lambda g: (0 if g["severity"] == "error" else 1, g["first"]))
+    for g in highlights:
+        g["first"], g["last"] = _fmt_ms(g["first"]), _fmt_ms(g["last"])
+
+    return {
+        "window": {"center": _fmt(when), "start": _fmt(start), "end": _fmt(end),
+                   "before_min": before_min, "after_min": after_min},
+        "summary": {"events": len(inside),
+                    "errors": sum(1 for e in inside if e["severity"] == "error"),
+                    "warnings": sum(1 for e in inside if e["severity"] == "warning")},
+        "coverage": coverage,
+        "ignored": out["ignored"],
+        "quiet_sources": quiet,
+        "highlights": highlights[:40],
+        "context": _context_lines(private, end),
+        "events": [{"ts": _fmt_ms(e["dt"]), "source": e["source"], "source_label": SOURCE_LABELS[e["source"]],
+                    "kind": e["kind"], "severity": e["severity"], "title": e["title"], "detail": e["detail"]}
+                   for e in inside[:MAX_TIMELINE]],
+        "events_truncated": len(inside) > MAX_TIMELINE,
     }

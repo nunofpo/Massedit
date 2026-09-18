@@ -1,9 +1,11 @@
 import unittest
+from datetime import datetime
 
 from backend.services.cashlogy_logs import (
     analyze_logs,
     decode_log,
     detect_kind,
+    investigate,
     parse_errors,
     parse_com,
     parse_opos,
@@ -618,6 +620,79 @@ class TestOperatorLog(unittest.TestCase):
         self.assertIn("1 mensagem(ns) mostrada(s) ao operador", titles)
         self.assertIn("500.00 € retirados para o stacker", titles)
         self.assertIn("1 cobrança(s) cancelada(s) no ecrã", titles)
+
+
+def _files_for_investigation(tran=TRAN, com=COM, usr=USR, errors=ERRORS):
+    return [("LogTran_20260918.txt", tran.encode("cp1252")), ("LogCom_20260918.txt", com.encode("cp1252")),
+            ("LogUsr_20260918.txt", usr.encode("cp1252")), ("Opos_ResultCodeExtended.log", errors.encode("cp1252"))]
+
+
+class TestInvestigate(unittest.TestCase):
+    def test_timeline_merges_sources_in_time_order_and_filters_the_window(self):
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        stamps = [e["ts"] for e in r["events"]]
+        self.assertEqual(stamps, sorted(stamps))
+        # às 19:32 só há LogCom e LogTran; o LogUsr de exemplo não tem ações a essa hora e os erros são de 2025
+        self.assertEqual({e["source"] for e in r["events"]}, {"com", "tran"})
+        titles = [e["title"] for e in r["events"]]
+        self.assertTrue(any(t.startswith("Cobrança 9,90") for t in titles))
+        self.assertIn("Entrada 20,00 €", titles)
+        self.assertIn("Saída 10,10 €", titles)
+        # eventos de outras horas ficam de fora (arranques do Connector às 07:11, cobrança cancelada às 17:02)
+        self.assertFalse(any("arrancou" in t for t in titles))
+        self.assertFalse(any(e["ts"].startswith("2026-09-18 17:02") for e in r["events"]))
+        self.assertEqual(r["window"]["start"], "2026-09-18 19:30:10")
+
+    def test_charge_event_shows_amounts_and_logtran_agreement(self):
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        charge = [e for e in r["events"] if e["title"].startswith("Cobrança")][0]
+        self.assertIn("introduzido 20,00 €", charge["detail"])
+        self.assertIn("devolvido 10,10 €", charge["detail"])
+        self.assertEqual(charge["severity"], "info")
+
+    def test_mismatch_between_connector_and_logtran_is_a_highlight(self):
+        tran = TRAN.replace("1 of 10,00 €.", "1 of 5,00 €.")  # a máquina devolveu 5,10 € em vez de 10,10 €
+        r = investigate(_files_for_investigation(tran=tran), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        self.assertEqual(r["summary"]["errors"], 1)
+        h = r["highlights"][0]
+        self.assertEqual((h["severity"], h["source"]), ("error", "com"))
+        self.assertIn("LogTran: entrou 20,00 € / saiu 5,10 €", h["detail"])
+
+    def test_repeated_warnings_are_grouped_in_highlights(self):
+        errors = "".join(_ev(1168, "WARNING", f"Fri Sep 18 19:32:{s:02d} 2026", "Moeda rejeitada porque não está programado")
+                         for s in range(10, 16))
+        r = investigate(_files_for_investigation(errors=errors), datetime(2026, 9, 18, 19, 32, 12), 1, 1)
+        group = [h for h in r["highlights"] if h["source"] == "errors"]
+        self.assertEqual(len(group), 1)
+        self.assertEqual(group[0]["count"], 6)
+        self.assertEqual(sum(1 for e in r["events"] if e["source"] == "errors"), 6)  # a linha do tempo mantém todos
+
+    def test_file_relation_does_not_claim_coverage_it_cannot_know(self):
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        rel = {c["kind"]: c["relation"] for c in r["coverage"]}
+        self.assertEqual(rel["errors"], "before")      # último evento (20/09/2025) é anterior ao intervalo
+        self.assertEqual(rel["com"], "overlap")
+        self.assertNotIn("none", rel.values())         # nunca se afirma "sem cobertura"
+
+    def test_window_without_events_reports_quiet_sources(self):
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 15, 0, 0), 1, 1)
+        self.assertEqual(r["events"], [])
+        self.assertIn("LogCom", r["quiet_sources"])    # o ficheiro tem registos à volta, mas nada neste minuto
+
+    def test_context_uses_last_known_levels_and_devices(self):
+        tx = tx_block("Fri Sep 18 19:00:00 2026", "Fri Sep 18 19:00:05 2026", ("200:5", "500:0"), DEPOSIT_OPS, ("200:7", "500:0"))
+        files = [("Transactions_Cashlogy.log", tx.encode("cp1252"))]
+        r = investigate(files, datetime(2026, 9, 18, 19, 5, 0), 10, 10)
+        self.assertTrue(any("500" in c or "5 €" in c for c in r["context"]), r["context"])
+
+    def test_result_is_json_serialisable_and_leaks_no_internal_fields(self):
+        import json
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        text = json.dumps(r)
+        self.assertNotIn('"_', text)
+        a = json.dumps(analyze_logs(_files_for_investigation()))
+        self.assertNotIn('"_events"', a)
+        self.assertNotIn('"_ops_full"', a)
 
 
 class TestAnalyze(unittest.TestCase):

@@ -40,7 +40,7 @@ from backend.services.products import (
 )
 from backend.services.reports import run_data_quality_report
 from backend.services.zstheme import analyze_zstheme, transform_zstheme
-from backend.services.cashlogy_logs import analyze_logs as analyze_cashlogy_logs
+from backend.services.cashlogy_logs import analyze_logs as analyze_cashlogy_logs, investigate as investigate_cashlogy
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
@@ -338,6 +338,28 @@ async def cashlogy_analyze_endpoint(files: List[UploadFile] = File(...)):
         return analyze_cashlogy_logs(payload)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Não foi possível analisar os logs do Cashlogy: {str(e)}")
+
+
+@app.post("/api/cashlogy/investigate")
+async def cashlogy_investigate_endpoint(
+    files: List[UploadFile] = File(...),
+    when: str = Form(...),
+    before: int = Form(5),
+    after: int = Form(5),
+):
+    """Linha do tempo de todos os logs do Cashlogy num intervalo à volta de `when` (AAAA-MM-DD HH:MM[:SS])."""
+    from datetime import datetime
+    try:
+        center = datetime.fromisoformat(when.strip().replace("T", " "))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data/hora inválida. Use o formato AAAA-MM-DD HH:MM.")
+    if not (0 <= before <= 720 and 0 <= after <= 720) or before + after < 1:
+        raise HTTPException(status_code=400, detail="O intervalo tem de estar entre 1 e 1440 minutos (até 12 h para cada lado).")
+    payload = [(f.filename or "", await f.read()) for f in files]
+    try:
+        return investigate_cashlogy(payload, center, before, after)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Não foi possível investigar o intervalo: {str(e)}")
 
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
