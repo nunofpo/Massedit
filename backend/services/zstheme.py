@@ -18,19 +18,33 @@ def _tag_base(tag: str) -> str:
     return tag
 
 
+from backend.services.xdl import decrypt, encrypt, detect_and_decrypt_text, is_xdl_encrypted
+
+
 def _read_zstheme(file_bytes: bytes) -> Tuple[ET.Element, Optional[bytes]]:
-    with tarfile.open(fileobj=io.BytesIO(file_bytes)) as tar:
-        names = tar.getnames()
-        if "layout.xml" not in names:
-            raise ValueError("Ficheiro .zstheme inválido: não contém layout.xml.")
-        xml_bytes = tar.extractfile("layout.xml").read()
-        thumbnail_bytes = tar.extractfile("__thumbnail.png").read() if "__thumbnail.png" in names else None
-    root = ET.fromstring(xml_bytes)
-    return root, thumbnail_bytes
+    # Tentar ler como arquivo .zstheme (tar.gz)
+    try:
+        with tarfile.open(fileobj=io.BytesIO(file_bytes)) as tar:
+            names = tar.getnames()
+            if "layout.xml" in names:
+                xml_bytes = tar.extractfile("layout.xml").read()
+                thumbnail_bytes = tar.extractfile("__thumbnail.png").read() if "__thumbnail.png" in names else None
+                root = ET.fromstring(xml_bytes)
+                return root, thumbnail_bytes
+    except Exception:
+        pass
+
+    # Tentar ler como ficheiro .xdl (encriptado ou XML direto)
+    xml_text = detect_and_decrypt_text(file_bytes)
+    root = ET.fromstring(xml_text)
+    return root, None
 
 
-def _write_zstheme(root: ET.Element, thumbnail_bytes: Optional[bytes]) -> bytes:
+def _write_zstheme(root: ET.Element, thumbnail_bytes: Optional[bytes], is_xdl: bool = False) -> bytes:
     new_xml_bytes = ET.tostring(root, encoding="utf-8")
+    if is_xdl:
+        return encrypt(new_xml_bytes)
+
     out_buf = io.BytesIO()
     with tarfile.open(fileobj=out_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         info = tarfile.TarInfo(name="layout.xml")

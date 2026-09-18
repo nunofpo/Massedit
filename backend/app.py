@@ -312,6 +312,40 @@ async def zstheme_transform_endpoint(file: UploadFile = File(...), rules: str = 
     )
 
 
+@app.post("/api/xdl/decrypt")
+async def xdl_decrypt_endpoint(file: UploadFile = File(...)):
+    """Desencripta um ficheiro .xdl (Delphi/ZoneSoft/POS stream cipher) e devolve o XML/texto em claro."""
+    from backend.services.xdl import detect_and_decrypt_text
+    file_bytes = await file.read()
+    try:
+        plain_text = detect_and_decrypt_text(file_bytes)
+        out_name = (file.filename.rsplit(".", 1)[0] if file.filename else "ficheiro") + ".xml"
+        return Response(
+            content=plain_text.encode("utf-8"),
+            media_type="application/xml",
+            headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao desencriptar ficheiro .xdl: {str(e)}")
+
+
+@app.post("/api/xdl/encrypt")
+async def xdl_encrypt_endpoint(file: UploadFile = File(...)):
+    """Encripta um ficheiro .xml para o formato .xdl."""
+    from backend.services.xdl import encrypt
+    file_bytes = await file.read()
+    try:
+        cipher_bytes = encrypt(file_bytes)
+        out_name = (file.filename.rsplit(".", 1)[0] if file.filename else "ficheiro") + ".xdl"
+        return Response(
+            content=cipher_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao encriptar ficheiro .xdl: {str(e)}")
+
+
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])
 def list_families_detailed_endpoint():
     """Lista detalhada de famílias com cores de fundo/letra e contagem de artigos."""
