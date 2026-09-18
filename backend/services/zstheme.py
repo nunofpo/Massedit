@@ -18,7 +18,7 @@ def _tag_base(tag: str) -> str:
     return tag
 
 
-from backend.services.xdl import decrypt, encrypt, detect_and_decrypt_text, is_xdl_encrypted
+from backend.services.xdl import decrypt, detect_and_decrypt_text, is_xdl_encrypted
 
 
 def _read_zstheme(file_bytes: bytes) -> Tuple[ET.Element, Optional[bytes]]:
@@ -40,11 +40,8 @@ def _read_zstheme(file_bytes: bytes) -> Tuple[ET.Element, Optional[bytes]]:
     return root, None
 
 
-def _write_zstheme(root: ET.Element, thumbnail_bytes: Optional[bytes], is_xdl: bool = False) -> bytes:
+def _write_zstheme(root: ET.Element, thumbnail_bytes: Optional[bytes]) -> bytes:
     new_xml_bytes = ET.tostring(root, encoding="utf-8")
-    if is_xdl:
-        return encrypt(new_xml_bytes)
-
     out_buf = io.BytesIO()
     with tarfile.open(fileobj=out_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         info = tarfile.TarInfo(name="layout.xml")

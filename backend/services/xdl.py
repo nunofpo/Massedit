@@ -1,5 +1,5 @@
 """
-Módulo de Desencriptação e Encriptação de Ficheiros XDL (ZoneSoft / POS Layouts).
+Módulo de Desencriptação de Ficheiros XDL (ZoneSoft / POS Layouts).
 Algoritmo de cifra de fluxo simétrica de 16 bits (Classic Delphi/Turbo Pascal LCG stream cipher).
 """
 
@@ -14,17 +14,6 @@ def decrypt(data: bytes) -> bytes:
     key = KEY0
     for i, c in enumerate(data):
         out[i] = c ^ (key >> 8)
-        key = ((key + c) * C1 + C2) & 0xFFFF
-    return bytes(out)
-
-
-def encrypt(data: bytes) -> bytes:
-    """Encripta um buffer de bytes em formato .xdl (operação inversa)."""
-    out = bytearray(len(data))
-    key = KEY0
-    for i, p in enumerate(data):
-        c = (p ^ (key >> 8)) & 0xFF
-        out[i] = c
         key = ((key + c) * C1 + C2) & 0xFFFF
     return bytes(out)
 
