@@ -1,5 +1,14 @@
 import os
 import sys
+import io
+
+# Garantir redirecionamento de stdio em modo Windowed/GUI do PyInstaller (sem consola)
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+if sys.stdin is None:
+    sys.stdin = io.StringIO()
 
 # Ensure root directory is on sys.path for PyInstaller bundle resolution
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,10 +51,14 @@ if __name__ == "__main__":
     
     # Iniciar servidor FastAPI
     try:
-        uvicorn.run(app, host="127.0.0.1", port=port, reload=False, log_level="info")
+        uvicorn.run(app, host="127.0.0.1", port=port, reload=False, log_level="info", use_colors=False)
     except Exception as e:
         print("\n" + "!" * 65)
         print(f" ERRO AO INICIAR SERVIDOR: {e}")
         print("!" * 65)
-        input("\nPressione ENTER para fechar esta janela...")
+        if sys.stdin and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
+            try:
+                input("\nPressione ENTER para fechar esta janela...")
+            except Exception:
+                pass
 
