@@ -60,13 +60,19 @@ interface Analysis {
     warnings: { ts: string; result: string; duration_ms: number; apagar: number | null }[];
     app_starts: number; accounting_read_errors: number; accounting_path: string;
   };
+  opos?: {
+    reads: number; first: string | null; last: string | null;
+    levels: { key: string; current: string; reads: number; counts: Record<string, number>; changes: number }[];
+    transitions: { ts: string; key: string; from: string; to: string }[];
+    transitions_truncated: boolean;
+  };
   versions?: {
     device: Record<string, string>;
     history: { ts: string; kind: string; sections: string[]; changes: { label: string; from: string; to: string }[]; dll_version?: string; h500_firmware?: string }[];
   };
 }
 
-type TabId = 'summary' | 'transactions' | 'alerts' | 'times' | 'payments' | 'device';
+type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'times' | 'payments' | 'device';
 
 // ---- Formatação --------------------------------------------------------------
 
@@ -256,6 +262,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     { id: 'summary', label: 'Resumo', show: true, badge: data?.findings.length },
     { id: 'transactions', label: 'Transações', show: !!tx, badge: tx?.transactions.length },
     { id: 'alerts', label: 'Alertas', show: !!data?.errors },
+    { id: 'levels', label: 'Níveis', show: !!data?.opos },
     { id: 'times', label: 'Tempos', show: !!data?.times },
     { id: 'payments', label: 'Pagamentos', show: !!data?.payments },
     { id: 'device', label: 'Equipamento', show: !!data && (Object.keys(data.device).length > 0 || !!data.versions) },
@@ -489,6 +496,67 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     );
   };
 
+  const levelLabel = (key: string) => (key === 'STACKER' ? 'Stacker' : denom(key));
+  const levelBadge = (state: string) => (
+    <Badge cls={STATE_STYLE[state] || 'bg-slate-50 text-slate-700 border-slate-200'}>{state}</Badge>
+  );
+
+  const renderLevels = () => {
+    const op = data?.opos;
+    if (!op) return null;
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card label="Leituras de nível" value={op.reads} />
+          <Card label="Primeira" value={<span className="text-sm">{dt(op.first)}</span>} />
+          <Card label="Última" value={<span className="text-sm">{dt(op.last)}</span>} />
+          <Card label="Mudanças de estado" value={op.levels.reduce((a, r) => a + r.changes, 0)} />
+        </div>
+        {op.levels.length === 0 ? <Empty text="Sem leituras de nível (ReadCashEmptyFullStatus) neste ficheiro." /> : (
+          <TableWrap>
+            <thead><tr><Th>Denominação</Th><Th>Última leitura</Th><Th right>Leituras</Th><Th>Estados observados</Th><Th right>Mudanças</Th></tr></thead>
+            <tbody>
+              {op.levels.map(r => (
+                <tr key={r.key}>
+                  <Td><span className="font-bold">{levelLabel(r.key)}</span></Td>
+                  <Td>{levelBadge(r.current)}</Td>
+                  <Td right mono>{r.reads}</Td>
+                  <Td>
+                    <span className="inline-flex flex-wrap gap-1">
+                      {Object.entries(r.counts).sort((a, b) => b[1] - a[1]).map(([s, n]) => (
+                        <span key={s} className="inline-flex items-center gap-1">{levelBadge(s)}<span className="font-mono text-slate-500">×{n}</span></span>
+                      ))}
+                    </span>
+                  </Td>
+                  <Td right mono>{r.changes}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        )}
+        <div className="space-y-2">
+          <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+            Mudanças de nível {op.transitions_truncated && <span className="text-slate-400 normal-case font-semibold">(só as mais recentes)</span>}
+          </h3>
+          {op.transitions.length === 0 ? <Empty text="O nível não mudou entre leituras." /> : (
+            <TableWrap>
+              <thead><tr><Th>Detetada em</Th><Th>Denominação</Th><Th>De</Th><Th>Para</Th></tr></thead>
+              <tbody>
+                {op.transitions.slice().reverse().map((t, i) => (
+                  <tr key={i}><Td mono>{dt(t.ts)}</Td><Td>{levelLabel(t.key)}</Td><Td>{levelBadge(t.from)}</Td><Td>{levelBadge(t.to)}</Td></tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-400">
+          O OPOS só lê os níveis durante operações. Cada mudança é a que foi detetada entre duas leituras consecutivas, não o instante exato,
+          e não dá para medir há quanto tempo um nível esteve em aviso.
+        </p>
+      </div>
+    );
+  };
+
   const renderTimes = () => {
     const ti = data?.times;
     if (!ti) return null;
@@ -680,6 +748,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               {tab === 'summary' && renderSummary()}
               {tab === 'transactions' && renderTransactions()}
               {tab === 'alerts' && renderAlerts()}
+              {tab === 'levels' && renderLevels()}
               {tab === 'times' && renderTimes()}
               {tab === 'payments' && renderPayments()}
               {tab === 'device' && renderDevice()}

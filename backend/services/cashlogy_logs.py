@@ -7,6 +7,7 @@ Ficheiros suportados (identificados pelo nome):
   - Opos_ResultCodeExtended.log     avisos e erros do hardware (códigos 1313, 1751, ...)
   - Process_GestorAdminDev.log      fluxo de pagamento (H500_paga_START/END ok|warning)
   - VersionsHistory.log             ficha do equipamento e histórico de versões
+  - Opos_Cashlogy.log               níveis cheio/vazio por denominação (ReadCashEmptyFullStatus)
 
 Todos os valores monetários são inteiros em cêntimos (denominação 200 = 2,00 €).
 Os ficheiros são lidos em memória; não há acesso à base de dados.
@@ -35,12 +36,12 @@ SUPPORTED_KINDS = {
     "errors": "Opos_ResultCodeExtended",
     "payments": "Process_GestorAdminDev",
     "versions": "VersionsHistory",
+    "opos": "Opos_Cashlogy",
 }
 
 _UNSUPPORTED_HINTS = {
     "sensores": "Séries de sensores sem cabeçalhos de coluna — ainda não suportado",
     "admissiondata": "Dados de admissão sem cabeçalhos de coluna — ainda não suportado",
-    "opos_cashlogy": "Rasto de chamadas OPOS (polling) — ainda não suportado",
     "opos_status": "Estado OPOS (quase só 'Information not changed') — ainda não suportado",
 }
 
@@ -85,6 +86,8 @@ def detect_kind(filename: str) -> Optional[str]:
         return "payments"
     if "versionshistory" in name:
         return "versions"
+    if "opos_cashlogy" in name:
+        return "opos"
     return None
 
 
@@ -114,6 +117,12 @@ def _parse_counts(raw: Optional[str]) -> Dict[int, int]:
 
 def _counts_value(counts: Dict[int, int]) -> int:
     return sum(d * q for d, q in counts.items())
+
+
+def denom_label(value: Any) -> str:
+    """200 -> '2 €'; 50 -> '50 c' (denominações em cêntimos)."""
+    n = int(value)
+    return f"{n / 100:g} €" if n >= 100 else f"{n} c"
 
 
 def _nonzero(counts: Dict[int, int]) -> Dict[str, int]:
@@ -708,6 +717,80 @@ def parse_versions(text: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Opos_Cashlogy.log
+# ---------------------------------------------------------------------------
+
+# Códigos de nível do Cashlogy (manual do CashlogyConnector, comando #GC#).
+# 0, 12, 21 e 22 foram confirmados contra o EmptyFullStates do Transactions_Cashlogy.log
+# (1296 comparações, 100 % de coincidência); o 11 (EMPTY) vem só do manual.
+_LEVEL_CODES = {0: "OK", 11: "EMPTY", 12: "NEAR_EMPTY", 21: "FULL", 22: "NEAR_FULL"}
+_LEVEL_LINE = re.compile(r"ReadCashEmptyFullStatus\s*<([^>]*)>")
+MAX_TRANSITIONS = 300
+
+
+def parse_opos(text: str) -> Dict[str, Any]:
+    """Níveis por denominação a partir de ReadCashEmptyFullStatus.
+
+    O OPOS só lê o nível quando há operações, por isso o log não permite medir
+    durações exatas: devolve-se o estado em cada leitura e as transições entre leituras.
+    """
+    lines = text.splitlines()
+    reads: List[Tuple[datetime, Dict[str, str]]] = []
+    for i, ln in enumerate(lines):
+        if "ReadCashEmptyFullStatus" not in ln or i + 1 >= len(lines):
+            continue
+        m = _LEVEL_LINE.search(ln)
+        stamp = _TS_LINE.match(lines[i + 1])
+        dt = _dt_from_groups(stamp.groups()) if stamp else None
+        if not m or dt is None:
+            continue
+        states: Dict[str, str] = {}
+        for part in re.split(r"[,;]", m.group(1)):
+            key, _, value = part.partition(":")
+            key, value = key.strip(), value.strip()
+            if key and value.lstrip("-").isdigit():
+                states[key] = _LEVEL_CODES.get(int(value), f"CÓDIGO_{value}")
+        if states:
+            reads.append((dt, states))
+
+    keys: List[str] = []
+    for _, states in reads:
+        for k in states:
+            if k not in keys:
+                keys.append(k)
+    keys.sort(key=lambda k: (k == "STACKER", int(k) if k.isdigit() else 0))
+
+    transitions: List[Dict[str, Any]] = []
+    rows: List[Dict[str, Any]] = []
+    for key in keys:
+        seq = [(dt, s[key]) for dt, s in reads if key in s]
+        counts = Counter(state for _, state in seq)
+        changes = 0
+        for (_, before), (dt, after) in zip(seq, seq[1:]):
+            if before != after:
+                changes += 1
+                transitions.append({"ts": _fmt(dt), "key": key, "from": before, "to": after})
+        rows.append({
+            "key": key,
+            "current": seq[-1][1],
+            "reads": len(seq),
+            "counts": dict(counts),
+            "changes": changes,
+        })
+
+    transitions.sort(key=lambda t: t["ts"])
+    return {
+        "reads": len(reads),
+        "first": _fmt(reads[0][0]) if reads else None,
+        "last": _fmt(reads[-1][0]) if reads else None,
+        "levels": rows,
+        "transitions": transitions[-MAX_TRANSITIONS:],
+        "transitions_truncated": len(transitions) > MAX_TRANSITIONS,
+        "_timestamps": [dt for dt, _ in reads],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Orquestração
 # ---------------------------------------------------------------------------
 
@@ -717,6 +800,7 @@ _PARSERS = {
     "errors": parse_errors,
     "payments": parse_payments,
     "versions": parse_versions,
+    "opos": parse_opos,
 }
 
 
@@ -770,6 +854,13 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
                 add("info", f"{ti[kind]['slow_count']} {label} com duração acima de 3× a mediana",
                     f"Limiar {ti[kind]['slow_threshold']} ms. A duração depende do nº de notas/moedas; "
                     "ver as fases mais demoradas no separador Tempos.")
+
+    op = result.get("opos")
+    if op and not tx:  # com Transactions já há um aviso equivalente sobre os níveis
+        off = [f"{'Stacker' if r['key'] == 'STACKER' else denom_label(r['key'])} ({r['current']})"
+               for r in op["levels"] if r["current"] != "OK"]
+        if off:
+            add("warning", "Níveis fora do normal na última leitura OPOS: " + ", ".join(off))
 
     pay = result.get("payments")
     if pay:

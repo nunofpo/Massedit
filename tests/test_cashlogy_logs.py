@@ -5,6 +5,7 @@ from backend.services.cashlogy_logs import (
     decode_log,
     detect_kind,
     parse_errors,
+    parse_opos,
     parse_payments,
     parse_times,
     parse_transactions,
@@ -56,6 +57,8 @@ class TestKinds(unittest.TestCase):
         self.assertEqual(detect_kind("Opos_ResultCodeExtended.log"), "errors")
         self.assertEqual(detect_kind("Process_GestorAdminDev.log"), "payments")
         self.assertEqual(detect_kind("VersionsHistory.log"), "versions")
+        self.assertEqual(detect_kind("Opos_Cashlogy.log"), "opos")
+        self.assertIsNone(detect_kind("Opos_Status.log"))
         self.assertIsNone(detect_kind("7028437-46027-Sensores_H500.log"))
 
     def test_unsupported_files_are_reported_not_parsed(self):
@@ -334,6 +337,43 @@ class TestVersions(unittest.TestCase):
             {"label": "Firmware H500", "from": "RBH500 v03.00#08.20#09.00", "to": "RBH500 v04.00#09.00#09.00"},
         ])
         self.assertNotIn("HOPPER_Dir 3", h[1]["sections"])
+
+
+OPOS = """     DirectIO    ReadStatus
+                 Fri Sep 19 22:29:36.000 2025
+     DirectIO    ReadCashEmptyFullStatus <1:0,200:0;2000:22,STACKER:0>
+                 Fri Sep 19 22:29:37.110 2025
+     DirectIO    ReadCashEmptyFullStatus <1:0,200:0;2000:22,STACKER:0>
+                 Fri Sep 19 22:30:00.000 2025
+     DirectIO    ReadCashEmptyFullStatus <1:0,200:12;2000:21,STACKER:0>
+                 Fri Sep 19 22:31:00.000 2025
+     DirectIO    ReadCashEmptyFullStatus <1:0,200:0;2000:99,STACKER:0>
+                 Fri Sep 19 22:32:00.000 2025
+"""
+
+
+class TestOpos(unittest.TestCase):
+    def test_level_codes_and_transitions(self):
+        r = parse_opos(OPOS)
+        self.assertEqual(r["reads"], 4)
+        by_key = {row["key"]: row for row in r["levels"]}
+        self.assertEqual([row["key"] for row in r["levels"]], ["1", "200", "2000", "STACKER"])  # STACKER no fim
+        self.assertEqual(by_key["2000"]["counts"], {"NEAR_FULL": 2, "FULL": 1, "CÓDIGO_99": 1})
+        self.assertEqual(by_key["200"]["current"], "OK")
+        self.assertEqual(by_key["200"]["changes"], 2)  # OK -> NEAR_EMPTY -> OK
+        self.assertEqual(by_key["1"]["changes"], 0)
+        first = [t for t in r["transitions"] if t["key"] == "2000"][0]
+        self.assertEqual((first["from"], first["to"], first["ts"]), ("NEAR_FULL", "FULL", "2025-09-19 22:31:00"))
+
+    def test_no_reads(self):
+        r = parse_opos("     DirectIO    ReadStatus\n                 Fri Sep 19 22:29:36.000 2025\n")
+        self.assertEqual((r["reads"], r["levels"], r["first"]), (0, [], None))
+
+    def test_analyze_warns_when_off_normal_without_transactions(self):
+        r = analyze_logs([("Opos_Cashlogy.log", OPOS.encode("cp1252"))])
+        self.assertEqual([f["kind"] for f in r["files"]], ["opos"])
+        titles = [f["title"] for f in r["findings"]]
+        self.assertTrue(any("20 €" in t and "CÓDIGO_99" in t for t in titles), titles)
 
 
 class TestAnalyze(unittest.TestCase):
