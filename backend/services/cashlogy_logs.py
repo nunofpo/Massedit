@@ -8,10 +8,13 @@ Ficheiros suportados (identificados pelo nome):
   - Process_GestorAdminDev.log      fluxo de pagamento (H500_paga_START/END ok|warning)
   - VersionsHistory.log             ficha do equipamento e histórico de versões
   - Opos_Cashlogy.log               níveis cheio/vazio por denominação (ReadCashEmptyFullStatus)
+  - LogTran_AAAAMMDD.txt            entradas/saídas de dinheiro do CashlogyConnector, por denominação
+  - LogCom_AAAAMMDD.txt             comandos POS↔Connector (#C# cobrar, #G# backoffice) e respostas
 
 Todos os valores monetários são inteiros em cêntimos (denominação 200 = 2,00 €).
 Os ficheiros são lidos em memória; não há acesso à base de dados.
 """
+import bisect
 import re
 import statistics
 from collections import Counter, defaultdict
@@ -37,9 +40,15 @@ SUPPORTED_KINDS = {
     "payments": "Process_GestorAdminDev",
     "versions": "VersionsHistory",
     "opos": "Opos_Cashlogy",
+    "tran": "LogTran",
+    "com": "LogCom",
 }
 
 _UNSUPPORTED_HINTS = {
+    "logusr": "Ações do utilizador nos ecrãs do Connector — ainda não suportado",
+    "logiot": "Telemetria IoT em JSON — ainda não suportado",
+    "cashlogyedge": "Telemetria IoT (agente Edge) — ainda não suportado",
+    "protocoloctalk": "Traço binário do protocolo ccTalk — ainda não suportado",
     "sensores": "Séries de sensores sem cabeçalhos de coluna — ainda não suportado",
     "admissiondata": "Dados de admissão sem cabeçalhos de coluna — ainda não suportado",
     "opos_status": "Estado OPOS (quase só 'Information not changed') — ainda não suportado",
@@ -88,6 +97,10 @@ def detect_kind(filename: str) -> Optional[str]:
         return "versions"
     if "opos_cashlogy" in name:
         return "opos"
+    if "logtran" in name:
+        return "tran"
+    if "logcom" in name:
+        return "com"
     return None
 
 
@@ -811,6 +824,189 @@ def parse_opos(text: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# LogTran_*.txt e LogCom_*.txt (CashlogyConnector)
+# ---------------------------------------------------------------------------
+
+# Linhas '"dd/mm/aaaa hh:mm:ss.mmm,payload"', em cp1252, com vírgula decimal.
+_CONN_LINE = re.compile(r'^"(\d{2})/(\d{2})/(\d{4}) (\d{2}):(\d{2}):(\d{2})\.(\d{3}),(.*)"\s*$')
+_TRAN_ITEMS = re.compile(r"(\d+) of (\d+),(\d{2})")
+_TRAN_MOVE = re.compile(r"^(IN|OUT):\s*(.*)$")
+_TRAN_BACKOFFICE = re.compile(r"^BACKOFFICE - (.+?) - (IN|OUT):\s*(\d+),(\d{2})")
+# Respostas do Connector: primeiro campo é o código de erro (manual, secção 6.2): 0, WR:xxx ou ER:xxx.
+_COM_RESPONSE = re.compile(r"^#(0|WR:[A-Z_]+|ER:[A-Z_]+)#(.*)$")
+_COM_REQUEST = re.compile(r"^#([A-Z0-9?]+)#(.*)$")
+_COM_STARTED = re.compile(r"Connector\.Started\(\).*\(v([\d.]+)\)")
+
+
+def _conn_lines(text: str) -> Iterator[Tuple[datetime, str]]:
+    for ln in text.splitlines():
+        m = _CONN_LINE.match(ln)
+        if not m:
+            continue
+        dd, mo, yyyy, hh, mi, ss, ms, payload = m.groups()
+        try:
+            yield datetime(int(yyyy), int(mo), int(dd), int(hh), int(mi), int(ss), int(ms) * 1000), payload
+        except ValueError:
+            continue
+
+
+def parse_tran(text: str) -> Dict[str, Any]:
+    """Entradas (IN) e saídas (OUT) de dinheiro por denominação; valores em cêntimos.
+
+    As linhas 'BACKOFFICE - ... - IN/OUT: x,xx €' resumem as linhas IN/OUT anteriores,
+    por isso não entram nos totais (senão contavam a dobrar).
+    """
+    moves: List[Dict[str, Any]] = []
+    backoffice: List[Dict[str, Any]] = []
+    stamps: List[datetime] = []
+    for dt, payload in _conn_lines(text):
+        stamps.append(dt)
+        m = _TRAN_BACKOFFICE.match(payload)
+        if m:
+            backoffice.append({"ts": _fmt(dt), "action": m.group(1), "dir": m.group(2).lower(),
+                               "amount": int(m.group(3)) * 100 + int(m.group(4))})
+            continue
+        m = _TRAN_MOVE.match(payload)
+        if not m:
+            continue
+        counts: Counter = Counter()
+        for qty, euros, cents in _TRAN_ITEMS.findall(m.group(2)):
+            counts[int(euros) * 100 + int(cents)] += int(qty)
+        moves.append({"dt": dt, "ts": _fmt(dt), "dir": m.group(1).lower(),
+                      "amount": _counts_value(dict(counts)), "counts": _nonzero(dict(counts))})
+
+    ins = [x for x in moves if x["dir"] == "in"]
+    outs = [x for x in moves if x["dir"] == "out"]
+    return {
+        "summary": {
+            "ins": len(ins), "outs": len(outs),
+            "in_total": sum(x["amount"] for x in ins), "out_total": sum(x["amount"] for x in outs),
+            "backoffice": len(backoffice),
+        },
+        "movements": [{k: v for k, v in x.items() if k != "dt"} for x in moves[-MAX_TRANSACTIONS:]],
+        "movements_truncated": len(moves) > MAX_TRANSACTIONS,
+        "backoffice": backoffice[-MAX_EVENTS:],
+        "_moves": [(x["dt"], x["dir"], x["amount"]) for x in moves],
+        "_timestamps": stamps,
+    }
+
+
+def _ints(raw: str) -> List[int]:
+    raw = raw.strip("#")
+    if not raw:
+        return []
+    return [int(p) if re.fullmatch(r"-?\d+", p.strip()) else 0 for p in raw.split("#")]
+
+
+def _finish_com(rows: List[Dict[str, Any]], errors: List[Dict[str, Any]],
+                req: Dict[str, Any], end: datetime, code: str, rest: str) -> None:
+    f = _ints(rest)
+
+    def field(i: int) -> int:
+        return f[i] if i < len(f) else 0
+
+    cmd = req["cmd"]
+    base = {"ts": _fmt(req["dt"]), "cmd": cmd, "result": code,
+            "duration_ms": round((end - req["dt"]).total_seconds() * 1000),
+            "_start": req["dt"], "_end": end}
+    if code.startswith("ER:"):
+        errors.append({"ts": base["ts"], "cmd": cmd, "code": code})
+    if cmd == "C":  # cobrar: #C#op#caixa#valor#... -> #cód#automático#devolvido#manual#adicionado#
+        amount = req["args"][2] if len(req["args"]) > 2 else 0
+        introduced = field(0) + field(2)
+        returned = field(1)
+        net = introduced - returned
+        cancelled = code == "WR:CANCEL"
+        rows.append({**base, "kind": "charge", "amount": amount, "introduced": introduced,
+                     "returned": returned, "net": net, "cancelled": cancelled,
+                     "ok": cancelled or (not code.startswith("ER:") and net == amount)})
+    elif cmd == "G":  # backoffice: #cód#antes#depois#inserido#devolvido#não pago#consolidado#
+        rows.append({**base, "kind": "backoffice", "before": field(0), "after": field(1),
+                     "introduced": field(2), "returned": field(3)})
+    elif cmd == "A":  # adicionar troco: #cód#valor inserido#
+        rows.append({**base, "kind": "backoffice", "before": None, "after": None,
+                     "introduced": field(0), "returned": 0})
+
+
+def parse_com(text: str) -> Dict[str, Any]:
+    rows: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    starts: List[Dict[str, str]] = []
+    commands: Counter = Counter()
+    connections = delayed = orphans = 0
+    pending: Optional[Dict[str, Any]] = None
+    stamps: List[datetime] = []
+
+    for dt, payload in _conn_lines(text):
+        stamps.append(dt)
+        payload = payload.strip()
+        if payload.startswith(";"):
+            if "ConnectionRequest" in payload:
+                connections += 1
+            elif "Response delayed" in payload:
+                delayed += 1
+            else:
+                m = _COM_STARTED.search(payload)
+                if m:
+                    starts.append({"ts": _fmt(dt), "version": m.group(1)})
+            continue
+        m = _COM_RESPONSE.match(payload)
+        if m:
+            if pending is None:
+                orphans += 1
+            else:
+                _finish_com(rows, errors, pending, dt, m.group(1), m.group(2))
+                pending = None
+            continue
+        m = _COM_REQUEST.match(payload)
+        if m:
+            commands[m.group(1)] += 1
+            pending = {"cmd": m.group(1), "args": _ints(m.group(2)), "dt": dt}
+
+    charges = [r for r in rows if r["kind"] == "charge"]
+    return {
+        "summary": {
+            "connections": connections, "commands": dict(commands),
+            "charges": len(charges), "cancelled": sum(1 for r in charges if r["cancelled"]),
+            "not_matching": sum(1 for r in charges if not r["ok"]),
+            "level_warnings": sum(1 for r in charges if r["result"] == "WR:LEVEL"),
+            "delayed_responses": delayed, "orphan_responses": orphans,
+        },
+        "duration_ms": _stats([r["duration_ms"] for r in charges if not r["cancelled"]]),
+        "operations": rows,
+        "errors": errors[-MAX_EVENTS:],
+        "starts": starts,
+        "_timestamps": stamps,
+    }
+
+
+def _crosscheck_com_tran(rows: List[Dict[str, Any]], moves: List[Tuple[datetime, str, int]]) -> Dict[str, Any]:
+    """Compara, por operação do LogCom, o que o Connector respondeu (introduzido/devolvido)
+    com os movimentos físicos do LogTran na mesma janela de tempo."""
+    moves = sorted(moves, key=lambda m: m[0])
+    times = [m[0] for m in moves]
+    first = times[0] if times else None
+    last = times[-1] if times else None
+    checked = matched = 0
+    mismatches: List[Dict[str, Any]] = []
+    for r in rows:
+        r["tran_match"] = None
+        if first is None or r["_start"] < first - timedelta(minutes=5) or r["_start"] > last + timedelta(minutes=5):
+            continue  # fora do período coberto pelo LogTran
+        i = bisect.bisect_left(times, r["_start"] - timedelta(milliseconds=500))
+        j = bisect.bisect_right(times, r["_end"] + timedelta(seconds=1))
+        r["tran_in"] = sum(a for _, d, a in moves[i:j] if d == "in")
+        r["tran_out"] = sum(a for _, d, a in moves[i:j] if d == "out")
+        r["tran_match"] = r["tran_in"] == r["introduced"] and r["tran_out"] == r["returned"]
+        checked += 1
+        matched += r["tran_match"]
+        if not r["tran_match"]:
+            mismatches.append({"ts": r["ts"], "cmd": r["cmd"], "introduced": r["introduced"], "returned": r["returned"],
+                               "tran_in": r["tran_in"], "tran_out": r["tran_out"]})
+    return {"checked": checked, "matched": matched, "mismatches": mismatches[-MAX_EVENTS:]}
+
+
+# ---------------------------------------------------------------------------
 # Orquestração
 # ---------------------------------------------------------------------------
 
@@ -821,6 +1017,8 @@ _PARSERS = {
     "payments": parse_payments,
     "versions": parse_versions,
     "opos": parse_opos,
+    "tran": parse_tran,
+    "com": parse_com,
 }
 
 
@@ -901,6 +1099,30 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
             add("warning", f"{pay['accounting_read_errors']} erro(s) a ler Accounting",
                 pay["accounting_path"])
 
+    cm = result.get("com")
+    if cm:
+        bad = [o for o in cm["operations"] if o["kind"] == "charge" and not o["ok"]]
+        if bad:
+            add("error", f"{len(bad)} cobrança(s) em que entrou − devolvido ≠ valor pedido",
+                "; ".join(f"{o['ts']}: pedido {o['amount'] / 100:.2f} €, líquido {o['net'] / 100:.2f} € ({o['result']})"
+                          for o in bad[:5]))
+        if cm["errors"]:
+            codes = Counter(e["code"] for e in cm["errors"])
+            add("error", f"{len(cm['errors'])} resposta(s) de erro do Connector",
+                ", ".join(f"{c} ×{n}" for c, n in codes.most_common(5)))
+        if len(cm["starts"]) >= 2:
+            add("warning", f"O Connector arrancou {len(cm['starts'])} vezes",
+                ", ".join(s["ts"][11:] for s in cm["starts"][:6]) + f" (v{cm['starts'][0]['version']})")
+        if cm["summary"]["cancelled"]:
+            add("info", f"{cm['summary']['cancelled']} cobrança(s) cancelada(s) pelo utilizador")
+        if cm["summary"]["delayed_responses"]:
+            add("info", f"{cm['summary']['delayed_responses']} resposta(s) atrasada(s) do Winsock")
+        cc = cm.get("crosscheck")
+        if cc and cc["mismatches"]:
+            add("error", f"{len(cc['mismatches'])} operação(ões) em que o LogTran não coincide com o LogCom",
+                "; ".join(f"{m['ts']} {m['cmd']}: Connector {m['introduced']}/{m['returned']}, "
+                          f"movimentos {m['tran_in']}/{m['tran_out']} (cêntimos, entrou/saiu)" for m in cc["mismatches"][:4]))
+
     order = {"error": 0, "warning": 1, "info": 2}
     findings.sort(key=lambda f: order.get(f["severity"], 3))
     return findings
@@ -912,6 +1134,7 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
     file_rows: List[Dict[str, Any]] = []
     ignored: List[Dict[str, str]] = []
     all_ts: List[datetime] = []
+    private: Dict[Tuple[str, str], Any] = {}
 
     for name, data in files:
         kind = detect_kind(name)
@@ -922,12 +1145,22 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
         parsed = _PARSERS[kind](text)
         ts = parsed.pop("_timestamps", [])
         all_ts.extend(ts)
+        for key in [k for k in parsed if k.startswith("_")]:  # dados internos, não vão na resposta
+            private[(kind, key)] = parsed.pop(key)
         result[kind] = parsed
         file_rows.append({
             "name": name, "kind": kind, "label": SUPPORTED_KINDS[kind],
             "size": len(data), "lines": text.count("\n") + 1,
             "start": _fmt(min(ts)) if ts else None, "end": _fmt(max(ts)) if ts else None,
         })
+
+    if "com" in result:
+        if ("tran", "_moves") in private:
+            result["com"]["crosscheck"] = _crosscheck_com_tran(result["com"]["operations"], private[("tran", "_moves")])
+        for row in result["com"]["operations"]:
+            row.pop("_start", None)
+            row.pop("_end", None)
+        result["com"]["operations"] = result["com"]["operations"][-MAX_TRANSACTIONS:]
 
     device: Dict[str, str] = {}
     device.update(result.get("transactions", {}).get("device", {}))

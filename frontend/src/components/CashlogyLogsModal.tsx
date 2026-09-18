@@ -67,13 +67,37 @@ interface Analysis {
     transitions: { ts: string; key: string; from: string; to: string }[];
     transitions_truncated: boolean;
   };
+  tran?: {
+    summary: { ins: number; outs: number; in_total: number; out_total: number; backoffice: number };
+    movements: { ts: string; dir: 'in' | 'out'; amount: number; counts: Record<string, number> }[];
+    movements_truncated: boolean;
+    backoffice: { ts: string; action: string; dir: 'in' | 'out'; amount: number }[];
+  };
+  com?: {
+    summary: {
+      connections: number; commands: Record<string, number>; charges: number; cancelled: number;
+      not_matching: number; level_warnings: number; delayed_responses: number; orphan_responses: number;
+    };
+    duration_ms: { count: number; avg: number | null; median: number | null; p95: number | null; min: number | null; max: number | null };
+    operations: {
+      ts: string; cmd: string; kind: 'charge' | 'backoffice'; result: string; duration_ms: number;
+      amount?: number; introduced: number; returned: number; net?: number; cancelled?: boolean; ok?: boolean;
+      tran_in?: number; tran_out?: number; tran_match?: boolean | null;
+    }[];
+    errors: { ts: string; cmd: string; code: string }[];
+    starts: { ts: string; version: string }[];
+    crosscheck?: {
+      checked: number; matched: number;
+      mismatches: { ts: string; cmd: string; introduced: number; returned: number; tran_in: number; tran_out: number }[];
+    };
+  };
   versions?: {
     device: Record<string, string>;
     history: { ts: string; kind: string; sections: string[]; changes: { label: string; from: string; to: string }[]; dll_version?: string; h500_firmware?: string }[];
   };
 }
 
-type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'times' | 'payments' | 'device';
+type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'times' | 'payments' | 'device';
 
 // ---- Formatação --------------------------------------------------------------
 
@@ -264,6 +288,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     { id: 'transactions', label: 'Transações', show: !!tx, badge: tx?.transactions.length },
     { id: 'alerts', label: 'Alertas', show: !!data?.errors },
     { id: 'levels', label: 'Níveis', show: !!data?.opos },
+    { id: 'connector', label: 'Connector', show: !!(data?.tran || data?.com) },
     { id: 'times', label: 'Tempos', show: !!data?.times },
     { id: 'payments', label: 'Pagamentos', show: !!data?.payments },
     { id: 'device', label: 'Equipamento', show: !!data && (Object.keys(data.device).length > 0 || !!data.versions) },
@@ -573,6 +598,108 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     );
   };
 
+  const resultBadge = (code: string) => {
+    if (code === '0') return <Badge cls="bg-emerald-50 text-emerald-800 border-emerald-200">OK</Badge>;
+    if (code === 'WR:CANCEL') return <Badge cls="bg-slate-100 text-slate-700 border-slate-300">Cancelada</Badge>;
+    if (code.startsWith('ER:')) return <Badge cls="bg-rose-50 text-rose-800 border-rose-200">{code}</Badge>;
+    return <Badge cls="bg-amber-50 text-amber-800 border-amber-200" title="Aviso do Connector: algum nível (nota/moeda) fora do limite">{code}</Badge>;
+  };
+
+  const renderConnector = () => {
+    const tr = data?.tran;
+    const cm = data?.com;
+    const cc = cm?.crosscheck;
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {tr && <Card label="Entradas (LogTran)" value={eur(tr.summary.in_total)} sub={`${tr.summary.ins} movimentos`} />}
+          {tr && <Card label="Saídas (LogTran)" value={eur(tr.summary.out_total)} sub={`${tr.summary.outs} movimentos`} />}
+          {cm && <Card label="Cobranças" value={cm.summary.charges}
+                       tone={cm.summary.not_matching ? 'text-rose-700' : 'text-slate-900'}
+                       sub={`${cm.summary.cancelled} cancelada(s)${cm.summary.not_matching ? ` · ${cm.summary.not_matching} com valor que não bate` : ''}`} />}
+          {cm && <Card label="Duração mediana" value={ms(cm.duration_ms.median)} sub={`máx. ${ms(cm.duration_ms.max)} (inclui o tempo do cliente)`} />}
+          {cc && <Card label="LogCom × LogTran" value={`${cc.matched}/${cc.checked}`}
+                       tone={cc.mismatches.length ? 'text-rose-700' : 'text-emerald-700'}
+                       sub={cc.mismatches.length ? `${cc.mismatches.length} sem coincidência` : 'movimentos coincidem'} />}
+          {cm && <Card label="Arranques do Connector" value={cm.starts.length}
+                       tone={cm.starts.length > 1 ? 'text-amber-700' : 'text-slate-900'}
+                       sub={cm.starts.length ? `v${cm.starts[0].version} · ${cm.starts.map(s => s.ts.slice(11, 16)).join(', ')}` : undefined} />}
+        </div>
+
+        {cm && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Cobranças e operações de backoffice</h3>
+            {cm.operations.length === 0 ? <Empty text="Sem operações no LogCom." /> : (
+              <TableWrap>
+                <thead><tr><Th>Data/hora</Th><Th>Operação</Th><Th right>Pedido</Th><Th right>Introduzido</Th><Th right>Devolvido</Th><Th>Resultado</Th><Th>Movimentos</Th><Th right>Duração</Th></tr></thead>
+                <tbody>
+                  {cm.operations.slice().reverse().slice(0, 300).map((o, i) => (
+                    <tr key={i} className={o.kind === 'charge' && !o.ok ? 'bg-rose-50/40' : ''}>
+                      <Td mono>{dt(o.ts)}</Td>
+                      <Td>{o.kind === 'charge' ? 'Cobrança' : o.cmd === 'A' ? 'Adicionar troco' : 'Backoffice'}</Td>
+                      <Td right mono>{o.amount != null ? eur(o.amount) : '—'}</Td>
+                      <Td right mono>{eur(o.introduced)}</Td>
+                      <Td right mono>{eur(o.returned)}{o.kind === 'charge' && !o.ok && !o.cancelled ? <span className="text-rose-600"> (líq. {eur(o.net ?? 0)})</span> : null}</Td>
+                      <Td>{resultBadge(o.result)}</Td>
+                      <Td>
+                        {o.tran_match == null ? <span className="text-slate-300">—</span>
+                          : o.tran_match ? <Badge cls="bg-emerald-50 text-emerald-800 border-emerald-200">coincide</Badge>
+                            : <Badge cls="bg-rose-50 text-rose-800 border-rose-200" title="Entrou / saiu segundo o LogTran">difere: {eur(o.tran_in ?? 0)} / {eur(o.tran_out ?? 0)}</Badge>}
+                      </Td>
+                      <Td right mono>{ms(o.duration_ms)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableWrap>
+            )}
+          </div>
+        )}
+
+        {cm && cm.errors.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Respostas de erro do Connector</h3>
+            <TableWrap>
+              <thead><tr><Th>Data/hora</Th><Th>Comando</Th><Th>Código</Th></tr></thead>
+              <tbody>{cm.errors.slice().reverse().map((e, i) => (<tr key={i}><Td mono>{dt(e.ts)}</Td><Td mono>#{e.cmd}#</Td><Td>{resultBadge(e.code)}</Td></tr>))}</tbody>
+            </TableWrap>
+          </div>
+        )}
+
+        {tr && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+              Movimentos de dinheiro {tr.movements_truncated && <span className="text-slate-400 normal-case font-semibold">(só os mais recentes)</span>}
+            </h3>
+            <TableWrap>
+              <thead><tr><Th>Data/hora</Th><Th>Sentido</Th><Th right>Valor</Th><Th>Denominações</Th></tr></thead>
+              <tbody>
+                {tr.movements.slice().reverse().slice(0, 300).map((m, i) => (
+                  <tr key={i}>
+                    <Td mono>{dt(m.ts)}</Td>
+                    <Td><span className="inline-flex items-center gap-1 font-semibold">
+                      {m.dir === 'in' ? <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-600" /> : <ArrowUpFromLine className="w-3.5 h-3.5 text-indigo-600" />}
+                      {m.dir === 'in' ? 'Entrada' : 'Saída'}</span></Td>
+                    <Td right mono>{eur(m.amount)}</Td>
+                    <Td mono>{countsText(m.counts)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            {tr.backoffice.length > 0 && (
+              <p className="text-[11px] text-slate-500">
+                Backoffice: {tr.backoffice.map(b => `${b.action} ${b.dir === 'in' ? 'entrada' : 'saída'} ${eur(b.amount)} (${b.ts.slice(11, 16)})`).join(' · ')}
+              </p>
+            )}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-400">
+          Cobrança = introduzido − devolvido tem de igualar o valor pedido. «Movimentos» compara o que o Connector respondeu com as entradas e saídas
+          registadas no LogTran na mesma janela de tempo (só quando os dois ficheiros do mesmo dia estão presentes).
+        </p>
+      </div>
+    );
+  };
+
   const renderTimes = () => {
     const ti = data?.times;
     if (!ti) return null;
@@ -765,6 +892,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               {tab === 'transactions' && renderTransactions()}
               {tab === 'alerts' && renderAlerts()}
               {tab === 'levels' && renderLevels()}
+              {tab === 'connector' && renderConnector()}
               {tab === 'times' && renderTimes()}
               {tab === 'payments' && renderPayments()}
               {tab === 'device' && renderDevice()}

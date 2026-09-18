@@ -5,9 +5,11 @@ from backend.services.cashlogy_logs import (
     decode_log,
     detect_kind,
     parse_errors,
+    parse_com,
     parse_opos,
     parse_payments,
     parse_times,
+    parse_tran,
     parse_transactions,
     parse_versions,
 )
@@ -476,6 +478,88 @@ class TestOpos(unittest.TestCase):
         self.assertEqual([f["kind"] for f in r["files"]], ["opos"])
         titles = [f["title"] for f in r["findings"]]
         self.assertTrue(any("20 €" in t and "CÓDIGO_99" in t for t in titles), titles)
+
+
+TRAN = '''"18/09/2026 07:23:35.740,IN: 1 of 0,05 €. 1 of 0,10 €. 5 of 0,20 €. 3 of 0,50 €. 5 of 1,00 €. 1 of 2,00 €."
+"18/09/2026 07:24:01.060,OUT: 1 of 0,05 €. 1 of 0,10 €. 1 of 0,50 €. 4 of 1,00 €. 1 of 5,00 €."
+"18/09/2026 07:24:01.090,BACKOFFICE - Dar troco - IN: 9,65 €"
+"18/09/2026 07:24:01.100,BACKOFFICE - Dar troco - OUT: 9,65 €"
+"18/09/2026 19:32:18.380,IN: 1 of 20,00 €."
+"18/09/2026 19:32:22.380,OUT: 1 of 0,10 €. 1 of 10,00 €."
+'''
+
+COM = '''"18/09/2026 07:11:17.820,; Connector.Started()    ; (v2.5.0.136)"
+"18/09/2026 07:13:22.860,; Connector.Started()    ; (v2.5.0.136)"
+"18/09/2026 07:11:11.940,; Winsock.IsClose() - Response delayed!"
+"18/09/2026 07:22:53.500,; Winsock.Event(ConnectionRequest, IP=127.0.0.1)"
+"18/09/2026 07:22:53.770,#G#1#1#1#1#1#1#1#1#1#0#1#1#1# "
+"18/09/2026 07:24:29.370,#0#546247#546247#965#965#0#0#"
+"18/09/2026 17:02:12.090,#C#1#1#360#1#15360#0#0#0#1#0#0# "
+"18/09/2026 17:02:19.020,#WR:CANCEL#0#0#0#0#"
+"18/09/2026 19:32:00.140,#C#1#1#990#1#15360#0#0#0#1#0#0# "
+"18/09/2026 19:32:22.410,#WR:LEVEL#2000#1010#0#0#"
+'''
+
+
+class TestConnectorLogs(unittest.TestCase):
+    def test_detect_kinds(self):
+        self.assertEqual(detect_kind("LogTran_20260918.txt"), "tran")
+        self.assertEqual(detect_kind("LogCom_20260918.txt"), "com")
+        r = analyze_logs([("LogUsr_20260918.txt", b"x")])
+        self.assertIn("Ações do utilizador", r["ignored"][0]["reason"])
+
+    def test_tran_totals_do_not_double_count_backoffice(self):
+        r = parse_tran(TRAN)
+        self.assertEqual((r["summary"]["ins"], r["summary"]["outs"]), (2, 2))
+        self.assertEqual((r["summary"]["in_total"], r["summary"]["out_total"]), (965 + 2000, 965 + 1010))
+        self.assertEqual(r["summary"]["backoffice"], 2)  # linhas BACKOFFICE só anotam, não somam
+        self.assertEqual(r["movements"][0]["counts"], {"5": 1, "10": 1, "20": 5, "50": 3, "100": 5, "200": 1})
+        self.assertEqual(r["backoffice"][0], {"ts": "2026-09-18 07:24:01", "action": "Dar troco", "dir": "in", "amount": 965})
+
+    def test_com_pairs_commands_and_decodes_charge_and_backoffice(self):
+        r = parse_com(COM)
+        s = r["summary"]
+        self.assertEqual((s["charges"], s["cancelled"], s["not_matching"], s["level_warnings"]), (2, 1, 0, 1))
+        self.assertEqual((s["connections"], s["delayed_responses"]), (1, 1))
+        self.assertEqual(s["commands"], {"G": 1, "C": 2})
+        self.assertEqual(len(r["starts"]), 2)
+        self.assertEqual(r["starts"][0]["version"], "2.5.0.136")
+        self.assertEqual(r["duration_ms"]["max"], 22270)   # a cancelada não conta para os tempos
+        charge = [o for o in r["operations"] if o["kind"] == "charge" and not o["cancelled"]][0]
+        self.assertEqual((charge["amount"], charge["introduced"], charge["returned"], charge["net"]), (990, 2000, 1010, 990))
+        bo = [o for o in r["operations"] if o["kind"] == "backoffice"][0]
+        self.assertEqual((bo["before"], bo["after"], bo["introduced"], bo["returned"]), (546247, 546247, 965, 965))
+
+    def test_crosscheck_matches_when_logs_agree(self):
+        r = analyze_logs([("LogTran_20260918.txt", TRAN.encode("cp1252")), ("LogCom_20260918.txt", COM.encode("cp1252"))])
+        cc = r["com"]["crosscheck"]
+        self.assertEqual((cc["checked"], cc["matched"], cc["mismatches"]), (3, 3, []))  # G, cancelada, cobrança
+        self.assertNotIn("_moves", r["tran"])
+        self.assertNotIn("_start", r["com"]["operations"][0])
+        self.assertEqual([f for f in r["findings"] if f["severity"] == "error"], [])
+
+    def test_crosscheck_detects_movement_that_connector_did_not_report(self):
+        tran = TRAN.replace("1 of 10,00 €.", "1 of 5,00 €.")  # a máquina devolveu 5,10 € em vez de 10,10 €
+        r = analyze_logs([("LogTran_20260918.txt", tran.encode("cp1252")), ("LogCom_20260918.txt", COM.encode("cp1252"))])
+        mm = r["com"]["crosscheck"]["mismatches"]
+        self.assertEqual(len(mm), 1)
+        self.assertEqual((mm[0]["returned"], mm[0]["tran_out"]), (1010, 510))
+        self.assertTrue(any("LogTran não coincide" in f["title"] for f in r["findings"] if f["severity"] == "error"))
+
+    def test_charge_whose_net_differs_from_amount_is_flagged(self):
+        com = COM.replace("#WR:LEVEL#2000#1010#0#0#", "#WR:LEVEL#2000#900#0#0#")  # líquido 11,00 € para cobrar 9,90 €
+        r = parse_com(com)
+        self.assertEqual(r["summary"]["not_matching"], 1)
+        found = analyze_logs([("LogCom_20260918.txt", com.encode("cp1252"))])["findings"]
+        self.assertTrue(any("entrou − devolvido" in f["title"] and f["severity"] == "error" for f in found))
+
+    def test_error_responses_and_repeated_starts_are_reported(self):
+        com = COM + '"18/09/2026 20:00:00.000,#C#1#1#500#1#15360#0#0#0#1#0#0# "\n"18/09/2026 20:00:05.000,#ER:GENERIC#0#0#0#0#"\n'
+        r = parse_com(com)
+        self.assertEqual(r["errors"], [{"ts": "2026-09-18 20:00:00", "cmd": "C", "code": "ER:GENERIC"}])
+        titles = [f["title"] for f in analyze_logs([("LogCom_20260918.txt", com.encode("cp1252"))])["findings"]]
+        self.assertTrue(any("erro do Connector" in t for t in titles))
+        self.assertTrue(any("arrancou 2 vezes" in t for t in titles))
 
 
 class TestAnalyze(unittest.TestCase):
