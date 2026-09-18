@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin, ScrollText } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -13,6 +13,7 @@ interface HeaderProps {
   onOpenPosLayout: () => void;
   onOpenEmentaDigital: () => void;
   onOpenZsTheme: () => void;
+  onOpenCashlogyLogs: () => void;
   onOpenMenuImport: () => void;
   onOpenCustomers: () => void;
   onRefresh: () => void;
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPosLayout,
   onOpenEmentaDigital,
   onOpenZsTheme,
+  onOpenCashlogyLogs,
   onOpenMenuImport,
   onOpenCustomers,
   onRefresh,
@@ -134,6 +136,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Palette className="w-3.5 h-3.5 text-violet-600" />
           Temas ZSRest
+        </button>
+
+        <button
+          onClick={onOpenCashlogyLogs}
+          className="flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-sky-200 transition shadow-sm"
+          title="Análise de logs do Cashlogy — transações, stock, alertas, tempos e pagamentos"
+        >
+          <ScrollText className="w-3.5 h-3.5 text-sky-600" />
+          Logs Cashlogy
         </button>
 
         <button

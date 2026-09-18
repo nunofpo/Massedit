@@ -40,6 +40,7 @@ from backend.services.products import (
 )
 from backend.services.reports import run_data_quality_report
 from backend.services.zstheme import analyze_zstheme, transform_zstheme
+from backend.services.cashlogy_logs import analyze_logs as analyze_cashlogy_logs
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
@@ -327,6 +328,16 @@ async def xdl_decrypt_endpoint(file: UploadFile = File(...)):
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao desencriptar ficheiro .xdl: {str(e)}")
+
+
+@app.post("/api/cashlogy/analyze")
+async def cashlogy_analyze_endpoint(files: List[UploadFile] = File(...)):
+    """Analisa logs do Cashlogy (Transactions, Process_Times, ResultCodeExtended, GestorAdminDev, VersionsHistory)."""
+    payload = [(f.filename or "", await f.read()) for f in files]
+    try:
+        return analyze_cashlogy_logs(payload)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Não foi possível analisar os logs do Cashlogy: {str(e)}")
 
 
 @app.get("/api/families/detailed", response_model=List[DetailedFamilyItem])

@@ -14,6 +14,7 @@ import { MenuImportWizardModal } from './components/MenuImportWizardModal';
 import { EmentaDigitalModal } from './components/EmentaDigitalModal';
 import { CustomersModal } from './components/CustomersModal';
 import { ZSThemeModal } from './components/ZSThemeModal';
+import { CashlogyLogsModal } from './components/CashlogyLogsModal';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -68,6 +69,7 @@ export const App: React.FC = () => {
   const [isEmentaDigitalOpen, setIsEmentaDigitalOpen] = useState(false);
   const [isCustomersOpen, setIsCustomersOpen] = useState(false);
   const [isZsThemeOpen, setIsZsThemeOpen] = useState(false);
+  const [isCashlogyLogsOpen, setIsCashlogyLogsOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
@@ -453,6 +455,7 @@ export const App: React.FC = () => {
         onOpenMenuImport={() => setIsMenuImportOpen(true)}
         onOpenCustomers={() => setIsCustomersOpen(true)}
         onOpenZsTheme={() => setIsZsThemeOpen(true)}
+        onOpenCashlogyLogs={() => setIsCashlogyLogsOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
         onRefresh={() => {
           fetchAuxData();
@@ -631,6 +634,11 @@ export const App: React.FC = () => {
         onSuccess={(msg) => {
           setNotification({ type: 'success', text: msg });
         }}
+      />
+
+      <CashlogyLogsModal
+        isOpen={isCashlogyLogsOpen}
+        onClose={() => setIsCashlogyLogsOpen(false)}
       />
 
     </div>
