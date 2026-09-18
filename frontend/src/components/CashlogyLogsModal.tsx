@@ -91,13 +91,27 @@ interface Analysis {
       mismatches: { ts: string; cmd: string; introduced: number; returned: number; tran_in: number; tran_out: number }[];
     };
   };
+  usr?: {
+    summary: {
+      events: number; charges: number; cancels: number; backoffice_sessions: number; messages: number;
+      starts: number; withdrawn: number; to_stacker: number; returned: number;
+    };
+    actions: {
+      ts: string; kind: string; label: string; detail?: string; items?: Record<string, number>;
+      amount?: number; to_stacker?: boolean; tran_match?: boolean | null;
+    }[];
+    crosscheck?: {
+      checked: number; matched: number;
+      mismatches: { ts: string; label: string; amount: number; items: Record<string, number> }[];
+    };
+  };
   versions?: {
     device: Record<string, string>;
     history: { ts: string; kind: string; sections: string[]; changes: { label: string; from: string; to: string }[]; dll_version?: string; h500_firmware?: string }[];
   };
 }
 
-type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'times' | 'payments' | 'device';
+type TabId = 'summary' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'operator' | 'times' | 'payments' | 'device';
 
 // ---- Formatação --------------------------------------------------------------
 
@@ -289,6 +303,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     { id: 'alerts', label: 'Alertas', show: !!data?.errors },
     { id: 'levels', label: 'Níveis', show: !!data?.opos },
     { id: 'connector', label: 'Connector', show: !!(data?.tran || data?.com) },
+    { id: 'operator', label: 'Operador', show: !!data?.usr },
     { id: 'times', label: 'Tempos', show: !!data?.times },
     { id: 'payments', label: 'Pagamentos', show: !!data?.payments },
     { id: 'device', label: 'Equipamento', show: !!data && (Object.keys(data.device).length > 0 || !!data.versions) },
@@ -700,6 +715,57 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     );
   };
 
+  const renderOperator = () => {
+    const us = data?.usr;
+    if (!us) return null;
+    const s = us.summary;
+    const cc = us.crosscheck;
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card label="Cobranças" value={s.charges} sub={`${s.cancels} cancelada(s) no ecrã`} />
+          <Card label="Sessões de backoffice" value={s.backoffice_sessions} />
+          <Card label="Mensagens ao operador" value={s.messages} />
+          <Card label="Arranques do POS" value={s.starts} tone={s.starts > 1 ? 'text-amber-700' : 'text-slate-900'} />
+          <Card label="Troco devolvido" value={eur(s.returned)} />
+          <Card label="Retirado" value={eur(s.withdrawn)} sub={s.to_stacker ? `+ ${eur(s.to_stacker)} para o stacker` : undefined} />
+          {cc && <Card label="Operador × LogTran" value={`${cc.matched}/${cc.checked}`}
+                       tone={cc.mismatches.length ? 'text-rose-700' : 'text-emerald-700'}
+                       sub={cc.mismatches.length ? `${cc.mismatches.length} sem saída correspondente` : 'denominações coincidem'} />}
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Ações do operador</h3>
+          {us.actions.length === 0 ? <Empty text="Sem ações no LogUsr." /> : (
+            <TableWrap>
+              <thead><tr><Th>Data/hora</Th><Th>Ação</Th><Th>Detalhe</Th><Th right>Valor</Th><Th>LogTran</Th></tr></thead>
+              <tbody>
+                {us.actions.slice().reverse().slice(0, 300).map((a, i) => (
+                  <tr key={i} className={a.tran_match === false ? 'bg-rose-50/40' : ''}>
+                    <Td mono>{dt(a.ts)}</Td>
+                    <Td><span className={a.kind === 'message' ? 'font-bold text-amber-800' : 'font-semibold'}>{a.label}</span></Td>
+                    <Td mono>{a.items ? countsText(a.items) : (a.detail || '—')}</Td>
+                    <Td right mono>{a.amount != null ? eur(a.amount) : '—'}</Td>
+                    <Td>
+                      {a.tran_match === true && <Badge cls="bg-emerald-50 text-emerald-800 border-emerald-200">coincide</Badge>}
+                      {a.tran_match === false && <Badge cls="bg-rose-50 text-rose-800 border-rose-200">sem saída</Badge>}
+                      {a.tran_match == null && (a.to_stacker
+                        ? <span className="text-[11px] text-slate-400" title="O LogTran não regista saída para retiradas com destino stacker">stacker</span>
+                        : <span className="text-slate-300">—</span>)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Cada devolução ou retirada do operador é comparada com uma saída do LogTran, com as mesmas denominações, até 20 s depois (só com os dois
+          ficheiros do mesmo dia). As mensagens mostram o texto apresentado ao operador, sem juízo sobre a causa.
+        </p>
+      </div>
+    );
+  };
+
   const renderTimes = () => {
     const ti = data?.times;
     if (!ti) return null;
@@ -893,6 +959,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               {tab === 'alerts' && renderAlerts()}
               {tab === 'levels' && renderLevels()}
               {tab === 'connector' && renderConnector()}
+              {tab === 'operator' && renderOperator()}
               {tab === 'times' && renderTimes()}
               {tab === 'payments' && renderPayments()}
               {tab === 'device' && renderDevice()}

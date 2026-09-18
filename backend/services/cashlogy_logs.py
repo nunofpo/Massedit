@@ -10,6 +10,7 @@ Ficheiros suportados (identificados pelo nome):
   - Opos_Cashlogy.log               níveis cheio/vazio por denominação (ReadCashEmptyFullStatus)
   - LogTran_AAAAMMDD.txt            entradas/saídas de dinheiro do CashlogyConnector, por denominação
   - LogCom_AAAAMMDD.txt             comandos POS↔Connector (#C# cobrar, #G# backoffice) e respostas
+  - LogUsr_AAAAMMDD.txt             ações do operador no POS (cobranças, backoffice, mensagens)
 
 Todos os valores monetários são inteiros em cêntimos (denominação 200 = 2,00 €).
 Os ficheiros são lidos em memória; não há acesso à base de dados.
@@ -42,10 +43,10 @@ SUPPORTED_KINDS = {
     "opos": "Opos_Cashlogy",
     "tran": "LogTran",
     "com": "LogCom",
+    "usr": "LogUsr",
 }
 
 _UNSUPPORTED_HINTS = {
-    "logusr": "Ações do utilizador nos ecrãs do Connector — ainda não suportado",
     "logiot": "Telemetria IoT em JSON — ainda não suportado",
     "cashlogyedge": "Telemetria IoT (agente Edge) — ainda não suportado",
     "protocoloctalk": "Traço binário do protocolo ccTalk — ainda não suportado",
@@ -101,6 +102,8 @@ def detect_kind(filename: str) -> Optional[str]:
         return "tran"
     if "logcom" in name:
         return "com"
+    if "logusr" in name:
+        return "usr"
     return None
 
 
@@ -872,7 +875,7 @@ def parse_tran(text: str) -> Dict[str, Any]:
         counts: Counter = Counter()
         for qty, euros, cents in _TRAN_ITEMS.findall(m.group(2)):
             counts[int(euros) * 100 + int(cents)] += int(qty)
-        moves.append({"dt": dt, "ts": _fmt(dt), "dir": m.group(1).lower(),
+        moves.append({"dt": dt, "ts": _fmt(dt), "dir": m.group(1).lower(), "_c": dict(counts),
                       "amount": _counts_value(dict(counts)), "counts": _nonzero(dict(counts))})
 
     ins = [x for x in moves if x["dir"] == "in"]
@@ -883,10 +886,11 @@ def parse_tran(text: str) -> Dict[str, Any]:
             "in_total": sum(x["amount"] for x in ins), "out_total": sum(x["amount"] for x in outs),
             "backoffice": len(backoffice),
         },
-        "movements": [{k: v for k, v in x.items() if k != "dt"} for x in moves[-MAX_TRANSACTIONS:]],
+        "movements": [{k: v for k, v in x.items() if k not in ("dt", "_c")} for x in moves[-MAX_TRANSACTIONS:]],
         "movements_truncated": len(moves) > MAX_TRANSACTIONS,
         "backoffice": backoffice[-MAX_EVENTS:],
         "_moves": [(x["dt"], x["dir"], x["amount"]) for x in moves],
+        "_moves_counts": [(x["dt"], x["dir"], x["_c"]) for x in moves],
         "_timestamps": stamps,
     }
 
@@ -1007,6 +1011,101 @@ def _crosscheck_com_tran(rows: List[Dict[str, Any]], moves: List[Tuple[datetime,
 
 
 # ---------------------------------------------------------------------------
+# LogUsr_*.txt (ações do operador no POS)
+# ---------------------------------------------------------------------------
+
+_USR_ITEMS = re.compile(r"Items=([0-9:,;]*)")
+_USR_STACKER = re.compile(r"ToStacker=(\d)")
+# Eventos sem argumentos que interessam ao operador; os restantes (_Load/_Unload de sub-ecrãs,
+# CloseForm, cmdExit_Click, frmCharge2...) são ruído de ecrãs e ficam de fora.
+_USR_ACTIONS = {
+    "frmCharge._Load": ("charge", "Cobrança (ecrã aberto)"),
+    "frmCharge.cmdCancel_Click": ("charge_cancel", "Cobrança cancelada pelo operador"),
+    "frmBackOffice._Load": ("backoffice", "Backoffice aberto"),
+    "frmAddChange_Load": ("add_change", "Adicionar troco"),
+    "frmGiveChange._Load": ("give_change", "Dar troco"),
+    "frmGiveChange.cmdAcceptDeposit_Click": ("give_deposit", "Troco: depósito aceite"),
+    "frmGiveChange.cmdCancelDeposit_Click": ("give_cancel", "Troco: depósito cancelado"),
+    "frmWithdrawCash._Load": ("withdraw", "Retirar dinheiro"),
+}
+_USR_WITHDRAW_WINDOW = timedelta(seconds=20)
+
+
+def parse_usr(text: str) -> Dict[str, Any]:
+    actions: List[Dict[str, Any]] = []
+    stamps: List[datetime] = []
+    for dt, payload in _conn_lines(text):
+        payload = payload.strip()
+        stamps.append(dt)
+        row: Dict[str, Any] = {"ts": _fmt(dt), "_dt": dt}
+        head = payload.split(" - ", 1)[0]
+        if payload in _USR_ACTIONS:
+            row["kind"], row["label"] = _USR_ACTIONS[payload]
+        elif payload.startswith("frmMsgBox._Load - Text="):
+            row.update(kind="message", label="Mensagem ao operador", detail=payload.split("Text=", 1)[1].strip())
+        elif payload.startswith("frmDispense._Load"):
+            row.update(kind="dispense", label="Dispensa", detail=payload.partition(" - ")[2])
+        elif payload.startswith("Users.Initialize()"):
+            row.update(kind="start", label="POS iniciado", detail=payload.split(" - ", 1)[-1] if " - " in payload else "")
+        elif head in ("frmGiveChange.cmdAcceptReturn_Click", "frmWithdrawCash.cmdWithdrawAll_Click"):
+            m = _USR_ITEMS.search(payload)
+            if not m:
+                continue
+            counts = {d: q for d, q in _parse_counts(m.group(1)).items() if q}
+            stacker = _USR_STACKER.search(payload)
+            to_stacker = bool(stacker and stacker.group(1) == "1")
+            if head.startswith("frmGiveChange"):
+                row.update(kind="give_return", label="Troco: devolução")
+            else:
+                row.update(kind="withdraw_all", label="Retirar tudo para o stacker" if to_stacker else "Retirar tudo")
+            row.update(items=_nonzero(counts), amount=_counts_value(counts), to_stacker=to_stacker, _items=counts)
+        else:
+            continue
+        actions.append(row)
+
+    by_kind = Counter(a["kind"] for a in actions)
+    withdrawals = [a for a in actions if a["kind"] == "withdraw_all"]
+    return {
+        "summary": {
+            "events": len(stamps), "charges": by_kind["charge"], "cancels": by_kind["charge_cancel"],
+            "backoffice_sessions": by_kind["backoffice"], "messages": by_kind["message"],
+            "starts": by_kind["start"],
+            "withdrawn": sum(a["amount"] for a in withdrawals if not a["to_stacker"]),
+            "to_stacker": sum(a["amount"] for a in withdrawals if a["to_stacker"]),
+            "returned": sum(a["amount"] for a in actions if a["kind"] == "give_return"),
+        },
+        "actions": actions,
+        "_timestamps": stamps,
+    }
+
+
+def _crosscheck_usr_tran(actions: List[Dict[str, Any]],
+                         moves: List[Tuple[datetime, str, Dict[int, int]]]) -> Dict[str, Any]:
+    """Cada devolução/retirada do operador tem de ter uma SAÍDA no LogTran com as mesmas
+    denominações, logo a seguir. As retiradas para o stacker não se verificam: nos logs de exemplo
+    o LogTran não regista saída para elas."""
+    moves = sorted(moves, key=lambda m: m[0])
+    times = [m[0] for m in moves]
+    first, last = (times[0], times[-1]) if times else (None, None)
+    checked = matched = 0
+    mismatches: List[Dict[str, Any]] = []
+    for a in actions:
+        a["tran_match"] = None
+        if "_items" not in a or a["to_stacker"] or not a["_items"] or first is None:
+            continue
+        if a["_dt"] < first - timedelta(minutes=5) or a["_dt"] > last + timedelta(minutes=5):
+            continue  # fora do período coberto pelo LogTran
+        i = bisect.bisect_left(times, a["_dt"])
+        j = bisect.bisect_right(times, a["_dt"] + _USR_WITHDRAW_WINDOW)
+        a["tran_match"] = any(d == "out" and c == a["_items"] for _, d, c in moves[i:j])
+        checked += 1
+        matched += a["tran_match"]
+        if not a["tran_match"]:
+            mismatches.append({"ts": a["ts"], "label": a["label"], "amount": a["amount"], "items": a["items"]})
+    return {"checked": checked, "matched": matched, "mismatches": mismatches[-MAX_EVENTS:]}
+
+
+# ---------------------------------------------------------------------------
 # Orquestração
 # ---------------------------------------------------------------------------
 
@@ -1019,6 +1118,7 @@ _PARSERS = {
     "opos": parse_opos,
     "tran": parse_tran,
     "com": parse_com,
+    "usr": parse_usr,
 }
 
 
@@ -1123,6 +1223,25 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
                 "; ".join(f"{m['ts']} {m['cmd']}: Connector {m['introduced']}/{m['returned']}, "
                           f"movimentos {m['tran_in']}/{m['tran_out']} (cêntimos, entrou/saiu)" for m in cc["mismatches"][:4]))
 
+    us = result.get("usr")
+    if us:
+        cc = us.get("crosscheck")
+        if cc and cc["mismatches"]:
+            add("error", f"{len(cc['mismatches'])} ação(ões) do operador sem saída correspondente no LogTran",
+                "; ".join(f"{m['ts']} {m['label']} {m['amount'] / 100:.2f} €" for m in cc["mismatches"][:4]))
+        msgs = [a for a in us["actions"] if a["kind"] == "message"]
+        if msgs:
+            add("info", f"{len(msgs)} mensagem(ns) mostrada(s) ao operador",
+                "; ".join(f"{a['ts'][11:]} {a['detail'][:90]}" for a in msgs[:3]))
+        s = us["summary"]
+        if s["to_stacker"]:
+            add("info", f"{s['to_stacker'] / 100:.2f} € retirados para o stacker",
+                "Retirada com destino stacker: o LogTran não regista saída para estas retiradas.")
+        if s["cancels"] and not result.get("com"):
+            add("info", f"{s['cancels']} cobrança(s) cancelada(s) no ecrã")
+        if s["starts"] >= 2 and not result.get("com"):
+            add("warning", f"O POS iniciou {s['starts']} vezes")
+
     order = {"error": 0, "warning": 1, "info": 2}
     findings.sort(key=lambda f: order.get(f["severity"], 3))
     return findings
@@ -1161,6 +1280,14 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
             row.pop("_start", None)
             row.pop("_end", None)
         result["com"]["operations"] = result["com"]["operations"][-MAX_TRANSACTIONS:]
+
+    if "usr" in result:
+        if ("tran", "_moves_counts") in private:
+            result["usr"]["crosscheck"] = _crosscheck_usr_tran(result["usr"]["actions"], private[("tran", "_moves_counts")])
+        for row in result["usr"]["actions"]:
+            row.pop("_dt", None)
+            row.pop("_items", None)
+        result["usr"]["actions"] = result["usr"]["actions"][-MAX_TRANSACTIONS:]
 
     device: Dict[str, str] = {}
     device.update(result.get("transactions", {}).get("device", {}))

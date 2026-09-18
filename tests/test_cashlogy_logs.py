@@ -11,6 +11,7 @@ from backend.services.cashlogy_logs import (
     parse_times,
     parse_tran,
     parse_transactions,
+    parse_usr,
     parse_versions,
 )
 
@@ -505,8 +506,9 @@ class TestConnectorLogs(unittest.TestCase):
     def test_detect_kinds(self):
         self.assertEqual(detect_kind("LogTran_20260918.txt"), "tran")
         self.assertEqual(detect_kind("LogCom_20260918.txt"), "com")
-        r = analyze_logs([("LogUsr_20260918.txt", b"x")])
-        self.assertIn("Ações do utilizador", r["ignored"][0]["reason"])
+        self.assertEqual(detect_kind("LogUsr_20260918.txt"), "usr")
+        r = analyze_logs([("LogIot_20260918.txt", b"x")])
+        self.assertIn("Telemetria IoT", r["ignored"][0]["reason"])
 
     def test_tran_totals_do_not_double_count_backoffice(self):
         r = parse_tran(TRAN)
@@ -560,6 +562,62 @@ class TestConnectorLogs(unittest.TestCase):
         titles = [f["title"] for f in analyze_logs([("LogCom_20260918.txt", com.encode("cp1252"))])["findings"]]
         self.assertTrue(any("erro do Connector" in t for t in titles))
         self.assertTrue(any("arrancou 2 vezes" in t for t in titles))
+
+
+USR = '''"18/09/2026 07:11:17.870,Users.Initialize() - 'User accounts' disabled."
+"18/09/2026 07:22:53.860,frmBackOffice._Load"
+"18/09/2026 07:23:43.460,frmMsgBox._Load - Text=O valor introduzido tem que coincidir com o valor a devolver"
+"18/09/2026 07:23:57.870,frmGiveChange.cmdAcceptReturn_Click - Items=1:0,2:0,5:1,10:1,20:0,50:1,100:4,200:0;500:1,1000:0,2000:0"
+"18/09/2026 07:24:49.820,frmWithdrawCash.cmdWithdrawAll_Click - Items=1:0,2:0,5:0,10:0,20:0,50:0,100:0,200:0;500:0,1000:0,2000:25 - ToStacker=1"
+"18/09/2026 07:25:58.380,frmWithdrawCash.cmdWithdrawAll_Click - Items=1:1,2:0,5:9,10:0,20:0,50:0,100:1,200:1;500:1,1000:0,2000:0 - ToStacker=0"
+"18/09/2026 17:02:17.000,frmCharge.cmdCancel_Click"
+"18/09/2026 17:02:18.000,frmCharge._Load"
+"18/09/2026 17:02:19.000,frmCharge2._Load"
+"18/09/2026 17:02:20.000,frmCharge.CloseForm()"
+'''
+TRAN_WITHDRAW = '"18/09/2026 07:26:01.640,OUT: 1 of 0,01 €. 9 of 0,05 €. 1 of 1,00 €. 1 of 2,00 €. 1 of 5,00 €."\n'
+
+
+class TestOperatorLog(unittest.TestCase):
+    def test_actions_and_summary_ignore_screen_noise(self):
+        r = parse_usr(USR)
+        s = r["summary"]
+        self.assertEqual((s["charges"], s["cancels"], s["backoffice_sessions"], s["messages"], s["starts"]), (1, 1, 1, 1, 1))
+        self.assertEqual((s["returned"], s["withdrawn"], s["to_stacker"]), (965, 846, 50000))
+        kinds = [a["kind"] for a in r["actions"]]
+        self.assertNotIn("close", kinds)               # frmCharge2 / CloseForm não geram ações
+        self.assertEqual(kinds.count("charge"), 1)     # só frmCharge._Load, não frmCharge2._Load
+        msg = [a for a in r["actions"] if a["kind"] == "message"][0]
+        self.assertTrue(msg["detail"].startswith("O valor introduzido"))
+        stack = [a for a in r["actions"] if a["kind"] == "withdraw_all" and a["to_stacker"]][0]
+        self.assertEqual((stack["items"], stack["amount"], stack["label"]), ({"2000": 25}, 50000, "Retirar tudo para o stacker"))
+
+    def test_withdraw_without_items_is_ignored(self):
+        r = parse_usr('"18/09/2026 07:25:58.380,frmWithdrawCash.cmdWithdrawAll_Click"\n')
+        self.assertEqual(r["actions"], [])
+
+    def test_crosscheck_with_tran_when_denominations_agree(self):
+        tran = TRAN + TRAN_WITHDRAW
+        r = analyze_logs([("LogUsr_20260918.txt", USR.encode("cp1252")), ("LogTran_20260918.txt", tran.encode("cp1252"))])
+        cc = r["usr"]["crosscheck"]
+        self.assertEqual((cc["checked"], cc["matched"], cc["mismatches"]), (2, 2, []))  # devolução + retirada
+        stack = [a for a in r["usr"]["actions"] if a.get("to_stacker")][0]
+        self.assertIsNone(stack["tran_match"])          # para o stacker: não se verifica
+        self.assertNotIn("_items", r["usr"]["actions"][0])
+        self.assertEqual([f for f in r["findings"] if f["severity"] == "error"], [])
+
+    def test_crosscheck_flags_withdrawal_without_matching_output(self):
+        r = analyze_logs([("LogUsr_20260918.txt", USR.encode("cp1252")), ("LogTran_20260918.txt", TRAN.encode("cp1252"))])
+        mm = r["usr"]["crosscheck"]["mismatches"]
+        self.assertEqual([(m["label"], m["amount"]) for m in mm], [("Retirar tudo", 846)])
+        self.assertTrue(any("sem saída correspondente" in f["title"] for f in r["findings"] if f["severity"] == "error"))
+
+    def test_findings_are_factual(self):
+        found = analyze_logs([("LogUsr_20260918.txt", USR.encode("cp1252"))])["findings"]
+        titles = " | ".join(f["title"] for f in found)
+        self.assertIn("1 mensagem(ns) mostrada(s) ao operador", titles)
+        self.assertIn("500.00 € retirados para o stacker", titles)
+        self.assertIn("1 cobrança(s) cancelada(s) no ecrã", titles)
 
 
 class TestAnalyze(unittest.TestCase):
