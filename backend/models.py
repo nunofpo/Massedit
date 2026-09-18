@@ -573,6 +573,12 @@ class EmentaImageUrlRequest(BaseModel):
     image_url: str
 
 
+class EmentaEditImageRequest(BaseModel):
+    rotate_deg: int = 0
+    fit_square: bool = False
+
+
+
 class EmentaTranslateRequest(BaseModel):
     texts: List[str]
     target_langs: List[str] = Field(default_factory=lambda: ["en", "es", "fr", "de"])
@@ -660,35 +666,7 @@ class ZSThemeColorRule(BaseModel):
     new_color_to: Optional[str] = None
     new_font_color: Optional[str] = None
 
-class ZSThemeBackgroundConfig(BaseModel):
-    color: Optional[str] = None
-    opacity: Optional[int] = None
-    stretch: Optional[bool] = None
-    image_base64: Optional[str] = None
-
-class ZSThemeShortcutButton(BaseModel):
-    button_type: str = "function"  # "function" | "discount" | "link" | "exe"
-    caption: str
-    color: Optional[str] = "#334155"
-    color_to: Optional[str] = "#1E293B"
-    font_color: Optional[str] = "#FFFFFF"
-    function_id: Optional[int] = None
-    function_name: Optional[str] = None
-    parameters: Optional[str] = None
-    left: Optional[int] = 10
-    top: Optional[int] = 10
-    width: Optional[int] = 130
-    height: Optional[int] = 60
-
-class ZSThemePanelsConfig(BaseModel):
-    add_retail_panel: bool = False
-    add_function_panel: bool = False
-    add_payment_panel: bool = False
-
 class ZSThemeTransformRequest(BaseModel):
     color_rules: List[ZSThemeColorRule] = Field(default_factory=list)
     rounding: Optional[int] = None
-    background: Optional[ZSThemeBackgroundConfig] = None
-    shortcut_buttons: List[ZSThemeShortcutButton] = Field(default_factory=list)
-    panels: Optional[ZSThemePanelsConfig] = None
 

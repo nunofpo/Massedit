@@ -13,7 +13,8 @@ import {
   Square,
   ChevronLeft,
   ChevronRight,
-  Filter
+  Filter,
+  Image as ImageIcon
 } from 'lucide-react';
 import {
   EmentaProductItem,
@@ -23,6 +24,7 @@ import {
   BulkEditPreviewResponse,
   EmentaDigitalStructureResponse
 } from '../types';
+import { ImageEditorModal } from './ImageEditorModal';
 
 interface EmentaDigitalModalProps {
   isOpen: boolean;
@@ -104,6 +106,48 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   const [generalTermsEdits, setGeneralTermsEdits] = useState<Record<string, Record<string, string>>>({});
   const [isLoadingGeneralTerms, setIsLoadingGeneralTerms] = useState<boolean>(false);
   const [isSavingGeneralTerms, setIsSavingGeneralTerms] = useState<boolean>(false);
+  const [isFixingBorders, setIsFixingBorders] = useState<boolean>(false);
+
+  // Review & Preview Panel State
+  const [showReviewPanel, setShowReviewPanel] = useState<boolean>(false);
+  const [reviewItems, setReviewItems] = useState<{
+    id: string;
+    type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+    typeLabel: string;
+    code?: number;
+    originalText: string;
+    originalDesc?: string;
+    source: 'dicionario' | 'ia_online';
+    translations: Record<string, { produto: string; descricao?: string }>;
+  }[]>([]);
+  const [reviewSearchTerm, setReviewSearchTerm] = useState<string>('');
+  const [reviewFilterType, setReviewFilterType] = useState<string>('all');
+  const [isSavingReviewItems, setIsSavingReviewItems] = useState<boolean>(false);
+
+  // Image Editor State (Ajuste 600x600 px)
+  const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
+  const [selectedProductForImage, setSelectedProductForImage] = useState<EmentaProductItem | null>(null);
+
+  const handleImageSaveSuccess = (updatedUrl: string | null) => {
+    if (selectedProductForImage) {
+      const code = selectedProductForImage.codigo;
+      setProducts(prev => prev.map(p => {
+        if (p.codigo !== code) return p;
+        return {
+          ...p,
+          image_url: updatedUrl || undefined,
+          has_image_bytes: !!updatedUrl
+        };
+      }));
+      if (selectedProductForTranslation?.codigo === code) {
+        setSelectedProductForTranslation(prev => prev ? {
+          ...prev,
+          image_url: updatedUrl || undefined,
+          has_image_bytes: !!updatedUrl
+        } : null);
+      }
+    }
+  };
 
   // Toggle active language selection
   const toggleLangCode = (code: string) => {
@@ -420,40 +464,53 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
-  // AI Batch Auto-Translate selected products
+  // AI Batch Auto-Translate selected products (Opens Review Panel First)
   const handleBatchAutoTranslate = async () => {
     if (selectedCodes.size === 0) return;
     const targetProds = products.filter(p => selectedCodes.has(p.codigo));
     if (targetProds.length === 0) return;
 
     setIsTranslating(true);
-    let successCount = 0;
-
     try {
       const targetLangs = Array.from(selectedLangCodes);
+      const allTextsSet = new Set<string>();
 
-      for (const prod of targetProds) {
+      targetProds.forEach(prod => {
         const textToTranslate = prod.produto || prod.pos_descricao;
-        const descToTranslate = prod.descricao || '';
-        const texts = [textToTranslate];
-        if (descToTranslate.trim()) texts.push(descToTranslate);
+        if (textToTranslate && textToTranslate.trim()) allTextsSet.add(textToTranslate.trim());
+        if (prod.descricao && prod.descricao.trim()) allTextsSet.add(prod.descricao.trim());
+      });
 
-        const res = await fetch('/api/ementa-digital/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            texts,
-            target_langs: targetLangs,
-            source_lang: 'pt'
-          })
-        });
+      const res = await fetch('/api/ementa-digital/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          texts: Array.from(allTextsSet),
+          target_langs: targetLangs,
+          source_lang: 'pt'
+        })
+      });
 
-        if (res.ok) {
-          const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        const generatedItems: {
+          id: string;
+          type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+          typeLabel: string;
+          code?: number;
+          originalText: string;
+          originalDesc?: string;
+          source: 'dicionario' | 'ia_online';
+          translations: Record<string, { produto: string; descricao?: string }>;
+        }[] = [];
+
+        targetProds.forEach(prod => {
+          const textToTranslate = prod.produto || prod.pos_descricao;
+          const descToTranslate = prod.descricao || '';
           const nameMap = data.translations[textToTranslate] || {};
           const descMap = descToTranslate ? (data.translations[descToTranslate] || {}) : {};
 
-          const trPayload: Record<string, { produto: string; descricao: string }> = {};
+          const trPayload: Record<string, { produto: string; descricao?: string }> = {};
           targetLangs.forEach(lang => {
             const cUpper = lang.toUpperCase();
             const lLower = lang.toLowerCase();
@@ -463,30 +520,177 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
             };
           });
 
-          const saveRes = await fetch('/api/ementa-digital/translations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cod_produto: prod.codigo,
-              translations: trPayload
-            })
+          generatedItems.push({
+            id: `prod-${prod.codigo}`,
+            type: 'artigo',
+            typeLabel: 'Artigo',
+            code: prod.codigo,
+            originalText: textToTranslate,
+            originalDesc: descToTranslate,
+            source: 'ia_online',
+            translations: trPayload
           });
+        });
 
-          if (saveRes.ok) {
-            const saveData = await saveRes.json();
-            if (saveData.success) successCount++;
+        setReviewItems(generatedItems);
+        setShowReviewPanel(true);
+      } else {
+        alert('Erro ao obter traduções da API.');
+      }
+    } catch (err) {
+      alert('Erro durante a geração da pré-visualização de traduções.');
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  // Batch Fix / Trim Image Borders for Selected Products or All Products
+  const handleBatchFixBorders = async (targetCodes?: number[]) => {
+    const codesToFix = targetCodes || Array.from(selectedCodes);
+    const isAll = !targetCodes && selectedCodes.size === 0;
+
+    const confirmMsg = isAll
+      ? 'Deseja analisar e otimizar todas as imagens da Ementa Digital (remover bordas cinzentas, aplicar fundo branco puro e limitar a 600x600 px)?'
+      : `Deseja analisar e remover bordas cinzentas das imagens dos ${codesToFix.length} artigos selecionados?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsFixingBorders(true);
+    try {
+      const res = await fetch('/api/ementa-digital/batch-fix-image-borders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cod_produtos: codesToFix.length > 0 ? codesToFix : null,
+          fit_square: false,
+          force_all: false
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onSuccess(data.message || `${data.fixed} imagens otimizadas com sucesso!`);
+        fetchProducts();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Falha ao processar imagens em lote.');
+      }
+    } catch (e: any) {
+      alert(`Erro de ligação: ${e.message}`);
+    } finally {
+      setIsFixingBorders(false);
+    }
+  };
+
+  const handleUpdateReviewItemTranslation = (itemId: string, langUpper: string, val: string) => {
+    setReviewItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const nextTr = { ...item.translations };
+      nextTr[langUpper] = {
+        ...nextTr[langUpper],
+        produto: val
+      };
+      return { ...item, translations: nextTr };
+    }));
+  };
+
+  const handleConfirmAndSaveReviewItems = async () => {
+    if (reviewItems.length === 0) return;
+    setIsSavingReviewItems(true);
+    let successCount = 0;
+
+    try {
+      // 1. Artigos
+      const artigoItems = reviewItems.filter(i => i.type === 'artigo' && i.code);
+      for (const item of artigoItems) {
+        const saveRes = await fetch('/api/ementa-digital/translations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cod_produto: item.code,
+            translations: item.translations
+          })
+        });
+        if (saveRes.ok) {
+          const saveData = await saveRes.json();
+          if (saveData.success) successCount++;
+        }
+      }
+
+      // 2. Estrutura (ementas, famílias, complementares, pos_families, menu_niveis, opções)
+      const ementaPayload: Record<string, Record<string, string>> = {};
+      const familyPayload: Record<string, Record<string, string>> = {};
+      const compPayload: Record<string, Record<string, string>> = {};
+      const posFamPayload: Record<string, Record<string, string>> = {};
+      const menuNivelPayload: Record<string, Record<string, string>> = {};
+      const opcaoPayload: Record<string, Record<string, string>> = {};
+
+      reviewItems.forEach(item => {
+        if (item.id.startsWith('ementa-') && item.code) {
+          ementaPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('fam-') && item.code) {
+          familyPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('comp-') && item.code) {
+          compPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('posfam-') && item.code) {
+          posFamPayload[String(item.code)] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('mnivel-')) {
+          const key = item.id.replace('mnivel-', '').replace('-', ':');
+          menuNivelPayload[key] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        } else if (item.id.startsWith('opc-')) {
+          const key = item.id.replace('opc-', '').replace('-', ':');
+          opcaoPayload[key] = Object.fromEntries(
+            Object.entries(item.translations).map(([k, v]) => [k, v.produto])
+          );
+        }
+      });
+
+      const hasStructureItems =
+        Object.keys(ementaPayload).length > 0 ||
+        Object.keys(familyPayload).length > 0 ||
+        Object.keys(compPayload).length > 0 ||
+        Object.keys(posFamPayload).length > 0 ||
+        Object.keys(menuNivelPayload).length > 0 ||
+        Object.keys(opcaoPayload).length > 0;
+
+      if (hasStructureItems) {
+        const sRes = await fetch('/api/ementa-digital/structure-translations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ementas: ementaPayload,
+            families: familyPayload,
+            complementares: compPayload,
+            pos_families: posFamPayload,
+            menu_niveis: menuNivelPayload,
+            opcoes: opcaoPayload
+          })
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (sData.success) {
+            successCount += reviewItems.length - artigoItems.length;
           }
         }
       }
 
-      onSuccess(`${successCount} de ${targetProds.length} artigos traduzidos e gravados com sucesso!`);
-      if (selectedProductForTranslation && selectedCodes.has(selectedProductForTranslation.codigo)) {
-        handleSelectProductForTranslation(selectedProductForTranslation);
-      }
+      onSuccess(`${reviewItems.length} traduções revistas e gravadas no ZoneSoft com sucesso!`);
+      setShowReviewPanel(false);
+      fetchProducts();
     } catch (err) {
-      alert('Erro durante a tradução em lote.');
+      alert('Erro ao gravar traduções revistas no banco de dados.');
     } finally {
-      setIsTranslating(false);
+      setIsSavingReviewItems(false);
     }
   };
 
@@ -570,7 +774,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     loadStructureTranslations();
   };
 
-  // AI Auto-Translate all Ementa/Family names for every active language in one go
+  // AI Auto-Translate all Ementa/Family names for every active language and open Review Panel FIRST
   const handleAutoTranslateStructure = async () => {
     const targetLangs = Array.from(selectedLangCodes);
     if (targetLangs.length === 0) return;
@@ -600,75 +804,95 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
       const data = await res.json();
       const translations = data.translations || {};
 
-      setStructureEdits(prev => {
-        const next = {
-          ementas: { ...prev.ementas },
-          families: { ...prev.families },
-          complementares: { ...prev.complementares },
-          pos_families: { ...prev.pos_families },
-          menu_niveis: { ...prev.menu_niveis },
-          opcoes: { ...prev.opcoes }
-        };
-        structureEmentas.forEach(e => {
-          const map = translations[e.nome] || {};
-          const current = { ...(next.ementas[String(e.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.ementas[String(e.codigo)] = current;
+      const generatedItems: {
+        id: string;
+        type: 'artigo' | 'familia' | 'seccao' | 'opcao' | 'termo_geral';
+        typeLabel: string;
+        code?: number;
+        originalText: string;
+        source: 'dicionario' | 'ia_online';
+        translations: Record<string, { produto: string; descricao?: string }>;
+      }[] = [];
+
+      // Ementas
+      structureEmentas.forEach(e => {
+        const map = translations[e.nome] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || e.nome };
         });
-        structureFamilies.forEach(f => {
-          const map = translations[f.descricao] || {};
-          const current = { ...(next.families[String(f.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.families[String(f.codigo)] = current;
+        generatedItems.push({
+          id: `ementa-${e.codigo}`,
+          type: 'seccao',
+          typeLabel: 'Ementa / Menu',
+          code: e.codigo,
+          originalText: e.nome,
+          source: 'ia_online',
+          translations: trPayload
         });
-        structureComplementares.forEach(c => {
-          const map = translations[c.descricao] || {};
-          const current = { ...(next.complementares[String(c.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.complementares[String(c.codigo)] = current;
-        });
-        structurePosFamilies.forEach(f => {
-          const map = translations[f.descricao] || {};
-          const current = { ...(next.pos_families[String(f.codigo)] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.pos_families[String(f.codigo)] = current;
-        });
-        structureMenuNiveis.forEach(m => {
-          const map = translations[m.descricao] || {};
-          const key = `${m.menu}:${m.nivel}`;
-          const current = { ...(next.menu_niveis[key] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.menu_niveis[key] = current;
-        });
-        structureOpcoes.forEach(o => {
-          const map = translations[o.descricao] || {};
-          const key = `${o.grupo}:${o.codigo}`;
-          const current = { ...(next.opcoes[key] || {}) };
-          targetLangs.forEach(lang => {
-            const val = map[lang.toLowerCase()] || map[lang.toUpperCase()];
-            if (val) current[lang.toUpperCase()] = val;
-          });
-          next.opcoes[key] = current;
-        });
-        return next;
       });
 
-      onSuccess('Tradução automática gerada! Revê os textos e clica em "Gravar no ZoneSoft".');
+      // Famílias Ementa
+      structureFamilies.forEach(f => {
+        const map = translations[f.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || f.descricao };
+        });
+        generatedItems.push({
+          id: `fam-${f.codigo}`,
+          type: 'familia',
+          typeLabel: 'Família Ementa',
+          code: f.codigo,
+          originalText: f.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      // Complementares
+      structureComplementares.forEach(c => {
+        const map = translations[c.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || c.descricao };
+        });
+        generatedItems.push({
+          id: `comp-${c.codigo}`,
+          type: 'opcao',
+          typeLabel: 'Complementar',
+          code: c.codigo,
+          originalText: c.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      // Famílias POS
+      structurePosFamilies.forEach(f => {
+        const map = translations[f.descricao] || {};
+        const trPayload: Record<string, { produto: string }> = {};
+        targetLangs.forEach(lang => {
+          const cUpper = lang.toUpperCase();
+          trPayload[cUpper] = { produto: map[lang.toLowerCase()] || map[cUpper] || f.descricao };
+        });
+        generatedItems.push({
+          id: `posfam-${f.codigo}`,
+          type: 'familia',
+          typeLabel: 'Família POS',
+          code: f.codigo,
+          originalText: f.descricao,
+          source: 'ia_online',
+          translations: trPayload
+        });
+      });
+
+      setReviewItems(generatedItems);
+      setShowReviewPanel(true);
+      onSuccess('Traduções da estrutura geradas! Revê os termos no painel de pré-visualização antes de gravar.');
     } catch (err) {
       alert('Falha de rede ao traduzir a estrutura.');
     } finally {
@@ -708,8 +932,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-[1500px] h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 animate-in fade-in">
+      <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -903,6 +1127,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                       <option value="all">Todos os Artigos (POS + Ementa)</option>
                       <option value="with_ementa">Apenas Com Registo na Ementa Digital</option>
                       <option value="without_ementa">Apenas Sem Registo na Ementa</option>
+                      <option value="with_image">Apenas Com Imagem Cadastrada</option>
+                      <option value="without_image">Apenas Sem Imagem</option>
                     </select>
                   </div>
 
@@ -1024,7 +1250,28 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProductForImage(prod);
+                              setShowImageEditor(true);
+                            }}
+                            className={`w-8 h-8 rounded-lg border overflow-hidden flex items-center justify-center transition group relative ${
+                              prod.image_url
+                                ? 'border-amber-400 bg-amber-50 shadow-2xs'
+                                : 'border-slate-200 bg-slate-100 hover:border-amber-400 hover:bg-slate-200'
+                            }`}
+                            title={prod.image_url ? 'Editar imagem (máx 600x600px)' : 'Adicionar imagem (máx 600x600px)'}
+                          >
+                            {prod.image_url ? (
+                              <img src={prod.image_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <ImageIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-600 transition" />
+                            )}
+                          </button>
+
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
                             Traduzir
                           </span>
@@ -1081,22 +1328,69 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {selectedCodes.size > 0 && (
+                  {selectedProductForTranslation && (
                     <button
                       type="button"
-                      onClick={handleBatchAutoTranslate}
-                      disabled={isTranslating}
-                      className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
-                      title={`Traduzir todos os ${selectedCodes.size} artigos selecionados na lista`}
+                      onClick={() => {
+                        setSelectedProductForImage(selectedProductForTranslation);
+                        setShowImageEditor(true);
+                      }}
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                      title="Abrir editor de imagem com ajuste automático (máx 600x600px)"
                     >
-                      {isTranslating ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      )}
-                      Traduzir {selectedCodes.size} em Lote
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Imagem (600x600px)</span>
                     </button>
                   )}
+
+                  {selectedCodes.size > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleBatchAutoTranslate}
+                        disabled={isTranslating}
+                        className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        title={`Traduzir todos os ${selectedCodes.size} artigos selecionados na lista`}
+                      >
+                        {isTranslating ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                        <span>Traduzir {selectedCodes.size} em Lote</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBatchFixBorders()}
+                        disabled={isFixingBorders}
+                        className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        title={`Recortar bordas cinzentas e otimizar imagens dos ${selectedCodes.size} artigos selecionados`}
+                      >
+                        {isFixingBorders ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-3.5 h-3.5" />
+                        )}
+                        <span>Corrigir Bordas ({selectedCodes.size})</span>
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleBatchFixBorders()}
+                    disabled={isFixingBorders}
+                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                    title="Analisar e otimizar todas as imagens da ementa (remover bordas cinzentas / fundo branco / máx 600x600 px)"
+                  >
+                    {isFixingBorders ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>Otimizar Bordas Imagens</span>
+                  </button>
 
                   <button
                     type="button"
@@ -1247,8 +1541,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       {/* Overlay: Traduzir Estrutura (Ementa/Menus e Familias) */}
       {showStructureTranslator && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2">
+          <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
             <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Globe className="w-4 h-4 text-sky-600" />
@@ -1558,8 +1852,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
 
       {/* Modal de Pré-visualização & Edição dos 81 Termos Gerais da Interface */}
       {showGeneralTermsTranslator && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-6xl h-[88vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-amber-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-2 animate-in fade-in">
+          <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-amber-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-amber-200 flex items-center justify-between bg-amber-50">
               <div className="flex items-center gap-3">
@@ -1707,6 +2001,189 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Translation Review & Preview Panel Overlay */}
+      {showReviewPanel && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-2">
+          <div className="bg-white border border-slate-200 rounded-2xl w-[98vw] max-w-[98vw] h-[95vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 animate-in fade-in zoom-in duration-150">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-600 p-2.5 rounded-xl shadow-md">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    Painel de Pré-Visualização e Revisão de Traduções
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Inspeção prévia: altere ou ajuste qualquer termo gerado antes de gravar no banco de dados SQL Server do ZoneSoft.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowReviewPanel(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+                title="Fechar revisão sem gravar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Toolbar & Filters */}
+            <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3 flex-1 max-w-md">
+                <div className="relative w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por código, termo original ou tradução..."
+                    value={reviewSearchTerm}
+                    onChange={(e) => setReviewSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-600">Filtrar por Tipo:</span>
+                <select
+                  value={reviewFilterType}
+                  onChange={(e) => setReviewFilterType(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700"
+                >
+                  <option value="all">Todos os Tipos ({reviewItems.length})</option>
+                  <option value="artigo">Artigos / Produtos ({reviewItems.filter(i => i.type === 'artigo').length})</option>
+                  <option value="familia">Famílias ({reviewItems.filter(i => i.type === 'familia').length})</option>
+                  <option value="seccao">Secções / Menus ({reviewItems.filter(i => i.type === 'seccao').length})</option>
+                  <option value="opcao">Opções / Complementos ({reviewItems.filter(i => i.type === 'opcao').length})</option>
+                  <option value="termo_geral">Termos Gerais ({reviewItems.filter(i => i.type === 'termo_geral').length})</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Language Selector Bar inside Review Panel */}
+            <div className="bg-indigo-50/70 border-b border-indigo-100 px-6 py-2 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-indigo-950">Idiomas em Revisão:</span>
+                {Array.from(selectedLangCodes).map(code => (
+                  <span key={code} className="px-2 py-0.5 bg-white border border-indigo-200 rounded text-indigo-900 font-bold font-mono uppercase">
+                    {code === 'gb' ? '🇬🇧 EN' : code === 'de' ? '🇩🇪 DE' : code === 'es' ? '🇪🇸 ES' : code === 'fr' ? '🇫🇷 FR' : code === 'it' ? '🇮🇹 IT' : code.toUpperCase()}
+                  </span>
+                ))}
+              </div>
+              <span className="text-slate-500 font-medium">
+                Total de <strong className="text-indigo-900">{reviewItems.length}</strong> registos de tradução a rever
+              </span>
+            </div>
+
+            {/* Items Review Table */}
+            <div className="flex-1 overflow-auto p-6 bg-slate-100/50">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold sticky top-0 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3 w-24">Tipo</th>
+                      <th className="px-4 py-3">Termo Original (PT)</th>
+                      {Array.from(selectedLangCodes).map(code => (
+                        <th key={code} className="px-4 py-3 min-w-[200px]">
+                          {code === 'gb' ? '🇬🇧 Inglês' : code === 'de' ? '🇩🇪 Alemão' : code === 'es' ? '🇪🇸 Espanhol' : code === 'fr' ? '🇫🇷 Francês' : code === 'it' ? '🇮🇹 Italiano' : code.toUpperCase()}
+                        </th>
+                      ))}
+                      <th className="px-4 py-3 w-28 text-center">Origem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {reviewItems
+                      .filter(item => {
+                        const matchesSearch = !reviewSearchTerm ||
+                          item.originalText.toLowerCase().includes(reviewSearchTerm.toLowerCase()) ||
+                          (item.code && item.code.toString().includes(reviewSearchTerm)) ||
+                          Object.values(item.translations).some(t => t.produto.toLowerCase().includes(reviewSearchTerm.toLowerCase()));
+                        const matchesType = reviewFilterType === 'all' || item.type === reviewFilterType;
+                        return matchesSearch && matchesType;
+                      })
+                      .map(item => (
+                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase border ${
+                              item.type === 'artigo' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' :
+                              item.type === 'familia' ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                              item.type === 'seccao' ? 'bg-sky-50 border-sky-200 text-sky-900' :
+                              'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            }`}>
+                              {item.typeLabel}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-900">
+                            {item.code ? <span className="text-slate-400 font-mono text-[11px] mr-1.5">#{item.code}</span> : null}
+                            {item.originalText}
+                          </td>
+                          {Array.from(selectedLangCodes).map(code => {
+                            const cKey = code.toUpperCase();
+                            const val = item.translations[cKey]?.produto || item.translations[code.toLowerCase()]?.produto || '';
+                            return (
+                              <td key={code} className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  value={val}
+                                  onChange={(e) => handleUpdateReviewItemTranslation(item.id, cKey, e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 text-xs shadow-2xs"
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              item.source === 'dicionario'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                            }`}>
+                              {item.source === 'dicionario' ? '🟢 Dicionário' : '🔵 IA Motor'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowReviewPanel(false)}
+                className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-slate-700 font-bold text-xs shadow-xs transition"
+              >
+                Cancelar sem Gravar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmAndSaveReviewItems}
+                disabled={isSavingReviewItems}
+                className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50"
+              >
+                {isSavingReviewItems ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {isSavingReviewItems ? 'A Gravar na Base de Dados...' : `Confirmar e Gravar no ZoneSoft (${reviewItems.length} Itens)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição de Imagem da Ementa Digital */}
+      <ImageEditorModal
+        isOpen={showImageEditor}
+        onClose={() => setShowImageEditor(false)}
+        product={selectedProductForImage}
+        onSaveSuccess={handleImageSaveSuccess}
+        onSuccessMsg={onSuccess}
+      />
     </div>
   );
 };

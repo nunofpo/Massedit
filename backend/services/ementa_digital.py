@@ -474,6 +474,32 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
                 conditions.append("ed.cod_produto IS NULL")
             else:
                 conditions.append("1=1")
+        elif filter_req.has_ementa_filter == "with_image":
+            if has_ementa:
+                img_conds = []
+                if has_image_url_col:
+                    img_conds.append("(ed.image_url IS NOT NULL AND ed.image_url <> '')")
+                if has_image_col:
+                    img_conds.append("(ed.imagem IS NOT NULL AND DATALENGTH(ed.imagem) > 0)")
+                if img_conds:
+                    conditions.append(f"({' OR '.join(img_conds)})")
+                else:
+                    conditions.append("1=0")
+            else:
+                conditions.append("1=0")
+        elif filter_req.has_ementa_filter == "without_image":
+            if has_ementa:
+                no_img_conds = []
+                if has_image_url_col:
+                    no_img_conds.append("(ed.image_url IS NULL OR ed.image_url = '')")
+                if has_image_col:
+                    no_img_conds.append("(ed.imagem IS NULL OR DATALENGTH(ed.imagem) = 0)")
+                if no_img_conds:
+                    conditions.append(f"({' AND '.join(no_img_conds)})")
+                else:
+                    conditions.append("1=1")
+            else:
+                conditions.append("1=1")
 
         if filter_req.visivel_filter == "visible":
             if has_ementa:
@@ -1328,26 +1354,150 @@ def suggest_description_for_product(codigo: int, nome: str) -> str:
 # ======================================================================
 # Gestão e Colocação de Imagens
 # ======================================================================
+# Gestão e Edição de Imagens (Ajuste Automático Máx. 600x600 px)
+# ======================================================================
 
-def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str) -> Tuple[bool, str, Optional[str]]:
-    """Grava os bytes da imagem no SQL Server (coluna imagem) ou no disco com URL gerado."""
+def auto_trim_borders(img: Any, tolerance: int = 25) -> Any:
+    """Detecta e remove bordas cinzentas ou neutras das margens de imagens de produtos."""
+    try:
+        from PIL import Image, ImageChops
+        if img.mode not in ("RGB", "RGBA"):
+            img_rgb = img.convert("RGB")
+        else:
+            img_rgb = img
+
+        bg_color = img_rgb.getpixel((0, 0))
+        if isinstance(bg_color, tuple) and len(bg_color) >= 3:
+            r, g, b = bg_color[:3]
+            is_neutral = max(abs(r - g), abs(r - b), abs(g - b)) < 20
+            # Se a cor do canto for um cinzento ou fundo neutro que não branco puro
+            if is_neutral and (r < 240 or r > 252):
+                bg = Image.new(img_rgb.mode, img_rgb.size, bg_color)
+                diff = ImageChops.difference(img_rgb, bg)
+                diff = ImageChops.add(diff, diff, 2.0, -tolerance)
+                bbox = diff.getbbox()
+                if bbox:
+                    min_w = int(img.width * 0.4)
+                    min_h = int(img.height * 0.4)
+                    crop_w = bbox[2] - bbox[0]
+                    crop_h = bbox[3] - bbox[1]
+                    if crop_w >= min_w and crop_h >= min_h:
+                        return img.crop(bbox)
+    except Exception:
+        pass
+    return img
+
+
+def process_and_resize_image(
+    image_bytes: bytes,
+    max_dim: int = 600,
+    fit_square: bool = False,
+    rotate_deg: int = 0,
+    trim_grey_borders: bool = True
+) -> Tuple[bytes, str, int, int]:
+    """
+    Processa e ajusta automaticamente qualquer imagem enviada para a ementa digital:
+    - Trunca bordas cinzentas ou neutras espúrias.
+    - Rotação opcional (0, 90, 180, 270 graus).
+    - Redimensionamento proporcional para máximo max_dim (por omissão 600x600 px).
+    - Enquadramento opcional em tela quadrada 1:1 com fundo BRANCO puro (255, 255, 255).
+    - Converte transparências em fundo branco puro em vez de cinzento.
+    Retorna (bytes_processados, mime_type, largura_final, altura_final).
+    """
+    try:
+        from PIL import Image, ImageOps
+
+        img = Image.open(io.BytesIO(image_bytes))
+        img = ImageOps.exif_transpose(img)
+
+        # 1. Truncar bordas cinzentas se ativado
+        if trim_grey_borders:
+            img = auto_trim_borders(img)
+
+        # 2. Rotação manual
+        if rotate_deg in (90, 180, 270):
+            img = img.rotate(-rotate_deg, expand=True)
+
+        w, h = img.size
+
+        # 3. Fit Square 600x600 com fundo BRANCO puro
+        if fit_square:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            nw, nh = img.size
+
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 255))
+                img_rgba = img.convert("RGBA")
+                paste_x = (max_dim - nw) // 2
+                paste_y = (max_dim - nh) // 2
+                canvas.paste(img_rgba, (paste_x, paste_y), mask=img_rgba)
+                final_img = canvas.convert("RGB")
+            else:
+                canvas = Image.new("RGB", (max_dim, max_dim), (255, 255, 255))
+                paste_x = (max_dim - nw) // 2
+                paste_y = (max_dim - nh) // 2
+                canvas.paste(img.convert("RGB"), (paste_x, paste_y))
+                final_img = canvas
+
+            fw, fh = max_dim, max_dim
+        else:
+            if w > max_dim or h > max_dim:
+                img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                img_rgba = img.convert("RGBA")
+                final_img = Image.alpha_composite(bg, img_rgba).convert("RGB")
+            elif img.mode != "RGB":
+                final_img = img.convert("RGB")
+            else:
+                final_img = img
+
+            fw, fh = final_img.size
+
+        buf = io.BytesIO()
+        final_img.save(buf, format="JPEG", quality=90, optimize=True)
+        mime = "image/jpeg"
+
+        out_bytes = buf.getvalue()
+        return out_bytes, mime, fw, fh
+    except Exception:
+        return image_bytes, "image/jpeg", 0, 0
+
+
+def save_product_image_data(
+    cod_produto: int,
+    image_bytes: bytes,
+    filename: str,
+    rotate_deg: int = 0,
+    fit_square: bool = False,
+    trim_grey_borders: bool = True
+) -> Tuple[bool, str, Optional[str], int, int]:
+    """
+    Grava os bytes da imagem no SQL Server (coluna imagem) e no disco com URL gerado,
+    redimensionando automaticamente para no máximo 600x600 px e eliminando bordas cinzentas.
+    """
     conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         schema = _schema(cursor)
         if "ementa_digital_produtos" not in schema:
-            return False, "A tabela dbo.ementa_digital_produtos não existe.", None
+            return False, "A tabela dbo.ementa_digital_produtos não existe.", None, 0, 0
 
         ed_cols = schema["ementa_digital_produtos"]
         has_imagem = "imagem" in ed_cols
         has_image_url = "image_url" in ed_cols
 
-        # Guardar também em ficheiro local para pré-visualização rápida no browser
-        ext = os.path.splitext(filename)[1].lower() or ".jpg"
+        # Ajuste automático de dimensão para máx 600x600 px e remoção de bordas cinzentas
+        processed_bytes, mime_type, final_w, final_h = process_and_resize_image(
+            image_bytes, max_dim=600, fit_square=fit_square, rotate_deg=rotate_deg, trim_grey_borders=trim_grey_borders
+        )
+
+        ext = ".png" if mime_type == "image/png" else ".jpg"
         local_filename = f"prod_{cod_produto}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}"
         local_path = os.path.join(IMAGES_DIR, local_filename)
         with open(local_path, "wb") as f:
-            f.write(image_bytes)
+            f.write(processed_bytes)
 
         generated_url = f"/api/ementa-digital/image-file/{local_filename}"
 
@@ -1355,15 +1505,14 @@ def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str)
         params = []
         if has_imagem:
             sets.append("imagem = ?")
-            params.append(image_bytes)
+            params.append(processed_bytes)
         if has_image_url:
             sets.append("image_url = ?")
             params.append(generated_url)
 
         if not sets:
-            return False, "A tabela ementa_digital_produtos não tem as colunas 'imagem' ou 'image_url'.", None
+            return False, "A tabela ementa_digital_produtos não tem as colunas 'imagem' ou 'image_url'.", None, 0, 0
 
-        # Garante que o artigo existe na ementa
         cursor.execute("SELECT cod_produto FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (cod_produto,))
         if not cursor.fetchone():
             cursor.execute("SELECT familia, descricao FROM dbo.produtos WHERE codigo = ?", (cod_produto,))
@@ -1384,12 +1533,32 @@ def save_product_image_data(cod_produto: int, image_bytes: bytes, filename: str)
 
         cursor.execute(f"UPDATE dbo.ementa_digital_produtos SET {', '.join(sets)} WHERE cod_produto = ?", params + [cod_produto])
         conn.commit()
-        return True, "Imagem guardada com sucesso.", generated_url
+        return True, "Imagem processada (máx 600x600 px) e guardada com sucesso.", generated_url, final_w, final_h
     except Exception as e:
         conn.rollback()
-        return False, f"Falha ao gravar imagem: {str(e)}", None
+        return False, f"Falha ao gravar imagem: {str(e)}", None, 0, 0
     finally:
         conn.close()
+
+
+def edit_existing_product_image(
+    cod_produto: int,
+    rotate_deg: int = 0,
+    fit_square: bool = False
+) -> Tuple[bool, str, Optional[str], int, int]:
+    """
+    Edita a imagem existente de um artigo (rotação ou enquadramento 1:1) com ajuste automático para 600x600 px max.
+    """
+    raw_bytes, mime = get_product_image_bytes(cod_produto)
+    if not raw_bytes:
+        return False, "O artigo não possui imagem para editar.", None, 0, 0
+    return save_product_image_data(
+        cod_produto=cod_produto,
+        image_bytes=raw_bytes,
+        filename=f"edited_{cod_produto}.jpg",
+        rotate_deg=rotate_deg,
+        fit_square=fit_square
+    )
 
 
 def set_product_image_url(cod_produto: int, image_url: str) -> Tuple[bool, str]:
@@ -1515,6 +1684,169 @@ def get_product_image_bytes(cod_produto: int) -> Tuple[Optional[bytes], Optional
         conn.close()
 
 
+def detect_products_with_image_issues(
+    cod_produtos: Optional[List[int]] = None
+) -> Dict[str, Any]:
+    """
+    Deteta quais os artigos cujas imagens possuem bordas cinzentas, transparências não compostas ou dimensões > 600x600 px.
+    """
+    import io
+    from PIL import Image
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_produtos" not in schema:
+            return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "issues": [], "total_scanned": 0, "issue_count": 0}
+
+        if cod_produtos and len(cod_produtos) > 0:
+            placeholders = ",".join("?" for _ in cod_produtos)
+            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+        else:
+            cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+
+        prods = cursor.fetchall()
+        conn.close()
+
+        issues = []
+        for row in prods:
+            cod = int(row[0])
+            name = row[1] or f"Artigo {cod}"
+            url = row[2]
+
+            raw_bytes, mime = get_product_image_bytes(cod)
+            if not raw_bytes:
+                continue
+
+            try:
+                img = Image.open(io.BytesIO(raw_bytes))
+                w, h = img.size
+                reasons = []
+
+                if w > 600 or h > 600:
+                    reasons.append(f"Dimensão superior a 600x600 ({w}x{h} px)")
+
+                if img.mode not in ("RGB", "RGBA"):
+                    img_rgb = img.convert("RGB")
+                else:
+                    img_rgb = img
+
+                bg_color = img_rgb.getpixel((0, 0))
+                if isinstance(bg_color, tuple) and len(bg_color) >= 3:
+                    r, g, b = bg_color[:3]
+                    is_neutral = max(abs(r - g), abs(r - b), abs(g - b)) < 20
+                    if is_neutral and (r < 240 or r > 252):
+                        reasons.append(f"Borda neutra/cinzenta detetada (cor RGB: {r},{g},{b})")
+
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    reasons.append("Canal de transparência (deve ser composto em fundo branco puro)")
+
+                if reasons:
+                    issues.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "image_url": url,
+                        "reasons": reasons,
+                        "width": w,
+                        "height": h
+                    })
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "total_scanned": len(prods),
+            "issue_count": len(issues),
+            "issues": issues
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao detetar imagens: {str(e)}", "issues": [], "total_scanned": 0, "issue_count": 0}
+
+
+def batch_fix_product_image_borders(
+    cod_produtos: Optional[List[int]] = None,
+    fit_square: bool = False,
+    force_all: bool = False
+) -> Dict[str, Any]:
+    """
+    Varre os artigos da ementa digital que possuem imagem, deteta bordas cinzentas / artefactos / dimensões excessivas
+    e re-processa com ajuste automático (remoção de bordas cinzentas, fundo branco puro para transparências, máx 600x600 px).
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        if "ementa_digital_produtos" not in schema:
+            return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "total": 0, "fixed": 0, "details": []}
+
+        if cod_produtos and len(cod_produtos) > 0:
+            placeholders = ",".join("?" for _ in cod_produtos)
+            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+        else:
+            cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+
+        prods = cursor.fetchall()
+        conn.close()
+
+        total = len(prods)
+        fixed_count = 0
+        unmodified_count = 0
+        details = []
+
+        for row in prods:
+            cod = int(row[0])
+            name = row[1] or f"Artigo {cod}"
+
+            raw_bytes, mime = get_product_image_bytes(cod)
+            if not raw_bytes:
+                continue
+
+            processed_bytes, out_mime, final_w, final_h = process_and_resize_image(
+                raw_bytes, max_dim=600, fit_square=fit_square, trim_grey_borders=True
+            )
+
+            is_changed = force_all or (abs(len(processed_bytes) - len(raw_bytes)) > 30) or (final_w > 0 and final_h > 0)
+
+            if is_changed and processed_bytes:
+                ok, msg, new_url, w, h = save_product_image_data(
+                    cod_produto=cod,
+                    image_bytes=processed_bytes,
+                    filename=f"fixed_{cod}.jpg",
+                    fit_square=fit_square,
+                    trim_grey_borders=True
+                )
+                if ok:
+                    fixed_count += 1
+                    details.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "status": "fixed",
+                        "image_url": new_url,
+                        "width": w,
+                        "height": h
+                    })
+                else:
+                    details.append({
+                        "cod_produto": cod,
+                        "produto": name,
+                        "status": "error",
+                        "reason": msg
+                    })
+            else:
+                unmodified_count += 1
+
+        return {
+            "success": True,
+            "message": f"Processamento concluído. {fixed_count} imagens otimizadas/corrigidas de {total} analisadas.",
+            "total": total,
+            "fixed": fixed_count,
+            "unmodified": unmodified_count,
+            "details": details
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Erro durante deteção/correção em lote: {str(e)}", "total": 0, "fixed": 0, "details": []}
+
+
 # ======================================================================
 # Assistente de Tradução de Ementas Multilíngue
 # ======================================================================
@@ -1528,6 +1860,134 @@ DEFAULT_LANGUAGES = [
 
 # Dicionário gastronómico português especializado para restauração
 CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
+    # Termos de estrutura de menu, categorias e secções gerais
+    "outro": {
+        "en": "Others", "gb": "Others", "es": "Otros", "fr": "Autres", "de": "Sonstiges", "it": "Altri", "nl": "Overige", "ru": "Другое"
+    },
+    "outros": {
+        "en": "Others", "gb": "Others", "es": "Otros", "fr": "Autres", "de": "Sonstiges", "it": "Altri", "nl": "Overige", "ru": "Другое"
+    },
+    "geral": {
+        "en": "General", "gb": "General", "es": "General", "fr": "Général", "de": "Allgemein", "it": "Generale", "nl": "Algemeen", "ru": "Общий"
+    },
+    "entradas": {
+        "en": "Starters", "gb": "Starters", "es": "Entrantes", "fr": "Entrées", "de": "Vorspeisen", "it": "Antipasti", "nl": "Voorgerechten", "ru": "Закуски"
+    },
+    "entrada": {
+        "en": "Starter", "gb": "Starter", "es": "Entrante", "fr": "Entrée", "de": "Vorspeise", "it": "Antipasto", "nl": "Voorgerecht", "ru": "Закуска"
+    },
+    "pratos principais": {
+        "en": "Main Courses", "gb": "Main Courses", "es": "Platos Principales", "fr": "Plats Principaux", "de": "Hauptgerichte", "it": "Piatti Principali", "nl": "Hoofdgerechten", "ru": "Основные блюда"
+    },
+    "prato principal": {
+        "en": "Main Course", "gb": "Main Course", "es": "Plato Principal", "fr": "Plat Principal", "de": "Hauptgericht", "it": "Piatto Principale", "nl": "Hoofdgerecht", "ru": "Основное блюдо"
+    },
+    "pratos": {
+        "en": "Dishes", "gb": "Dishes", "es": "Platos", "fr": "Plats", "de": "Gerichte", "it": "Piatti", "nl": "Gerechten", "ru": "Блюда"
+    },
+    "sobremesas": {
+        "en": "Desserts", "gb": "Desserts", "es": "Postres", "fr": "Desserts", "de": "Nachspeisen", "it": "Dolci", "nl": "Nagerechten", "ru": "Десерты"
+    },
+    "sobremesa": {
+        "en": "Dessert", "gb": "Dessert", "es": "Postre", "fr": "Dessert", "de": "Nachspeise", "it": "Dolce", "nl": "Nagerecht", "ru": "Десерт"
+    },
+    "bebidas": {
+        "en": "Beverages", "gb": "Beverages", "es": "Bebidas", "fr": "Boissons", "de": "Getränke", "it": "Bevande", "nl": "Dranken", "ru": "Напитки"
+    },
+    "bebida": {
+        "en": "Beverage", "gb": "Beverage", "es": "Bebida", "fr": "Boisson", "de": "Getränk", "it": "Bevanda", "nl": "Drank", "ru": "Напиток"
+    },
+    "cafetaria": {
+        "en": "Coffee & Tea", "gb": "Coffee & Tea", "es": "Cafetería", "fr": "Café & Thé", "de": "Kaffee & Tee", "it": "Caffetteria", "nl": "Koffie & Thee", "ru": "Кофе и Чай"
+    },
+    "composicao de menus": {
+        "en": "Menu Composition", "gb": "Menu Composition", "es": "Composición de Menús", "fr": "Composition des Menus", "de": "Menüzusammenstellung", "it": "Composizione Menu", "nl": "Menusamenstelling", "ru": "Состав меню"
+    },
+
+    # Bebidas, Cafés, Chás e Sumos
+    "americano": {
+        "en": "Americano Coffee", "gb": "Americano Coffee", "es": "Café Americano", "fr": "Café Américain", "de": "Amerikanischer Kaffee", "it": "Caffè Americano", "nl": "Americano Koffie", "ru": "Кофе Американо"
+    },
+    "cafe americano": {
+        "en": "Americano Coffee", "gb": "Americano Coffee", "es": "Café Americano", "fr": "Café Américain", "de": "Amerikanischer Kaffee", "it": "Caffè Americano", "nl": "Americano Koffie", "ru": "Кофе Американо"
+    },
+    "iced americano": {
+        "en": "Iced Americano", "gb": "Iced Americano", "es": "Americano Helado", "fr": "Americano Glacé", "de": "Iced Americano", "it": "Americano Freddo", "nl": "Iced Americano", "ru": "Айс Американо"
+    },
+    # "Expresso" é a grafia portuguesa de "espresso": sem estas entradas o motor
+    # online devolvia "Express" / "Macchiato Express".
+    "expresso": {
+        "en": "Espresso", "gb": "Espresso", "es": "Espresso", "fr": "Espresso", "de": "Espresso", "it": "Espresso", "nl": "Espresso", "ru": "Эспрессо"
+    },
+    "espresso": {
+        "en": "Espresso", "gb": "Espresso", "es": "Espresso", "fr": "Espresso", "de": "Espresso", "it": "Espresso", "nl": "Espresso", "ru": "Эспрессо"
+    },
+    "expresso duplo": {
+        "en": "Double Espresso", "gb": "Double Espresso", "es": "Espresso Doble", "fr": "Double Espresso", "de": "Doppelter Espresso", "it": "Espresso Doppio", "nl": "Dubbele Espresso", "ru": "Двойной Эспрессо"
+    },
+    "espresso duplo": {
+        "en": "Double Espresso", "gb": "Double Espresso", "es": "Espresso Doble", "fr": "Double Espresso", "de": "Doppelter Espresso", "it": "Espresso Doppio", "nl": "Dubbele Espresso", "ru": "Двойной Эспрессо"
+    },
+    "expresso macchiato": {
+        "en": "Espresso Macchiato", "gb": "Espresso Macchiato", "es": "Espresso Macchiato", "fr": "Espresso Macchiato", "de": "Espresso Macchiato", "it": "Espresso Macchiato", "nl": "Espresso Macchiato", "ru": "Эспрессо Макиато"
+    },
+    "espresso macchiato": {
+        "en": "Espresso Macchiato", "gb": "Espresso Macchiato", "es": "Espresso Macchiato", "fr": "Espresso Macchiato", "de": "Espresso Macchiato", "it": "Espresso Macchiato", "nl": "Espresso Macchiato", "ru": "Эспрессо Макиато"
+    },
+    "latte": {
+        "en": "Caffè Latte", "gb": "Caffè Latte", "es": "Café con Leche", "fr": "Café au Lait", "de": "Caffè Latte", "it": "Caffè Latte", "nl": "Caffè Latte", "ru": "Кофе Латте"
+    },
+    "cappuccino": {
+        "en": "Cappuccino", "gb": "Cappuccino", "es": "Capuchino", "fr": "Cappuccino", "de": "Cappuccino", "it": "Cappuccino", "nl": "Cappuccino", "ru": "Капучино"
+    },
+    "chocolate quente": {
+        "en": "Hot Chocolate", "gb": "Hot Chocolate", "es": "Chocolate Caliente", "fr": "Chocolat Chaud", "de": "Heiße Schokolade", "it": "Cioccolata Calda", "nl": "Warme Chocolademelk", "ru": "Горячий Шоколад"
+    },
+    "cha 1 pessoa": {
+        "en": "Tea for 1 person", "gb": "Tea for 1 person", "es": "Té (1 persona)", "fr": "Thé (1 personne)", "de": "Tee (1 Person)", "it": "Tè (1 persona)", "nl": "Thee (1 person)", "ru": "Чай (1 персон)"
+    },
+    "cha": {
+        "en": "Tea", "gb": "Tea", "es": "Té", "fr": "Thé", "de": "Tee", "it": "Tè", "nl": "Thee", "ru": "Чай"
+    },
+    "sumo de laranja": {
+        "en": "Orange Juice", "gb": "Orange Juice", "es": "Zumo de Naranja", "fr": "Jus d'Orange", "de": "Orangensaft", "it": "Spremuta d'Arancia", "nl": "Sinaasappelsap", "ru": "Апельсиновый сок"
+    },
+    "sumo do dia": {
+        "en": "Juice of the Day", "gb": "Juice of the Day", "es": "Zumo del Día", "fr": "Jus du Jour", "de": "Saft des Tages", "it": "Spremuta del Giorno", "nl": "Sap van de Dag", "ru": "Сок дня"
+    },
+    "sumo": {
+        "en": "Juice", "gb": "Juice", "es": "Zumo", "fr": "Jus", "de": "Saft", "it": "Spremuta", "nl": "Sap", "ru": "Сок"
+    },
+    "sumos": {
+        "en": "Juices", "gb": "Juices", "es": "Zumos", "fr": "Jus", "de": "Säfte", "it": "Spremute", "nl": "Sappen", "ru": "Соки"
+    },
+    "mimosa": {
+        "en": "Mimosa Cocktail", "gb": "Mimosa Cocktail", "es": "Cóctel Mimosa", "fr": "Cocktail Mimosa", "de": "Mimosa Cocktail", "it": "Cocktail Mimosa", "nl": "Mimosa Cocktail", "ru": "Коктейль Мимоза"
+    },
+
+    # Abreviaturas e Artigos POS em formato reduzido (B = Burger / Baguete)
+    "b salmao": {
+        "en": "Salmon Burger / Baguette", "gb": "Salmon Burger / Baguette", "es": "Hamburguesa de Salmón", "fr": "Burger au Saumon", "de": "Lachs-Burger", "it": "Burger al Salmone", "nl": "Zalm Burger", "ru": "Бургер с лососем"
+    },
+    "b vegetariano": {
+        "en": "Vegetarian Burger / Baguette", "gb": "Vegetarian Burger / Baguette", "es": "Hamburguesa Vegetariana", "fr": "Burger Végétarien", "de": "Vegetarischer Burger", "it": "Burger Vegetariano", "nl": "Vegetarische Burger", "ru": "Вегетарианский бургер"
+    },
+    "b bacon": {
+        "en": "Bacon Burger / Baguette", "gb": "Bacon Burger / Baguette", "es": "Hamburguesa con Bacon", "fr": "Burger au Bacon", "de": "Bacon-Burger", "it": "Burger con Bacon", "nl": "Bacon Burger", "ru": "Бургер с беконом"
+    },
+    "b alice": {
+        "en": "Alice Special Burger", "gb": "Alice Special Burger", "es": "Hamburguesa Especial Alice", "fr": "Burger Spécial Alice", "de": "Alice Spezial-Burger", "it": "Burger Speciale Alice", "nl": "Alice Speciale Burger", "ru": "Специальный бургер Алиса"
+    },
+    "salmao": {
+        "en": "Salmon", "gb": "Salmon", "es": "Salmón", "fr": "Saumon", "de": "Lachs", "it": "Salmone", "nl": "Zalm", "ru": "Лосось"
+    },
+    "vegetariano": {
+        "en": "Vegetarian", "gb": "Vegetarian", "es": "Vegetariano", "fr": "Végétarien", "de": "Vegetarisch", "it": "Vegetariano", "nl": "Vegetarisch", "ru": "Вегетарианский"
+    },
+    "bacon": {
+        "en": "Bacon", "gb": "Bacon", "es": "Bacon", "fr": "Bacon", "de": "Speck / Bacon", "it": "Pancetta / Bacon", "nl": "Bacon", "ru": "Бекон"
+    },
+
     # Pratos e confeções completas
     "dourada assada": {
         "en": "Roasted Sea Bream", "gb": "Roasted Sea Bream",
@@ -1861,13 +2321,330 @@ CULINARY_DICTIONARY: Dict[str, Dict[str, Any]] = {
     "alho": {"en": "garlic", "gb": "garlic", "es": "ajo", "fr": "ail", "de": "Knoblauch"},
     "cebola": {"en": "onion", "gb": "onion", "es": "cebolla", "fr": "oignon", "de": "Zwiebel"},
     "tomate": {"en": "tomato", "gb": "tomato", "es": "tomate", "fr": "tomate", "de": "Tomate"},
-    "marisco": {"en": "seafood", "gb": "seafood", "es": "marisco", "fr": "fruits de mer", "de": "Meeresfrüchte"},
-    "ameijoas": {"en": "clams", "gb": "clams", "es": "almejas", "fr": "palourdes", "de": "Muscheln"},
-    "vinho da casa": {"en": "house wine", "gb": "house wine", "es": "vino de la casa", "fr": "vin de la maison", "de": "Hauswein"},
-    "sobremesa do dia": {"en": "dessert of the day", "gb": "dessert of the day", "es": "postre del día", "fr": "dessert du jour", "de": "Dessert des Tages"},
-    "pao": {"en": "bread", "gb": "bread", "es": "pan", "fr": "pain", "de": "Brot"},
-    "manteiga": {"en": "butter", "gb": "butter", "es": "mantequilla", "fr": "beurre", "de": "Butter"},
-    "azeitonas": {"en": "olives", "gb": "olives", "es": "aceitunas", "fr": "olives", "de": "Oliven"},
+    "marisco": {"en": "seafood", "gb": "seafood", "es": "marisco", "fr": "fruits de mer", "de": "Meeresfrüchte", "it": "frutti di mare"},
+    "ameijoas": {"en": "clams", "gb": "clams", "es": "almejas", "fr": "palourdes", "de": "Muscheln", "it": "vongole"},
+    "vinho da casa": {"en": "house wine", "gb": "house wine", "es": "vino de la casa", "fr": "vin de la maison", "de": "Hauswein", "it": "vino della casa"},
+    "sobremesa do dia": {"en": "dessert of the day", "gb": "dessert of the day", "es": "postre del día", "fr": "dessert du jour", "de": "Dessert des Tages", "it": "dolce del giorno"},
+    "pao": {"en": "bread", "gb": "bread", "es": "pan", "fr": "pain", "de": "Brot", "it": "pane"},
+    "manteiga": {"en": "butter", "gb": "butter", "es": "mantequilla", "fr": "beurre", "de": "Butter", "it": "burro"},
+    "azeitonas": {"en": "olives", "gb": "olives", "es": "aceitunas", "fr": "olives", "de": "Oliven", "it": "olive"},
+
+    # Artigos de Pastelaria, Cafetaria, Brunch, Bebidas e Sobremesas
+    "croissant de amendoa": {
+        "en": "Almond Croissant", "gb": "Almond Croissant",
+        "es": "Croissant de almendra",
+        "fr": "Croissant aux amandes",
+        "de": "Mandelcroissant",
+        "it": "Croissant alle mandorle"
+    },
+    "croissant de amêndoa": {
+        "en": "Almond Croissant", "gb": "Almond Croissant",
+        "es": "Croissant de almendra",
+        "fr": "Croissant aux amandes",
+        "de": "Mandelcroissant",
+        "it": "Croissant alle mandorle"
+    },
+    "chai latte": {
+        "en": "Chai Latte", "gb": "Chai Latte",
+        "es": "Chai Latte",
+        "fr": "Chai Latte",
+        "de": "Chai Latte",
+        "it": "Chai Latte"
+    },
+    "iced morango matcha": {
+        "en": "Iced Strawberry Matcha", "gb": "Iced Strawberry Matcha",
+        "es": "Matcha helado con fresa",
+        "fr": "Matcha glacé à la fraise",
+        "de": "Iced Erdbeer-Matcha",
+        "it": "Matcha freddo alla fragola"
+    },
+    "torrada com ovos mexidos": {
+        "en": "Toast with Scrambled Eggs", "gb": "Toast with Scrambled Eggs",
+        "es": "Tostada con huevos revueltos",
+        "fr": "Toast aux œufs brouillés",
+        "de": "Toast mit Rührei",
+        "it": "Toast con uova strapazzate"
+    },
+    "cerveja garrafa": {
+        "en": "Bottled Beer", "gb": "Bottled Beer",
+        "es": "Cerveza en botella",
+        "fr": "Bière en bouteille",
+        "de": "Flaschenbier",
+        "it": "Birra in bottiglia"
+    },
+    "panqueca alice": {
+        "en": "Alice Pancake", "gb": "Alice Pancake",
+        "es": "Pancake Alice",
+        "fr": "Pancake Alice",
+        "de": "Alice Pfannkuchen",
+        "it": "Pancake Alice"
+    },
+    "bagel de bacon": {
+        "en": "Bacon Bagel", "gb": "Bacon Bagel",
+        "es": "Bagel de bacon",
+        "fr": "Bagel au bacon",
+        "de": "Bacon-Bagel",
+        "it": "Bagel al bacon"
+    },
+    "ice tea manga": {
+        "en": "Mango Ice Tea", "gb": "Mango Ice Tea",
+        "es": "Té helado de mango",
+        "fr": "Thé glacé à la mangue",
+        "de": "Mango-Eistee",
+        "it": "Tè freddo al mango"
+    },
+    "ovos mexidos": {
+        "en": "Scrambled Eggs", "gb": "Scrambled Eggs",
+        "es": "Huevos revueltos",
+        "fr": "Œufs brouillés",
+        "de": "Rührei",
+        "it": "Uova strapazzate"
+    },
+    "ovo mexido": {
+        "en": "Scrambled Egg", "gb": "Scrambled Egg",
+        "es": "Huevo revuelto",
+        "fr": "Œuf brouillé",
+        "de": "Rührei",
+        "it": "Uovo strapazzato"
+    },
+    "torrada": {
+        "en": "Toast", "gb": "Toast",
+        "es": "Tostada",
+        "fr": "Toast",
+        "de": "Toast",
+        "it": "Toast"
+    },
+    "torradas": {
+        "en": "Toasts", "gb": "Toasts",
+        "es": "Tostadas",
+        "fr": "Toasts",
+        "de": "Toasts",
+        "it": "Toast"
+    },
+    "amendoa": {
+        "en": "Almond", "gb": "Almond",
+        "es": "Almendra",
+        "fr": "Amande",
+        "de": "Mandel",
+        "it": "Mandorla"
+    },
+    "amêndoa": {
+        "en": "Almond", "gb": "Almond",
+        "es": "Almendra",
+        "fr": "Amande",
+        "de": "Mandel",
+        "it": "Mandorla"
+    },
+    "morango": {
+        "en": "Strawberry", "gb": "Strawberry",
+        "es": "Fresa",
+        "fr": "Fraise",
+        "de": "Erdbeere",
+        "it": "Fragola"
+    },
+    "massa mae": {
+        "en": "Sourdough", "gb": "Sourdough",
+        "es": "Masa madre",
+        "fr": "Levain",
+        "de": "Sauerteig",
+        "it": "Lievito madre"
+    },
+    "massa mãe": {
+        "en": "Sourdough", "gb": "Sourdough",
+        "es": "Masa madre",
+        "fr": "Levain",
+        "de": "Sauerteig",
+        "it": "Lievito madre"
+    },
+    "pao de massa mae": {
+        "en": "Sourdough Bread", "gb": "Sourdough Bread",
+        "es": "Pan de masa madre",
+        "fr": "Pain au levain",
+        "de": "Sauerteigbrot",
+        "it": "Pane al lievito madre"
+    },
+    "panqueca": {
+        "en": "Pancake", "gb": "Pancake",
+        "es": "Tortita",
+        "fr": "Pancake",
+        "de": "Pfannkuchen",
+        "it": "Pancake"
+    },
+    "panquecas": {
+        "en": "Pancakes", "gb": "Pancakes",
+        "es": "Tortitas",
+        "fr": "Pancakes",
+        "de": "Pfannkuchen",
+        "it": "Pancake"
+    },
+    # Pratos compostos desta ementa: sem entrada propria o motor online traduzia
+    # "Panqueca Bacon" para "Frittella Di Pancetta" (IT) e "Crepe Au Bacon" (FR).
+    "panqueca bacon": {
+        "en": "Bacon Pancake", "gb": "Bacon Pancake", "es": "Tortita con Bacon", "fr": "Pancake au Bacon", "de": "Speck-Pfannkuchen", "it": "Pancake al Bacon"
+    },
+    "panqueca frutos vermelhos": {
+        "en": "Red Berry Pancake", "gb": "Red Berry Pancake", "es": "Tortita de Frutos Rojos", "fr": "Pancake aux Fruits Rouges", "de": "Beeren-Pfannkuchen", "it": "Pancake ai Frutti di Bosco"
+    },
+    "panqueca nutella": {
+        "en": "Nutella Pancake", "gb": "Nutella Pancake", "es": "Tortita de Nutella", "fr": "Pancake au Nutella", "de": "Nutella-Pfannkuchen", "it": "Pancake alla Nutella"
+    },
+    # "Eggs Benedict" e nome proprio de prato: nao se traduz "Benedict".
+    "benedict de salmao": {
+        "en": "Salmon Eggs Benedict", "gb": "Salmon Eggs Benedict", "es": "Huevos Benedict con Salmón", "fr": "Œufs Bénédicte au Saumon", "de": "Eggs Benedict mit Lachs", "it": "Uova alla Benedict con Salmone"
+    },
+    "benedict de bacon": {
+        "en": "Bacon Eggs Benedict", "gb": "Bacon Eggs Benedict", "es": "Huevos Benedict con Bacon", "fr": "Œufs Bénédicte au Bacon", "de": "Eggs Benedict mit Speck", "it": "Uova alla Benedict con Bacon"
+    },
+    "benedict vegetariano": {
+        "en": "Vegetarian Eggs Benedict", "gb": "Vegetarian Eggs Benedict", "es": "Huevos Benedict Vegetarianos", "fr": "Œufs Bénédicte Végétariens", "de": "Vegetarische Eggs Benedict", "it": "Uova alla Benedict Vegetariane"
+    },
+    # Especialidade portuguesa: mantem o nome original, com glosa em DE/FR.
+    "pastel de nata": {
+        "en": "Pastel de Nata", "gb": "Pastel de Nata", "es": "Pastel de Nata", "fr": "Pastel de Nata", "de": "Pastel de Nata", "it": "Pastel de Nata"
+    },
+    "pasteis de nata": {
+        "en": "Pastéis de Nata", "gb": "Pastéis de Nata", "es": "Pastéis de Nata", "fr": "Pastéis de Nata", "de": "Pastéis de Nata", "it": "Pastéis de Nata"
+    },
+    "garrafa": {
+        "en": "Bottle", "gb": "Bottle",
+        "es": "Botella",
+        "fr": "Bouteille",
+        "de": "Flasche",
+        "it": "Bottiglia"
+    },
+    "sumo": {
+        "en": "Juice", "gb": "Juice",
+        "es": "Zumo",
+        "fr": "Jus",
+        "de": "Saft",
+        "it": "Succo"
+    },
+    "sumo do dia": {
+        "en": "Juice of the Day", "gb": "Juice of the Day",
+        "es": "Zumo del día",
+        "fr": "Jus du jour",
+        "de": "Saft des Tages",
+        "it": "Succo del giorno"
+    },
+    "sumo natural": {
+        "en": "Fresh Juice", "gb": "Fresh Juice",
+        "es": "Zumo natural",
+        "fr": "Jus frais",
+        "de": "Frischer Saft",
+        "it": "Spremuta fresca"
+    },
+    "frutos vermelhos": {
+        "en": "Red Berries", "gb": "Red Berries",
+        "es": "Frutos rojos",
+        "fr": "Fruits rouges",
+        "de": "Beeren",
+        "it": "Frutti di bosco"
+    },
+    "manga": {
+        "en": "Mango", "gb": "Mango",
+        "es": "Mango",
+        "fr": "Mangue",
+        "de": "Mango",
+        "it": "Mango"
+    },
+    "cerveja": {
+        "en": "Beer", "gb": "Beer",
+        "es": "Cerveza",
+        "fr": "Bière",
+        "de": "Bier",
+        "it": "Birra"
+    },
+    "sidra": {
+        "en": "Cider", "gb": "Cider",
+        "es": "Sidra",
+        "fr": "Cidre",
+        "de": "Cider",
+        "it": "Sidro"
+    },
+    "cha": {
+        "en": "Tea", "gb": "Tea",
+        "es": "Té",
+        "fr": "Thé",
+        "de": "Tee",
+        "it": "Tè"
+    },
+    "ice tea": {
+        "en": "Ice Tea", "gb": "Ice Tea",
+        "es": "Té helado",
+        "fr": "Thé glacé",
+        "de": "Eistee",
+        "it": "Tè freddo"
+    },
+    "iced tea": {
+        "en": "Ice Tea", "gb": "Ice Tea",
+        "es": "Té helado",
+        "fr": "Thé glacé",
+        "de": "Eistee",
+        "it": "Tè freddo"
+    },
+    "cafe": {
+        "en": "Coffee", "gb": "Coffee",
+        "es": "Café",
+        "fr": "Café",
+        "de": "Kaffee",
+        "it": "Caffè"
+    },
+    "descafeinado": {
+        "en": "Decaf Coffee", "gb": "Decaf Coffee",
+        "es": "Descafeinado",
+        "fr": "Décaféiné",
+        "de": "Entkoffeinierter Kaffee",
+        "it": "Decaffeinato"
+    },
+    "galao": {
+        "en": "Latte", "gb": "Latte",
+        "es": "Café con leche",
+        "fr": "Grand café au lait",
+        "de": "Milchkaffee",
+        "it": "Caffellatte"
+    },
+    "meia de leite": {
+        "en": "White Coffee", "gb": "White Coffee",
+        "es": "Café con leche",
+        "fr": "Café au lait",
+        "de": "Milchkaffee",
+        "it": "Caffè con latte"
+    },
+    "chocolate quente": {
+        "en": "Hot Chocolate", "gb": "Hot Chocolate",
+        "es": "Chocolate caliente",
+        "fr": "Chocolat chaud",
+        "de": "Heiße Schokolade",
+        "it": "Cioccolata calda"
+    },
+    "abacate": {
+        "en": "Avocado", "gb": "Avocado",
+        "es": "Aguacate",
+        "fr": "Avocat",
+        "de": "Avocado",
+        "it": "Avocado"
+    },
+    "bacon": {
+        "en": "Bacon", "gb": "Bacon",
+        "es": "Bacon",
+        "fr": "Bacon",
+        "de": "Speck",
+        "it": "Bacon"
+    },
+    "cogumelos": {
+        "en": "Mushrooms", "gb": "Mushrooms",
+        "es": "Champiñones",
+        "fr": "Champignons",
+        "de": "Pilze",
+        "it": "Funghi"
+    },
+    "espinafres": {
+        "en": "Spinach", "gb": "Spinach",
+        "es": "Espinacas",
+        "fr": "Épinards",
+        "de": "Spinat",
+        "it": "Spinaci"
+    }
 }
 
 
@@ -1876,6 +2653,87 @@ def _clean_key(text: str) -> str:
     import unicodedata
     n = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9 ]', ' ', n).strip()
+
+
+def _lookup_culinary_dictionary(text: str, target_lang: str) -> Optional[str]:
+    """Procura uma tradução exata ou normalizada no dicionário gastronómico local."""
+    if not text or not text.strip():
+        return None
+    k = _clean_key(text)
+    entry = CULINARY_DICTIONARY.get(k)
+    if entry:
+        val = _get_lang_val(entry, target_lang)
+        if val:
+            if text.isupper() and len(text) > 1:
+                return val.upper()
+            if text[0].isupper() and not val[0].isupper():
+                return val.capitalize()
+            return val
+    return None
+
+
+def _post_process_translation(translated_text: str, target_lang: str, original_text: str = "") -> str:
+    """
+    Pós-processa a tradução garantindo substituição de termos portugueses remanescentes
+    e corrigindo combinações gramaticais.
+    """
+    if not translated_text:
+        return translated_text or ""
+
+    t_lang = "en" if target_lang.lower() in ("gb", "en") else target_lang.lower()
+    res = translated_text
+
+    replacements_pt = [
+        ("croissant de amêndoa", {"en": "Almond Croissant", "es": "Croissant de almendra", "fr": "Croissant aux amandes", "de": "Mandelcroissant", "it": "Croissant alle mandorle"}),
+        ("croissant de amendoa", {"en": "Almond Croissant", "es": "Croissant de almendra", "fr": "Croissant aux amandes", "de": "Mandelcroissant", "it": "Croissant alle mandorle"}),
+        ("iced morango matcha", {"en": "Iced Strawberry Matcha", "es": "Matcha helado con fresa", "fr": "Matcha glacé à la fraise", "de": "Iced Erdbeer-Matcha", "it": "Matcha freddo alla fragola"}),
+        ("ice tea manga", {"en": "Mango Ice Tea", "es": "Té helado de mango", "fr": "Thé glacé à la mangue", "de": "Mango-Eistee", "it": "Tè freddo al mango"}),
+        ("torrada com ovos mexidos", {"en": "Toast with Scrambled Eggs", "es": "Tostada con huevos revueltos", "fr": "Toast aux œufs brouillés", "de": "Toast mit Rührei", "it": "Toast con uova strapazzate"}),
+        ("cerveja garrafa", {"en": "Bottled Beer", "es": "Cerveza en botella", "fr": "Bière en bouteille", "de": "Flaschenbier", "it": "Birra in bottiglia"}),
+        ("ovos mexidos", {"en": "scrambled eggs", "es": "huevos revueltos", "fr": "œufs brouillés", "de": "Rührei", "it": "uova strapazzate"}),
+        ("ovo mexido", {"en": "scrambled egg", "es": "huevo revuelto", "fr": "œuf brouillé", "de": "Rührei", "it": "uovo strapazzato"}),
+        ("torrada com", {"en": "Toast with", "es": "Tostada con", "fr": "Toast aux", "de": "Toast mit", "it": "Toast con"}),
+        ("torrada", {"en": "toast", "es": "tostada", "fr": "toast", "de": "Toast", "it": "toast"}),
+        ("torradas", {"en": "toasts", "es": "tostadas", "fr": "toasts", "de": "Toasts", "it": "toast"}),
+        ("amêndoa", {"en": "almond", "es": "almendra", "fr": "amande", "de": "Mandel", "it": "mandorla"}),
+        ("amendoa", {"en": "almond", "es": "almendra", "fr": "amande", "de": "Mandel", "it": "mandorla"}),
+        ("morango", {"en": "strawberry", "es": "fresa", "fr": "fraise", "de": "Erdbeere", "it": "fragola"}),
+        ("massa mãe", {"en": "sourdough", "es": "masa madre", "fr": "levain", "de": "Sauerteig", "it": "lievito madre"}),
+        ("massa mae", {"en": "sourdough", "es": "masa madre", "fr": "levain", "de": "Sauerteig", "it": "lievito madre"}),
+        ("panqueca", {"en": "pancake", "es": "tortita", "fr": "pancake", "de": "Pfannkuchen", "it": "pancake"}),
+        ("panquecas", {"en": "pancakes", "es": "tortitas", "fr": "pancakes", "de": "Pfannkuchen", "it": "pancake"}),
+        ("garrafa", {"en": "bottle", "es": "botella", "fr": "bouteille", "de": "Flasche", "it": "bottiglia"}),
+        ("sumo do dia", {"en": "Juice of the day", "es": "Zumo del día", "fr": "Jus du jour", "de": "Saft des Tages", "it": "Succo del giorno"}),
+        ("sumo natural", {"en": "Fresh juice", "es": "Zumo natural", "fr": "Jus frais", "de": "Frischer Saft", "it": "Spremuta fresca"}),
+        ("sumo", {"en": "juice", "es": "zumo", "fr": "jus", "de": "Saft", "it": "succo"}),
+        ("frutos vermelhos", {"en": "red berries", "es": "frutos rojos", "fr": "fruits rouges", "de": "Beeren", "it": "frutti di bosco"}),
+    ]
+
+    for pt_term, target_map in replacements_pt:
+        target_val = target_map.get(t_lang) or target_map.get("en")
+        if target_val:
+            pattern = re.compile(r'\b' + re.escape(pt_term) + r'\b', flags=re.IGNORECASE)
+            if pattern.search(res):
+                res = pattern.sub(target_val, res)
+
+    if t_lang in ("en", "gb"):
+        res = re.sub(r'\bToast with with\b', 'Toast with', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bCroissant of Almond\b', 'Almond Croissant', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bCroissant of almond\b', 'Almond Croissant', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bTea of Mango\b', 'Mango Ice Tea', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bBeer Bottle\b', 'Bottled Beer', res, flags=re.IGNORECASE)
+    elif t_lang == "es":
+        res = re.sub(r'\bChai Café con leche\b', 'Chai Latte', res, flags=re.IGNORECASE)
+        res = re.sub(r'\bTorrada con\b', 'Tostada con', res, flags=re.IGNORECASE)
+    elif t_lang == "fr":
+        res = re.sub(r'\bCroissant de amande\b', 'Croissant aux amandes', res, flags=re.IGNORECASE)
+    elif t_lang == "de":
+        res = re.sub(r'\bToast mit Ovos Mexidos\b', 'Toast mit Rührei', res, flags=re.IGNORECASE)
+
+    if original_text and original_text[0].isupper() and len(res) > 0:
+        res = res[0].upper() + res[1:]
+
+    return res
 
 
 def _build_accent_regex(term: str) -> str:
@@ -1917,9 +2775,28 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
+    query_text = text.strip()
+    query_text = re.sub(r'^[bB]\s+', 'Burger ', query_text)
+    query_text = re.sub(r'^[hH]\s+', 'Hamburguer ', query_text)
+    query_text = re.sub(r'\b1\s*p(?:essoa)?\b', '1 pessoa', query_text, flags=re.IGNORECASE)
+    query_text = re.sub(r'\bc/\b', 'com ', query_text, flags=re.IGNORECASE)
+    query_text = re.sub(r'\bs/\b', 'sem ', query_text, flags=re.IGNORECASE)
+
+    if query_text.lower() in ("outro", "outros"):
+        if t_lang == "de":
+            return "Sonstiges"
+        elif t_lang == "en":
+            return "Others"
+        elif t_lang == "es":
+            return "Otros"
+        elif t_lang == "fr":
+            return "Autres"
+        elif t_lang == "it":
+            return "Altri"
+
     # 1. Google Translate GTX Endpoint
     try:
-        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={s_lang}&tl={t_lang}&dt=t&q=" + urllib.parse.quote(text)
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={s_lang}&tl={t_lang}&dt=t&q=" + urllib.parse.quote(query_text)
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
@@ -1929,6 +2806,8 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
                     res_text = "".join([item[0] for item in data[0] if item and item[0]])
                     if res_text and res_text.strip():
                         res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        if t_lang == "de" and res_clean.islower() and len(res_clean) > 1:
+                            res_clean = res_clean.capitalize()
                         TRANSLATION_CACHE[cache_key] = res_clean
                         return res_clean
     except Exception:
@@ -1936,7 +2815,7 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
 
     # 2. MyMemory Translation API
     try:
-        url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode({"q": text, "langpair": f"{s_lang}|{t_lang}"})
+        url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode({"q": query_text, "langpair": f"{s_lang}|{t_lang}"})
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
@@ -1945,6 +2824,8 @@ def _fetch_online_translation(text: str, target_lang: str, source_lang: str = "p
                     res_text = data["responseData"]["translatedText"]
                     if res_text and res_text.strip() and not res_text.startswith("MYMEMORY WARNING"):
                         res_clean = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', res_text.strip())
+                        if t_lang == "de" and res_clean.islower() and len(res_clean) > 1:
+                            res_clean = res_clean.capitalize()
                         TRANSLATION_CACHE[cache_key] = res_clean
                         return res_clean
     except Exception:
@@ -1974,28 +2855,26 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
         tr_map: Dict[str, str] = {}
         desc_map: Dict[str, str] = {}
 
-        # 1. Verificar correspondência exata no dicionário gastronómico local
         dict_entry = CULINARY_DICTIONARY.get(cleaned)
 
         for lang in target_langs:
             translated_val = None
 
-            # Tentar obter do dicionário gastronómico se for um termo/prato fixo bem definido
-            if dict_entry:
-                translated_val = _get_lang_val(dict_entry, lang)
-                if "desc" in dict_entry and isinstance(dict_entry["desc"], dict):
-                    d_val = _get_lang_val(dict_entry["desc"], lang)
-                    if d_val:
-                        desc_map[lang] = d_val
-                        if lang in ("en", "gb"):
-                            desc_map["gb"] = d_val
-                            desc_map["en"] = d_val
+            # 1. Procura no dicionário gastronómico local (normalizado)
+            translated_val = _lookup_culinary_dictionary(raw, lang)
+            if dict_entry and "desc" in dict_entry and isinstance(dict_entry["desc"], dict):
+                d_val = _get_lang_val(dict_entry["desc"], lang)
+                if d_val:
+                    desc_map[lang] = d_val
+                    if lang in ("en", "gb"):
+                        desc_map["gb"] = d_val
+                        desc_map["en"] = d_val
 
-            # Se não houver tradução estática exata no dicionário, obter via motor de tradução online (Google Translate / MyMemory)
+            # 2. Se não houver tradução estática exata no dicionário, obter via motor de tradução online
             if not translated_val:
                 translated_val = _fetch_online_translation(raw, lang, source_lang=req.source_lang or "pt")
 
-            # Fallback final: heurística local com substituição por regex usando CULINARY_DICTIONARY
+            # 3. Fallback final: heurística local com substituição por regex usando CULINARY_DICTIONARY
             if not translated_val:
                 def replacer(match, target_lang=lang):
                     m_text = match.group(0)
@@ -2011,7 +2890,8 @@ def translate_menu_texts(req: EmentaTranslateRequest) -> EmentaTranslateResponse
 
                 translated_val = combined_pattern.sub(replacer, raw)
 
-            final_text = translated_val or raw
+            # 4. Pós-processamento final de limpeza de termos não traduzidos
+            final_text = _post_process_translation(translated_val or raw, lang, original_text=raw)
             tr_map[lang] = final_text
             if lang in ("en", "gb"):
                 tr_map["gb"] = final_text
@@ -2120,10 +3000,13 @@ def get_product_translations(cod_produto: int) -> Dict[str, Dict[str, str]]:
         if "ementa_digital_traducoes" not in schema:
             return {}
 
+        # Só typeid=2: o typeid=1 indexa famílias da ementa digital e o id1 partilha
+        # o espaço de códigos com os produtos (família 4 e produto 4 colidem),
+        # pelo que incluí-lo trazia nomes de família para dentro do produto.
         cursor.execute("""
             SELECT id_country, field, value
             FROM dbo.ementa_digital_traducoes
-            WHERE id1 = ? AND typeid IN (1, 2)
+            WHERE id1 = ? AND typeid = 2
         """, (cod_produto,))
 
         translations: Dict[str, Dict[str, str]] = {}
@@ -2153,22 +3036,28 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             print(f"[SAVE_TRANSLATIONS] Erro: Tabela dbo.ementa_digital_traducoes não existe no esquema.")
             return False, "Não foi possível aceder nem criar a tabela dbo.ementa_digital_traducoes."
 
-        # Obter família do produto (ZoneSoft utiliza a família no campo id2)
+        # Obter família do produto (ZoneSoft utiliza a família no campo id2).
+        # Tem de ser a família da EMENTA DIGITAL: (id1, id2) é a chave primária da
+        # tabela traduzida, e para produtos essa chave é
+        # ementa_digital_produtos (cod_produto, familia).
+        # NÃO usar dbo.produtos.familia como alternativa: é a numeração do POS, um
+        # espaço de códigos diferente (produto 4 é família 2 no POS e 3 na ementa
+        # digital), e escrevê-la aqui afirma uma ligação produto/família que não
+        # existe. Se o produto não está na ementa digital, fica só o id2=0.
         prod_familia = 0
         if "ementa_digital_produtos" in schema:
             cursor.execute("SELECT familia FROM dbo.ementa_digital_produtos WHERE cod_produto = ?", (req.cod_produto,))
             row = cursor.fetchone()
             if row and row[0] is not None:
                 prod_familia = int(row[0])
-        if prod_familia == 0:
-            cursor.execute("SELECT familia FROM dbo.produtos WHERE codigo = ?", (req.cod_produto,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                prod_familia = int(row[0])
 
+        # Um único endereço por produto. Confirmado no ZoneSoft nativo (diálogo
+        # "Produto para Secção de Ementa", artigo #131 nos 5 idiomas): a tradução
+        # é lida em id2 = família da ementa digital. Escrever também em id2=0 era
+        # uma segurança que só duplicava as linhas — 705 de cada vez.
+        # Produtos fora da ementa digital ficam em id2=0, que é o que prod_familia
+        # já vale nesse caso.
         id2_targets = [prod_familia]
-        if prod_familia != 0:
-            id2_targets.append(0)
 
         written_count = 0
         def _upsert_row(c_code: str, typeid: int, target_id2: int, field_name: str, value_text: str):
@@ -2201,12 +3090,11 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
             if c_code == "EN":
                 c_code = "GB"
 
-            cursor.execute("""
-                SELECT DISTINCT id2 FROM dbo.ementa_digital_traducoes
-                WHERE id_country = ? AND id1 = ?
-            """, (c_code, req.cod_produto))
-            existing_id2s = set(r[0] for r in cursor.fetchall())
-            all_id2s = list(existing_id2s.union(id2_targets))
+            # Escrever apenas nos id2 que o produto tem hoje (0 e a sua família).
+            # Antes juntava-se aqui todos os id2 já existentes para o id1, sem filtrar
+            # typeid: apanhava secções das linhas de família e famílias antigas, e como
+            # cada gravação voltava a juntar o que encontrava, a tabela só crescia.
+            all_id2s = sorted(set(id2_targets))
 
             for field, val in fields.items():
                 val_str = str(val).strip() if val else ""
@@ -2214,13 +3102,9 @@ def save_product_translations(req: EmentaSaveTranslationsRequest) -> Tuple[bool,
                     if field in ("produto", "nome"):
                         _upsert_row(c_code, 2, target_id2, "produto", val_str)
                         _upsert_row(c_code, 2, target_id2, "nome", val_str)
-                        _upsert_row(c_code, 1, target_id2, "produto", val_str)
-                        _upsert_row(c_code, 1, target_id2, "nome", val_str)
                     elif field == "descricao":
-                        _upsert_row(c_code, 1, target_id2, "descricao", val_str)
                         _upsert_row(c_code, 2, target_id2, "descricao", val_str)
                     else:
-                        _upsert_row(c_code, 1, target_id2, field, val_str)
                         _upsert_row(c_code, 2, target_id2, field, val_str)
 
         # Regista a alteração para o ZoneSoft sincronizar com o backoffice/cloud

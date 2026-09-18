@@ -501,8 +501,43 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
     ]
 
 
+def check_image_border_issues(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "image_border_issues"
+    title = "Imagens com bordas cinzentas ou não otimizadas"
+    desc = "Artigos na Ementa Digital com imagens que possuem bordas cinzentas/neutras, transparências desajustadas ou dimensões > 600x600 px."
+    if not _has_table(schema, "ementa_digital_produtos"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="warning",
+            count=0, codes=[], available=False,
+            unavailable_reason="A tabela dbo.ementa_digital_produtos não existe nesta base de dados."
+        )
+
+    try:
+        from backend.services.ementa_digital import detect_products_with_image_issues
+        res = detect_products_with_image_issues()
+        if res.get("success"):
+            issues = res.get("issues", [])
+            codes = [i["cod_produto"] for i in issues]
+            capped, truncated = _cap_codes(codes)
+            groups = [
+                DataQualityGroup(key=f"{i['produto']}: {', '.join(i['reasons'])}", codes=[i['cod_produto']])
+                for i in issues[:100]
+            ]
+            return DataQualityCheck(
+                id=check_id, title=title, description=desc, severity="warning",
+                count=len(codes), codes=capped, groups=groups, available=True, truncated=truncated
+            )
+    except Exception:
+        pass
+
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="warning",
+        count=0, codes=[], available=True
+    )
+
+
 def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
-    """Executa todas as 13 verificações de qualidade de dados sobre a base de dados SQL Server."""
+    """Executa todas as verificações de qualidade de dados sobre a base de dados SQL Server."""
     if db_manager.use_mock:
         return _mock_data_quality_report(short_desc_max)
     try:
@@ -528,6 +563,7 @@ def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
             check_empty_short_desc(cursor, schema),
             check_long_short_desc(cursor, schema, short_desc_max),
             check_whitespace_desc(cursor, schema),
+            check_image_border_issues(cursor, schema),
         ]
         return checks
     finally:
