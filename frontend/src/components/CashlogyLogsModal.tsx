@@ -50,8 +50,9 @@ interface Analysis {
     by_code: { code: number; level: string; info: string; count: number; first: string; last: string }[];
     episodes: { code: number; info: string; count: number; total_s: number; median_s: number; max_s: number }[];
     still_open: number[];
+    accounting_mismatches: { ts: string; code: number; value: number }[];
     warnings_per_day: { day: string; count: number }[];
-    events: { ts: string; code: number; level: string; info: string; subcode: string; product: string; items_in: string; items_out: string }[];
+    events: { ts: string; code: number; level: string; info: string; subcode: string; product: string; items_in: string; items_out: string; clear: boolean; mismatch: string }[];
     events_truncated: boolean;
   };
   payments?: {
@@ -445,7 +446,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               {er.by_code.map((r, i) => (
                 <tr key={i}>
                   <Td mono>{r.code}</Td>
-                  <Td><Badge cls={r.level === 'OK' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}>{r.level}</Badge></Td>
+                  <Td><Badge cls={r.level === 'OK' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r.level === 'ERROR' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'}>{r.level}</Badge></Td>
                   <Td>{r.info || '—'}</Td><Td right mono>{r.count}</Td><Td mono>{dt(r.first)}</Td><Td mono>{dt(r.last)}</Td>
                 </tr>
               ))}
@@ -465,6 +466,21 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               </tbody>
             </TableWrap>
             {er.still_open.length > 0 && <p className="text-[11px] text-amber-700 font-semibold">Sem regresso a normal no fim do log: {er.still_open.join(', ')}</p>}
+          </div>
+        )}
+        {er.accounting_mismatches.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Incompatibilidades de contabilidade (Descuadre)</h3>
+            <TableWrap>
+              <thead><tr><Th>Data/hora</Th><Th>Código</Th><Th right>Valor no log</Th></tr></thead>
+              <tbody>
+                {er.accounting_mismatches.slice().reverse().map((m, i) => (
+                  <tr key={i}><Td mono>{dt(m.ts)}</Td><Td mono>{m.code}</Td>
+                    <Td right mono>{m.value}</Td></tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <p className="text-[11px] text-slate-400">Valor tal como aparece no log (campo «Descuadre»); a unidade não vem indicada.</p>
           </div>
         )}
         {er.warnings_per_day.length > 0 && (

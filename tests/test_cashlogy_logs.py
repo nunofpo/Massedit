@@ -270,6 +270,108 @@ Constructor GestorAdminDev                                Wed Jan 17 10:52:07 20
 """
 
 
+ERRORS_PT = """        Error:  1075 (   ERRO)                  Thu Oct 02 10:11:58 2025
+                Info:                           Máquina desligada
+                SubCodigo:                      0x0000
+
+        Error:  1110 (WARNING)                  Tue Oct 07 13:59:25 2025
+                Info:                           Não existem moedas suficientes para realizar a devolução
+
+        Error:  1110 (WARNING)                  Tue Oct 07 13:59:46 2025
+                Info:                           Não existem moedas suficientes para realizar a devolução
+
+        Error:  1014 (WARNING)                  Tue Sep 30 08:24:24 2025
+                Info:                           Houve incompatibilidade na contabilidade de moedas
+                SubCodigo:                      0x0004
+                Descuadre:                      10716
+
+        Error:  1014 (WARNING)                  Tue Jul 14 07:34:57 2026
+                Info:                           Houve incompatibilidade na contabilidade de moedas
+                Descuadre:                      -30
+
+        Error:  1315 (WARNING)                  Tue Oct 14 08:53:59 2025
+                Info:                           Corrigido-MANUTENÇÃO: Limpeza
+
+        Error:  1751 (WARNING)                  Sat Sep 20 00:16:17 2025
+                Info:                           Warning na Reciclagem 1: Controle motor
+
+        Error:  1751 (WARNING)                  Sat Sep 20 00:16:19 2025
+                Info:                           Corrigido-Warning na Reciclagem 1: Controle motor
+"""
+
+
+class TestErrorsPortugueseMachine(unittest.TestCase):
+    def test_erro_level_is_normalised_and_reported(self):
+        r = parse_errors(ERRORS_PT)
+        levels = {(row["code"], row["level"]) for row in r["by_code"]}
+        self.assertIn((1075, "ERROR"), levels)
+        self.assertNotIn((1075, "ERRO"), levels)
+        found = analyze_logs([("Opos_ResultCodeExtended.log", ERRORS_PT.encode("cp1252"))])["findings"]
+        err = [f for f in found if f["severity"] == "error"]
+        self.assertEqual(len(err), 1)
+        self.assertIn("1075 ×1: Máquina desligada", err[0]["detail"])
+
+    def test_one_shot_warnings_are_not_reported_as_unresolved(self):
+        r = parse_errors(ERRORS_PT)
+        # 1110 e 1014 nunca têm regresso a normal neste log -> não são "por resolver"
+        self.assertEqual(r["still_open"], [])
+
+    def test_corrigido_text_marks_resolution_even_at_warning_level(self):
+        r = parse_errors(ERRORS_PT)
+        ep = {e["code"]: e for e in r["episodes"]}
+        self.assertEqual(ep[1751]["count"], 1)            # 1751 WARNING + 'Corrigido-' WARNING fecham o episódio
+        self.assertEqual(ep[1751]["max_s"], 2.0)
+        clear = {(e["code"], e["ts"]): e["clear"] for e in r["events"]}
+        self.assertTrue(clear[(1315, "2025-10-14 08:53:59")])
+
+    def test_descuadre_is_extracted(self):
+        r = parse_errors(ERRORS_PT)
+        self.assertEqual([m["value"] for m in r["accounting_mismatches"]], [10716, -30])
+        found = analyze_logs([("Opos_ResultCodeExtended.log", ERRORS_PT.encode("cp1252"))])["findings"]
+        self.assertTrue(any("Descuadre" in f["title"] and "-30" in f["detail"] for f in found))
+
+    def test_closable_warning_left_open_is_reported(self):
+        # 1313 tem resolução (1314) neste log e o último 1313 ficou por fechar
+        self.assertEqual(parse_errors(ERRORS)["still_open"], [1313])
+
+
+def _ev(code, level, when, info):
+    return (f"        Error:  {code} ({level:>7})                  {when}\n"
+            f"                Info:                           {info}\n\n")
+
+
+class TestErrorEpisodes(unittest.TestCase):
+    def test_ok_closes_most_recent_related_warning_not_a_stale_one(self):
+        text = (
+            _ev(1187, "WARNING", "Thu Oct 23 07:39:59 2025", "Nota à espera")   # nunca resolvido
+            + _ev(1187, "WARNING", "Thu Oct 23 10:24:13 2025", "Nota à espera")  # nunca resolvido
+            + _ev(1187, "WARNING", "Sun Nov 02 11:46:07 2025", "Nota à espera")
+            + _ev(1188, "OK", "Sun Nov 02 11:46:08 2025", "Nota liberta")
+        )
+        ep = {e["code"]: e for e in parse_errors(text)["episodes"]}
+        self.assertEqual(ep[1187]["count"], 1)
+        self.assertEqual(ep[1187]["total_s"], 1)   # 1 s, não os ~10 dias desde o primeiro aviso
+
+    def test_door_codes_close_with_plus_two(self):
+        text = (
+            _ev(1131, "ERRO", "Wed Oct 01 08:10:32 2025", "Porta de moedas está aberta")
+            + _ev(1133, "OK", "Wed Oct 01 08:15:32 2025", "Porta de notas está fechado")       # fecha 1131 (+2)
+            + _ev(1130, "WARNING", "Wed Oct 08 17:28:00 2025", "Porta de moedas está aberta")
+            + _ev(1132, "OK", "Wed Oct 08 17:31:00 2025", "Porta de moedas está fechado")      # fecha 1130 (+2)
+        )
+        ep = {e["code"]: e for e in parse_errors(text)["episodes"]}
+        self.assertEqual((ep[1131]["count"], ep[1131]["total_s"]), (1, 300))
+        self.assertEqual((ep[1130]["count"], ep[1130]["total_s"]), (1, 180))
+
+    def test_ok_does_not_close_unrelated_code(self):
+        text = (_ev(1110, "WARNING", "Tue Oct 07 13:59:25 2025", "Sem moedas")
+                + _ev(1313, "WARNING", "Tue Oct 07 14:00:00 2025", "Cheia")
+                + _ev(1314, "OK", "Tue Oct 07 14:01:00 2025", "OK"))
+        r = parse_errors(text)
+        self.assertEqual([e["code"] for e in r["episodes"]], [1313])
+        self.assertEqual(r["still_open"], [])   # 1110 nunca tem resolução neste log
+
+
 class TestPayments(unittest.TestCase):
     def test_payment_results_and_durations(self):
         r = parse_payments(PAYMENTS)

@@ -480,9 +480,11 @@ def parse_times(text: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _E_HEAD = re.compile(r"^\s+Error:\s+(\d+)\s+\(\s*(\w+)\s*\)\s+" + _TS)
-_E_KV = re.compile(r"^\s+(Info|SubCodigo|Producto|Items Adm\.|Items Dev\.):\s*(.*?)\s*$")
+_E_KV = re.compile(r"^\s+(Info|SubCodigo|Producto|Items Adm\.|Items Dev\.|Descuadre):\s*(.*?)\s*$")
 _E_KEYS = {"Info": "info", "SubCodigo": "subcode", "Producto": "product",
-           "Items Adm.": "items_in", "Items Dev.": "items_out"}
+           "Items Adm.": "items_in", "Items Dev.": "items_out", "Descuadre": "mismatch"}
+# o log usa 'ERRO' (pt) em algumas máquinas e 'ERROR' noutras
+_E_LEVELS = {"ERRO": "ERROR"}
 
 
 def parse_errors(text: str) -> Dict[str, Any]:
@@ -496,9 +498,10 @@ def parse_errors(text: str) -> Dict[str, Any]:
             dt = _dt_from_groups(m.groups()[2:])
             if dt:
                 timestamps.append(dt)
-            cur = {"code": int(m.group(1)), "level": m.group(2).upper(), "dt": dt,
+            level = m.group(2).upper()
+            cur = {"code": int(m.group(1)), "level": _E_LEVELS.get(level, level), "dt": dt,
                    "ts": _fmt(dt), "info": "", "subcode": "", "product": "",
-                   "items_in": "", "items_out": ""}
+                   "items_in": "", "items_out": "", "mismatch": ""}
             events.append(cur)
             continue
         if cur is None:
@@ -513,20 +516,30 @@ def parse_errors(text: str) -> Dict[str, Any]:
         if e["info"]:
             info_by_key.setdefault((e["code"], e["level"]), e["info"])
 
-    # Episódios: WARNING -> OK. O log usa código N para o aviso e N+1 para o
-    # regresso ao normal (1313/1314); para os restantes, o mesmo código (1751).
+    # Um evento é de "resolução" se o nível é OK ou a descrição começa por "Corrigido"
+    # (ex.: 1315 vem em WARNING mas é 'Corrigido-MANUTENÇÃO: Limpeza').
+    def is_clear(e: Dict[str, Any]) -> bool:
+        return e["level"] == "OK" or (e["info"] or info_by_key.get((e["code"], e["level"]), "")).lower().startswith("corrigido")
+
+    for e in events:
+        e["clear"] = is_clear(e)
+
+    # Episódios: aviso/erro -> resolução. O log não diz que aviso cada OK resolve. Nos logs
+    # observados o código do OK é o do aviso (1751), +1 (1313/1314, 1187/1188) ou +2 (1130/1132,
+    # 1131/1133), por isso um OK fecha o aviso aberto MAIS RECENTE entre N, N-1 e N-2. Um novo
+    # aviso do mesmo código substitui o anterior ainda por resolver (não infla a duração).
     open_at: Dict[int, datetime] = {}
     durations: Dict[int, List[float]] = defaultdict(list)
     for e in events:
         if e["dt"] is None:
             continue
-        if e["level"] == "WARNING" or e["level"] == "ERROR":
-            open_at.setdefault(e["code"], e["dt"])
-        elif e["level"] == "OK":
-            for key in (e["code"], e["code"] - 1):
-                if key in open_at:
-                    durations[key].append((e["dt"] - open_at.pop(key)).total_seconds())
-                    break
+        if not e["clear"] and e["level"] in ("WARNING", "ERROR"):
+            open_at[e["code"]] = e["dt"]
+        elif e["clear"]:
+            candidates = [k for k in (e["code"], e["code"] - 1, e["code"] - 2) if k in open_at]
+            if candidates:
+                key = max(candidates, key=lambda k: open_at[k])
+                durations[key].append((e["dt"] - open_at.pop(key)).total_seconds())
 
     by_code: Dict[Tuple[int, str], Dict[str, Any]] = {}
     for e in events:
@@ -542,14 +555,20 @@ def parse_errors(text: str) -> Dict[str, Any]:
     for code, secs in sorted(durations.items()):
         episodes.append({
             "code": code,
-            "info": info_by_key.get((code, "WARNING"), ""),
+            "info": info_by_key.get((code, "WARNING")) or info_by_key.get((code, "ERROR"), ""),
             "count": len(secs),
             "total_s": round(sum(secs)),
             "median_s": round(statistics.median(secs), 1),
             "max_s": round(max(secs), 1),
         })
 
-    per_day = Counter(e["ts"][:10] for e in events if e["ts"] and e["level"] != "OK")
+    per_day = Counter(e["ts"][:10] for e in events if e["ts"] and not e["clear"])
+    mismatches = [{"ts": e["ts"], "code": e["code"], "value": int(e["mismatch"])}
+                  for e in events if re.fullmatch(r"-?\d+", e["mismatch"] or "")]
+    # Só faz sentido dizer "por resolver" para códigos que, neste log, chegam a ter resolução;
+    # os avisos pontuais (ex.: 1110, 1168) nunca a têm.
+    clear_codes = {e["code"] for e in events if e["clear"]}
+    still_open = sorted(c for c in open_at if {c, c + 1, c + 2} & clear_codes)
     clean_events = [{k: (info_by_key.get((e["code"], e["level"]), "") if k == "info" and not v else v)
                      for k, v in e.items() if k != "dt"} for e in events[-MAX_EVENTS:]]
 
@@ -557,7 +576,8 @@ def parse_errors(text: str) -> Dict[str, Any]:
         "total_events": len(events),
         "by_code": sorted(by_code.values(), key=lambda r: r["count"], reverse=True),
         "episodes": sorted(episodes, key=lambda r: r["count"], reverse=True),
-        "still_open": sorted(open_at),
+        "still_open": still_open,
+        "accounting_mismatches": mismatches[-MAX_EVENTS:],
         "warnings_per_day": [{"day": d, "count": c} for d, c in sorted(per_day.items())],
         "events": clean_events,
         "events_truncated": len(events) > MAX_EVENTS,
@@ -844,6 +864,16 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
                 add("warning", f"Código {ep['code']} repetido {ep['count']} vezes",
                     f"{ep['info']} — oscila entre aviso e normal; mediana {ep['median_s']} s por episódio, "
                     f"{ep['total_s'] / 3600:.1f} h em aviso no total.")
+        errors = [r for r in er["by_code"] if r["level"] == "ERROR"]
+        if errors:
+            total = sum(r["count"] for r in errors)
+            add("error", f"{total} erro(s) de hardware em {len(errors)} código(s)",
+                "; ".join(f"{r['code']} ×{r['count']}: {r['info'] or 'sem descrição'}" for r in errors[:8]))
+        mm = er["accounting_mismatches"]
+        if mm:
+            last = mm[-3:]
+            add("warning", f"{len(mm)} incompatibilidade(s) de contabilidade (Descuadre)",
+                "Últimos valores (brutos, do log): " + ", ".join(f"{m['value']} em {m['ts']}" for m in last))
         if er["still_open"]:
             add("warning", "Avisos por resolver no fim do log: códigos " + ", ".join(map(str, er["still_open"])))
 
