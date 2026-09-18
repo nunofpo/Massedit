@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
 
 from backend.models import (
     DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
@@ -18,7 +17,7 @@ from backend.models import (
     EmentaProductItem, EmentaProductFilter, EmentaProductResponse,
     EmentaDigitalStructureResponse,
     EmentaImportFromPosRequest, EmentaImportCsvRequest, EmentaImportResponse,
-    EmentaBulkEditRequest, EmentaImageUrlRequest, EmentaEditImageRequest,
+    EmentaBulkEditRequest, EmentaImageUrlRequest,
     EmentaTranslateRequest, EmentaTranslateResponse,
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
     EmentaSuggestDescRequest, EmentaRuleItem,
@@ -50,14 +49,13 @@ from backend.services.menu_ai import (
 from backend.services.ementa_digital import (
     get_ementa_schema_info, get_ementa_digital_structure, search_ementa_products, import_products_to_ementa, import_csv_data,
     preview_ementa_bulk_edit, apply_ementa_bulk_edit,
-    save_product_image_data, edit_existing_product_image, set_product_image_url, delete_product_image, get_product_image_bytes,
+    save_product_image_data, set_product_image_url, delete_product_image, get_product_image_bytes,
     get_ementa_languages, set_ementa_active_languages, get_product_translations, save_product_translations,
     translate_menu_texts, update_single_ementa_product,
     auto_populate_general_translations, suggest_description_for_product, IMAGES_DIR,
     save_ementa_digital_section, save_ementa_digital_family, get_ementa_digital_rules,
     get_structure_translations, save_structure_translations,
-    get_general_ui_terms, save_general_ui_terms,
-    detect_products_with_image_issues, batch_fix_product_image_borders
+    get_general_ui_terms, save_general_ui_terms
 )
 from fastapi.responses import HTMLResponse, Response
 
@@ -297,9 +295,12 @@ async def zstheme_transform_endpoint(file: UploadFile = File(...), rules: str = 
     try:
         req = ZSThemeTransformRequest.model_validate(json.loads(rules))
         new_bytes = transform_zstheme(
-            file_bytes,
-            [r.model_dump() for r in req.color_rules],
-            req.rounding
+            file_bytes=file_bytes,
+            color_rules=[r.model_dump() for r in req.color_rules] if req.color_rules else None,
+            rounding=req.rounding,
+            background=req.background.model_dump() if req.background else None,
+            shortcut_buttons=[b.model_dump() for b in req.shortcut_buttons] if req.shortcut_buttons else None,
+            panels=req.panels.model_dump() if req.panels else None,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Não foi possível transformar o ficheiro .zstheme: {str(e)}")
@@ -644,44 +645,18 @@ def suggest_description_endpoint(req: EmentaSuggestDescRequest):
 
 
 @app.post("/api/ementa-digital/upload-image/{cod_produto}")
-async def upload_product_image_endpoint(
-    cod_produto: int,
-    file: UploadFile = File(...),
-    rotate_deg: int = Form(0),
-    fit_square: bool = Form(False)
-):
-    """Upload e associação de imagem para um artigo da ementa digital com ajuste automático (máx 600x600 px)."""
+async def upload_product_image_endpoint(cod_produto: int, file: UploadFile = File(...)):
+    """Upload e associação de imagem para um artigo da ementa digital."""
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="A imagem excede o tamanho máximo de 10 MB.")
-    success, message, url, w, h = save_product_image_data(
-        cod_produto, contents, file.filename or "image.jpg", rotate_deg=rotate_deg, fit_square=fit_square
-    )
+    success, message, url = save_product_image_data(cod_produto, contents, file.filename or "image.jpg")
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {
         "success": True,
         "message": message,
-        "image_url": url,
-        "width": w,
-        "height": h
-    }
-
-
-@app.post("/api/ementa-digital/edit-image/{cod_produto}")
-def edit_product_image_endpoint(cod_produto: int, req: EmentaEditImageRequest):
-    """Edita (roda/enquadra) a imagem existente de um artigo ajustando para máx 600x600 px."""
-    success, message, url, w, h = edit_existing_product_image(
-        cod_produto, rotate_deg=req.rotate_deg, fit_square=req.fit_square
-    )
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return {
-        "success": True,
-        "message": message,
-        "image_url": url,
-        "width": w,
-        "height": h
+        "image_url": url
     }
 
 
@@ -695,29 +670,6 @@ def set_product_image_url_endpoint(cod_produto: int, req: EmentaImageUrlRequest)
         "success": True,
         "message": message
     }
-
-
-class DetectImageIssuesRequest(BaseModel):
-    cod_produtos: Optional[List[int]] = None
-
-class BatchFixImageBordersRequest(BaseModel):
-    cod_produtos: Optional[List[int]] = None
-    fit_square: bool = False
-    force_all: bool = False
-
-@app.post("/api/ementa-digital/detect-image-issues")
-def detect_image_issues_endpoint(req: DetectImageIssuesRequest):
-    """Deteta imagens com bordas cinzentas, transparência não composta ou dimensões > 600x600 px."""
-    return detect_products_with_image_issues(req.cod_produtos)
-
-@app.post("/api/ementa-digital/batch-fix-image-borders")
-def batch_fix_image_borders_endpoint(req: BatchFixImageBordersRequest):
-    """Executa a deteção e correção de bordas em lote com fundo branco puro e ajuste máx 600x600 px."""
-    return batch_fix_product_image_borders(
-        cod_produtos=req.cod_produtos,
-        fit_square=req.fit_square,
-        force_all=req.force_all
-    )
 
 
 @app.delete("/api/ementa-digital/image/{cod_produto}")

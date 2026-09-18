@@ -1,24 +1,6 @@
 import os
 import sys
 
-# 1. Fix para PyInstaller --windowed / --noconsole onde sys.stdin, sys.stdout, sys.stderr são None
-class DummyStream:
-    def write(self, data):
-        pass
-    def flush(self):
-        pass
-    def isatty(self):
-        return False
-    def readline(self):
-        return ""
-
-if sys.stdin is None:
-    sys.stdin = DummyStream()
-if sys.stdout is None:
-    sys.stdout = DummyStream()
-if sys.stderr is None:
-    sys.stderr = DummyStream()
-
 # Ensure root directory is on sys.path for PyInstaller bundle resolution
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
@@ -58,33 +40,12 @@ if __name__ == "__main__":
     # Arrancar navegador em thread separada
     threading.Thread(target=open_browser, args=(port,), daemon=True).start()
     
-    # Configurar uvicorn logging sem cores para evitar erros de isatty/NoneType em modo windowed
-    uvicorn_log_config = uvicorn.config.LOGGING_CONFIG.copy()
-    if "formatters" in uvicorn_log_config:
-        if "default" in uvicorn_log_config["formatters"]:
-            uvicorn_log_config["formatters"]["default"]["use_colors"] = False
-        if "access" in uvicorn_log_config["formatters"]:
-            uvicorn_log_config["formatters"]["access"]["use_colors"] = False
-
     # Iniciar servidor FastAPI
     try:
-        uvicorn.run(
-            app,
-            host="127.0.0.1",
-            port=port,
-            reload=False,
-            log_level="info",
-            log_config=uvicorn_log_config
-        )
+        uvicorn.run(app, host="127.0.0.1", port=port, reload=False, log_level="info")
     except Exception as e:
         print("\n" + "!" * 65)
         print(f" ERRO AO INICIAR SERVIDOR: {e}")
         print("!" * 65)
-        if sys.stdin and not isinstance(sys.stdin, DummyStream):
-            try:
-                input("\nPressione ENTER para fechar esta janela...")
-            except Exception:
-                pass
-        else:
-            time.sleep(5)
+        input("\nPressione ENTER para fechar esta janela...")
 
