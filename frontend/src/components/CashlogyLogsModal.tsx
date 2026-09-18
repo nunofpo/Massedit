@@ -41,6 +41,7 @@ interface Analysis {
     };
     transactions: Operation[]; transactions_truncated: boolean;
     external_changes: { from: string; to: string; delta: Record<string, number> }[];
+    rejections: { codes: string[]; by_day: { day: string; total: number; codes: Record<string, number> }[] };
     stock: { ts: string; denominations: StockRow[]; stacker_state: string; devices_with_error: string[] } | null;
   };
   times?: { incomplete: number; deposit: TimingKind; dispense: TimingKind };
@@ -117,6 +118,94 @@ const Empty: React.FC<{ text: string }> = ({ text }) => (
 const Badge: React.FC<{ cls: string; children: React.ReactNode; title?: string }> = ({ cls, children, title }) => (
   <span title={title} className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded border ${cls}`}>{children}</span>
 );
+
+// ---- Gráfico "Rejeição de notas KPIs" ------------------------------------------
+
+// Códigos do log (Rejected=...BILLS:n(DB-,FU-,IN-,MI-,OT-)) e os nomes usados no painel do Cashlogy.
+const REJECT_STYLE: Record<string, { label: string; color: string }> = {
+  DB: { label: 'DB', color: '#8a9a3b' },
+  FU: { label: 'FUN', color: '#f0465a' },
+  IN: { label: 'INL', color: '#22c38e' },
+  MI: { label: 'MIS', color: '#e8a838' },
+  OT: { label: 'OTH', color: '#7d7aa0' },
+};
+const TOTAL_COLOR = '#6c5ce7';
+
+const RejectionChart: React.FC<{ rej: NonNullable<Analysis['transactions']>['rejections'] }> = ({ rej }) => {
+  const [hidden, setHidden] = useState<string[]>([]);
+  const days = rej.by_day;
+  const W = 640, H = 240, L = 34, R = 14, T = 14, B = 58;
+  const n = days.length;
+  const max = Math.max(1, ...days.map(d => d.total));
+  const step = Math.max(1, Math.ceil(max / 4));
+  const yMax = step * Math.ceil(max / step);
+  const ticks: number[] = [];
+  for (let v = 0; v <= yMax; v += step) ticks.push(v);
+  const x = (i: number) => (n === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (n - 1));
+  const y = (v: number) => T + (H - T - B) * (1 - v / yMax);
+  const labelEvery = Math.max(1, Math.ceil(n / 12));
+
+  const series = [
+    ...rej.codes.map(c => ({
+      key: c, label: REJECT_STYLE[c]?.label || c, color: REJECT_STYLE[c]?.color || '#94a3b8',
+      values: days.map(d => d.codes[c] || 0), width: 1.6,
+    })),
+    { key: 'TOTAL', label: 'TOTAL', color: TOTAL_COLOR, values: days.map(d => d.total), width: 2.8 },
+  ];
+  const visible = series.filter(s => !hidden.includes(s.key));
+  const total = series[series.length - 1];
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+      <div>
+        <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Rejeição de notas KPIs</h3>
+        <p className="text-[11px] text-slate-500">Notas rejeitadas por dia e por código, a partir dos depósitos do log de transações</p>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Notas rejeitadas por dia">
+        {ticks.map(v => (
+          <g key={v}>
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#e2e8f0" strokeDasharray={v === 0 ? undefined : '3 3'} />
+            <text x={L - 6} y={y(v) + 3} textAnchor="end" fontSize="10" fill="#64748b">{v}</text>
+          </g>
+        ))}
+        {!hidden.includes('TOTAL') && n > 1 && (
+          <polygon fill={TOTAL_COLOR} fillOpacity="0.08"
+            points={`${x(0)},${y(0)} ${total.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')} ${x(n - 1)},${y(0)}`} />
+        )}
+        {visible.map(s => (
+          <g key={s.key}>
+            {n > 1 && <polyline fill="none" stroke={s.color} strokeWidth={s.width} strokeLinejoin="round"
+              points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')} />}
+            {n <= 31 && s.values.map((v, i) => (
+              <circle key={i} cx={x(i)} cy={y(v)} r={s.key === 'TOTAL' ? 3.2 : 2.4} fill={s.color}>
+                <title>{`${dt(days[i].day + ' 00:00:00').slice(0, 10)} — ${s.label}: ${v}`}</title>
+              </circle>
+            ))}
+          </g>
+        ))}
+        {days.map((d, i) => (i % labelEvery === 0 ? (
+          <text key={d.day} transform={`translate(${x(i)},${H - B + 14}) rotate(-45)`} textAnchor="end" fontSize="10" fill="#64748b">
+            {`${d.day.slice(8)}/${d.day.slice(5, 7)}`}
+          </text>
+        ) : null))}
+      </svg>
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        {series.map(s => {
+          const off = hidden.includes(s.key);
+          return (
+            <button key={s.key} type="button"
+              onClick={() => setHidden(h => (off ? h.filter(k => k !== s.key) : [...h, s.key]))}
+              title="Mostrar/ocultar série"
+              className={`flex items-center gap-1.5 text-[11px] font-semibold transition ${off ? 'text-slate-300 line-through' : 'text-slate-600 hover:text-slate-900'}`}>
+              <span className="inline-block w-3 h-2.5 rounded-sm" style={{ background: off ? '#cbd5e1' : s.color }} />
+              {s.label} Rejeições
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // ---- Modal -------------------------------------------------------------------
 
@@ -211,6 +300,8 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
             );
           })}
         </div>
+
+        {tx && tx.rejections.by_day.length > 0 && <RejectionChart rej={tx.rejections} />}
 
         {tx?.stock && (
           <div className="space-y-2">

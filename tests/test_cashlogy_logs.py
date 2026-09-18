@@ -139,6 +139,28 @@ class TestTransactions(unittest.TestCase):
         self.assertEqual(by_value[500]["state"], "NEAR_EMPTY")
         self.assertEqual(by_value[2000]["state"], "NEAR_FULL")
 
+    def test_rejections_by_day_fills_clean_days(self):
+        d15 = ("Mon Sep 15 10:00:00 2025", "Mon Sep 15 10:00:05 2025")
+        d16 = ("Tue Sep 16 10:00:00 2025", "Tue Sep 16 10:00:05 2025")
+        d17 = ("Wed Sep 17 10:00:00 2025", "Wed Sep 17 10:00:05 2025")
+        text = (
+            tx_block(*d15[:1], d15[1], ("200:5", "500:0"), DEPOSIT_OPS, ("200:7", "500:0"),
+                     rejected="COINS:0;BILLS:3(DB-2,FU-0,MI-0,IN-1,OT-0)")
+            + tx_block(*d16[:1], d16[1], ("200:7", "500:0"), DEPOSIT_OPS, ("200:9", "500:0"))
+            + tx_block(*d17[:1], d17[1], ("200:9", "500:0"), DEPOSIT_OPS, ("200:11", "500:0"),
+                       rejected="COINS:0;BILLS:2(DB-0,FU-0,MI-2,IN-0,OT-0)")
+        )
+        rej = parse_transactions(text)["rejections"]
+        self.assertEqual(rej["codes"], ["DB", "IN", "MI"])  # ordem DB,FU,IN,MI,OT; só os que ocorrem
+        self.assertEqual([d["day"] for d in rej["by_day"]], ["2025-09-15", "2025-09-16", "2025-09-17"])
+        self.assertEqual(rej["by_day"][0], {"day": "2025-09-15", "total": 3, "codes": {"DB": 2, "IN": 1, "MI": 0}})
+        self.assertEqual(rej["by_day"][1]["total"], 0)      # dia limpo a zero, não omitido
+        self.assertEqual(rej["by_day"][2]["codes"], {"DB": 0, "IN": 0, "MI": 2})
+
+    def test_rejections_empty_when_no_rejects(self):
+        text = tx_block(T1, T2, ("200:5", "500:0"), DEPOSIT_OPS, ("200:7", "500:0"))
+        self.assertEqual(parse_transactions(text)["rejections"], {"codes": [], "by_day": []})
+
     def test_crlf_line_endings(self):
         text = tx_block(T1, T2, ("200:5", "500:0"), DEPOSIT_OPS, ("200:7", "500:0")).replace("\n", "\r\n")
         self.assertEqual(parse_transactions(text)["summary"]["reconciled"], 1)

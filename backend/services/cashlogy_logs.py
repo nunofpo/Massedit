@@ -14,7 +14,7 @@ Os ficheiros são lidos em memória; não há acesso à base de dados.
 import re
 import statistics
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 MAX_TRANSACTIONS = 3000
@@ -195,6 +195,46 @@ def _parse_rejected(raw: Optional[str]) -> Dict[str, Any]:
     return {"coins": int(m.group(1)), "bills": int(m.group(2)), "detail": detail}
 
 
+_REJECT_ORDER = ["DB", "FU", "IN", "MI", "OT"]
+
+
+def _rejections_by_day(ops: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Notas rejeitadas por dia e por código (DB/FU/IN/MI/OT), com os dias sem rejeições a zero.
+
+    O eixo cobre do primeiro ao último dia com operações, para o gráfico mostrar
+    também os dias limpos. O total é o nº de notas (BILLS), não a soma dos códigos.
+    """
+    per_day: Dict[date, Dict[str, Any]] = {}
+    days: List[date] = []
+    seen_codes = set()
+    for o in ops:
+        if not o["ts"]:
+            continue
+        day = datetime.strptime(o["ts"][:10], "%Y-%m-%d").date()
+        days.append(day)
+        rej = o["rejected"]
+        if not (rej["bills"] or rej["detail"]):
+            continue
+        row = per_day.setdefault(day, {"total": 0, "codes": Counter()})
+        row["total"] += rej["bills"]
+        row["codes"].update(rej["detail"])
+        seen_codes.update(rej["detail"])
+    if not per_day:
+        return {"codes": [], "by_day": []}
+
+    codes = [c for c in _REJECT_ORDER if c in seen_codes] + sorted(seen_codes - set(_REJECT_ORDER))
+    by_day = []
+    for i in range((max(days) - min(days)).days + 1):
+        day = min(days) + timedelta(days=i)
+        row = per_day.get(day)
+        by_day.append({
+            "day": day.isoformat(),
+            "total": row["total"] if row else 0,
+            "codes": {c: row["codes"].get(c, 0) if row else 0 for c in codes},
+        })
+    return {"codes": codes, "by_day": by_day}
+
+
 def _bad_devices(snap: Dict[str, str]) -> List[str]:
     return [p.strip() for p in snap.get("DevicesErrors", "").split(";")
             if p.strip() and not p.strip().endswith(":OK")]
@@ -364,6 +404,7 @@ def parse_transactions(text: str) -> Dict[str, Any]:
         "transactions": ops[-MAX_TRANSACTIONS:],
         "transactions_truncated": truncated,
         "external_changes": external[-MAX_EVENTS:],
+        "rejections": _rejections_by_day(ops),
         "stock": stock,
         "device": device,
         "_timestamps": timestamps,
