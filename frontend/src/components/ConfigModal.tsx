@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server, Radar } from 'lucide-react';
+import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server, Radar, Eye, EyeOff } from 'lucide-react';
 import { DatabaseConfig, PortInfo, PortScanResponse } from '../types';
 
 interface ConfigModalProps {
@@ -24,6 +24,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [formConfig, setFormConfig] = useState<DatabaseConfig>(config);
   const [isTesting, setIsTesting] = useState(false);
   const [drivers, setDrivers] = useState<string[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Port Scan states
   const [isScanningPorts, setIsScanningPorts] = useState(false);
@@ -399,13 +400,23 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                       </span>
                     )}
                   </label>
-                  <input
-                    type="password"
-                    value={formConfig.password || ''}
-                    onChange={(e) => setFormConfig({ ...formConfig, password: e.target.value })}
-                    placeholder={formConfig.password_saved ? '•••••••• (Manter)' : 'Palavra-passe SQL'}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:border-indigo-600 font-mono font-semibold text-xs"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formConfig.password || ''}
+                      onChange={(e) => setFormConfig({ ...formConfig, password: e.target.value })}
+                      placeholder={formConfig.password_saved ? '•••••••• (Manter)' : 'Palavra-passe SQL'}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-2.5 pr-8 py-1.5 text-slate-900 focus:bg-white focus:border-indigo-600 font-mono font-semibold text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition"
+                      title={showPassword ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'}
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 <label className="sm:col-span-2 flex items-center gap-2 text-slate-700 cursor-pointer pt-1">
                   <input
