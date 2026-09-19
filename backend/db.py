@@ -70,6 +70,31 @@ def _odbc_braced(value: Optional[str]) -> str:
     return "{" + text.replace("}", "}}") + "}"
 
 
+def describe_db_error(exc: pyodbc.Error) -> Tuple[int, str]:
+    """
+    Traduz um erro do pyodbc para (código HTTP, mensagem em português).
+    Falhas de ligação/autenticação dão 503 (a base de dados está indisponível para o pedido);
+    qualquer outro erro SQL dá 500. O texto técnico do driver segue no fim da mensagem.
+    """
+    args = exc.args
+    sqlstate = str(args[0]) if len(args) > 1 else ""
+    raw = str(args[1] if len(args) > 1 else (args[0] if args else exc)).strip()
+    if len(raw) > 300:
+        raw = raw[:300] + "…"
+
+    if sqlstate.startswith("28"):
+        lead = "Falha de autenticação no SQL Server: utilizador ou palavra-passe incorretos."
+    elif sqlstate == "IM002" or sqlstate == "IM014":
+        lead = "Driver ODBC do SQL Server não encontrado. Escolha outro driver em Configurações."
+    elif sqlstate.startswith("08") or sqlstate in ("HYT00", "HYT01"):
+        lead = "Não foi possível contactar o SQL Server. Verifique o servidor, a porta e a rede."
+    elif "Cannot open database" in raw or "(4060)" in raw:
+        lead = "A base de dados indicada não existe ou o utilizador não tem acesso a ela."
+    else:
+        return 500, f"Erro na base de dados: {raw}"
+    return 503, f"{lead} Verifique a ligação em Configurações. Detalhe: {raw}"
+
+
 class DatabaseManager:
     def __init__(self, config: Optional[DatabaseConfig] = None):
         self.config = config or self._load_config()

@@ -1,9 +1,11 @@
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form, Query
+import logging
+import pyodbc
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
@@ -29,7 +31,7 @@ from backend.models import (
 from backend.services.customers import (
     get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
 )
-from backend.db import db_manager
+from backend.db import db_manager, describe_db_error
 from backend.services.products import (
     search_products, get_filtered_product_codes, get_selection_summary,
     get_families, create_family, get_families_detailed, update_family_colors,
@@ -63,6 +65,8 @@ from backend.services.ementa_digital import (
 )
 from fastapi.responses import HTMLResponse, Response
 
+logger = logging.getLogger("massedit")
+
 app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
 
 # A interface é servida pelo próprio servidor (mesma origem). CORS só para o servidor de desenvolvimento Vite.
@@ -73,6 +77,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(pyodbc.Error)
+async def db_error_handler(request: Request, exc: pyodbc.Error):
+    """Erros do SQL Server que nenhum endpoint tratou: resposta JSON com `detail` legível em vez de um 500 sem corpo."""
+    status, message = describe_db_error(exc)
+    if status == 500:
+        logger.exception("Erro SQL em %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=status, content={"detail": message})
 
 @app.get("/api/config")
 def get_db_config():
