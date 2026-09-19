@@ -26,10 +26,14 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [drivers, setDrivers] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [importedPasswordMsg, setImportedPasswordMsg] = useState<string | null>(null);
+  const [decryptedXdlContent, setDecryptedXdlContent] = useState<string | null>(null);
+  const [showXdlXml, setShowXdlXml] = useState(false);
 
   const handleImportXdlConfig = async (file: File | null) => {
     if (!file) return;
     setImportedPasswordMsg(null);
+    setDecryptedXdlContent(null);
+    setShowXdlXml(false);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -41,6 +45,13 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       }
       const data = await res.json();
       const cfg = data.config || {};
+
+      if (data.plain_text) {
+        setDecryptedXdlContent(data.plain_text);
+      }
+
+      const hasCreds = cfg.database || cfg.username || cfg.password;
+
       setFormConfig(prev => ({
         ...prev,
         server: cfg.server || prev.server,
@@ -50,12 +61,16 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         save_password: cfg.password ? true : prev.save_password
       }));
 
-      if (cfg.password || (data.passwords_found && data.passwords_found.length > 0)) {
-        const pwd = cfg.password || data.passwords_found[0];
-        setImportedPasswordMsg(`Palavra-passe desencriptada do ${data.filename || '.xdl'}: "${pwd}"`);
+      const foundPwd = cfg.password || (data.passwords_found && data.passwords_found[0]);
+
+      if (foundPwd) {
+        setImportedPasswordMsg(`🔑 Palavra-passe desencriptada do ${data.filename || '.xdl'}: "${foundPwd}"`);
         setShowPassword(true);
+      } else if (hasCreds) {
+        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} lido com sucesso e dados de conexão preenchidos.`);
       } else {
-        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} lido com sucesso e campos preenchidos.`);
+        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} desencriptado com sucesso! (Ficheiro de Layout/Tema do ZSRest).`);
+        setShowXdlXml(true);
       }
     } catch (e) {
       alert('Erro de rede ao ler o ficheiro .xdl');
@@ -272,23 +287,23 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             </div>
           </div>
 
-          {/* Importar e Desencriptar Ficheiro .xdl do ZoneSoft */}
+          {/* Importar e Desencriptar Ficheiro .xdl / .udl do ZoneSoft */}
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-amber-600 text-white rounded-lg shadow-xs shrink-0">
                 <FileCode className="w-4 h-4" />
               </div>
               <div>
-                <span className="font-extrabold text-slate-900 text-xs block">Carregar Ficheiro .xdl do ZoneSoft</span>
-                <span className="text-[10px] text-slate-600 block">Desencripta o ficheiro de configuração do POS e preenche a palavra-passe SQL</span>
+                <span className="font-extrabold text-slate-900 text-xs block">Carregar Ficheiro .xdl / .udl do ZoneSoft / Windows</span>
+                <span className="text-[10px] text-slate-600 block">Desencripta o ficheiro de configuração (Servidor, BD, Utilizador e Palavra-passe SQL)</span>
               </div>
             </div>
             <label className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition shrink-0 flex items-center gap-1.5 shadow-xs">
               <Unlock className="w-3.5 h-3.5" />
-              Carregar .xdl
+              Carregar .xdl / .udl
               <input
                 type="file"
-                accept=".xdl"
+                accept=".xdl,.udl,.dsn,.xml,.txt,*"
                 className="hidden"
                 onChange={(e) => handleImportXdlConfig(e.target.files?.[0] || null)}
               />
@@ -296,12 +311,38 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
           </div>
 
           {importedPasswordMsg && (
-            <div className="bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold text-xs p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
-              <span className="flex items-center gap-1.5">
-                <Key className="w-4 h-4 text-emerald-600 shrink-0" />
-                {importedPasswordMsg}
-              </span>
-              <button type="button" onClick={() => setImportedPasswordMsg(null)} className="text-emerald-700 hover:text-emerald-950 text-xs font-bold px-1.5">✕</button>
+            <div className="bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold text-xs p-3 rounded-xl space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 leading-snug">
+                  <Key className="w-4 h-4 text-emerald-600 shrink-0" />
+                  {importedPasswordMsg}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {decryptedXdlContent && (
+                    <button
+                      type="button"
+                      onClick={() => setShowXdlXml(!showXdlXml)}
+                      className="text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1 transition"
+                    >
+                      <Eye className="w-3 h-3" />
+                      {showXdlXml ? 'Ocultar XML' : 'Ver Conteúdo XML'}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => { setImportedPasswordMsg(null); setShowXdlXml(false); }} className="text-emerald-700 hover:text-emerald-950 text-xs font-bold px-1.5">✕</button>
+                </div>
+              </div>
+
+              {showXdlXml && decryptedXdlContent && (
+                <div className="pt-2 border-t border-emerald-200">
+                  <span className="text-[10px] uppercase font-bold text-emerald-900 block mb-1">Conteúdo XML Completo Desencriptado do Ficheiro .xdl:</span>
+                  <textarea
+                    readOnly
+                    rows={6}
+                    value={decryptedXdlContent}
+                    className="w-full bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono text-[11px] leading-relaxed border border-emerald-900/50 focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
           )}
 

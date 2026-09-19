@@ -57,9 +57,9 @@ from typing import Dict, Any, List
 
 def parse_xdl_db_config(data: bytes) -> Dict[str, Any]:
     """
-    Desencripta um ficheiro .xdl de configuração do ZoneSoft,
-    extrai o texto XML em claro e deteta automaticamente os parâmetros de ligação
-    à base de dados (Servidor, BD, Utilizador e Palavra-Passe).
+    Desencripta um ficheiro .xdl, .udl, .dsn ou de configuração do ZoneSoft/Windows,
+    extrai o texto em claro e deteta automaticamente os parâmetros de ligação
+    à base de dados SQL Server (Servidor, BD, Utilizador e Palavra-Passe).
     """
     plain_text = detect_and_decrypt_text(data)
 
@@ -72,54 +72,74 @@ def parse_xdl_db_config(data: bytes) -> Dict[str, Any]:
     }
     passwords_found: List[str] = []
 
-    # 1. Tentar parse como XML
-    try:
-        root = ET.fromstring(plain_text)
-        for el in root.iter():
-            tag = el.tag.lower()
-            text = (el.text or "").strip()
-            if not text:
-                continue
+    # 1. Parse UDL / OLE DB / Connection String (ex: Data Source=.\ZONESOFTSQL;Initial Catalog=nuno;User ID=sa;Password=secret)
+    udl_srv = re.search(r'(?:Data Source|Server|Host|Servidor)\s*=\s*([^;`"\r\n]+)', plain_text, re.IGNORECASE)
+    if udl_srv:
+        config["server"] = udl_srv.group(1).strip()
 
-            if any(k in tag for k in ("server", "host", "datasource", "ip", "servidor")):
-                if not config["server"]:
-                    config["server"] = text
-            elif any(k in tag for k in ("database", "dbname", "catalog", "basedados", "bd")):
-                if not config["database"]:
-                    config["database"] = text
-            elif any(k in tag for k in ("user", "username", "userid", "uid", "utilizador")):
-                if not config["username"]:
-                    config["username"] = text
-            elif any(k in tag for k in ("password", "pwd", "pass", "palavra-passe", "palavrapasse", "pin")):
-                if not config["password"]:
-                    config["password"] = text
-                if text not in passwords_found:
-                    passwords_found.append(text)
-    except Exception:
-        pass
+    udl_db = re.search(r'(?:Initial Catalog|Database|Catalog|DBName|BaseDados)\s*=\s*([^;`"\r\n]+)', plain_text, re.IGNORECASE)
+    if udl_db:
+        config["database"] = udl_db.group(1).strip()
 
-    # 2. Regex fallback para pares Chave=Valor ou tags XML via regex (caso o XML não seja bem formatado)
+    udl_usr = re.search(r'(?:User ID|Username|User|UID|Utilizador)\s*=\s*([^;`"\r\n]+)', plain_text, re.IGNORECASE)
+    if udl_usr:
+        config["username"] = udl_usr.group(1).strip()
+
+    udl_pwd = re.search(r'(?:Password|PWD|Pass|PalavraPasse)\s*=\s*([^;`"\r\n]+)', plain_text, re.IGNORECASE)
+    if udl_pwd:
+        config["password"] = udl_pwd.group(1).strip()
+        if config["password"] not in passwords_found:
+            passwords_found.append(config["password"])
+
+    # 2. Tentar parse como XML caso não seja UDL / Connection String puro
+    if not (config["server"] and config["database"] and config["password"]):
+        try:
+            root = ET.fromstring(plain_text)
+            for el in root.iter():
+                tag = el.tag.lower()
+                text = (el.text or "").strip()
+                if not text:
+                    continue
+
+                if any(k in tag for k in ("server", "host", "datasource", "ip", "servidor")):
+                    if not config["server"]:
+                        config["server"] = text
+                elif any(k in tag for k in ("database", "dbname", "catalog", "basedados", "bd")):
+                    if not config["database"]:
+                        config["database"] = text
+                elif any(k in tag for k in ("user", "username", "userid", "uid", "utilizador")):
+                    if not config["username"]:
+                        config["username"] = text
+                elif any(k in tag for k in ("password", "pwd", "pass", "palavra-passe", "palavrapasse", "pin")):
+                    if not config["password"]:
+                        config["password"] = text
+                    if text not in passwords_found:
+                        passwords_found.append(text)
+        except Exception:
+            pass
+
+    # 3. Regex Fallback para tags XML mal formatadas ou chave-valor variados
     if not config["password"]:
         pwd_match = re.search(r'(?:password|pwd|pass|palavrapasse)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
         if pwd_match:
-            config["password"] = pwd_match.group(1)
+            config["password"] = pwd_match.group(1).strip()
             if config["password"] not in passwords_found:
                 passwords_found.append(config["password"])
 
     if not config["server"]:
         srv_match = re.search(r'(?:server|host|datasource|servidor)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
         if srv_match:
-            config["server"] = srv_match.group(1)
+            config["server"] = srv_match.group(1).strip()
 
     if not config["database"]:
         db_match = re.search(r'(?:database|dbname|catalog|basedados)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
         if db_match:
-            config["database"] = db_match.group(1)
+            config["database"] = db_match.group(1).strip()
 
     if not config["username"]:
         usr_match = re.search(r'(?:user|username|userid|utilizador)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
         if usr_match:
-            config["username"] = usr_match.group(1)
+            config["username"] = usr_match.group(1).strip()
 
     return {
         "plain_text": plain_text,
