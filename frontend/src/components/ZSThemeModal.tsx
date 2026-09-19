@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Upload, Download, RefreshCw, Palette, AlertCircle, Sparkles, Sliders, Check } from 'lucide-react';
+import { X, Upload, Download, RefreshCw, Palette, AlertCircle, Sparkles, Sliders, Check, FileCode, Unlock } from 'lucide-react';
 
 interface ZSThemeModalProps {
   isOpen: boolean;
@@ -42,6 +42,41 @@ export const ZSThemeModal: React.FC<ZSThemeModalProps> = ({ isOpen, onClose, onS
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleDirectXdlDecrypt = async (selected: File | null) => {
+    if (!selected) return;
+    setIsAnalyzing(true);
+    setErrorMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', selected);
+      const res = await fetch('/api/xdl/decrypt', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(data.detail || 'Erro ao desencriptar o ficheiro .xdl.');
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const outName = match ? match[1] : (selected.name.replace(/\.xdl$/i, '') + '.xml');
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = outName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      onSuccess(`Ficheiro .xdl desencriptado e guardado como "${outName}" com sucesso!`);
+    } catch (err) {
+      setErrorMsg('Falha de rede ao desencriptar o ficheiro .xdl.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleFileSelected = async (selected: File | null) => {
     setErrorMsg(null);
@@ -204,21 +239,52 @@ export const ZSThemeModal: React.FC<ZSThemeModalProps> = ({ isOpen, onClose, onS
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {!file && (
-            <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 rounded-2xl p-12 cursor-pointer hover:border-violet-500 hover:bg-violet-50/50 transition group">
-              <div className="p-4 bg-violet-50 group-hover:bg-violet-100 rounded-2xl text-violet-600 transition">
-                <Upload className="w-8 h-8" />
+            <div className="space-y-5">
+              <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 rounded-2xl p-8 cursor-pointer hover:border-violet-500 hover:bg-violet-50/50 transition group">
+                <div className="p-3.5 bg-violet-50 group-hover:bg-violet-100 rounded-2xl text-violet-600 transition">
+                  <Upload className="w-7 h-7" />
+                </div>
+                <div className="text-center">
+                  <span className="text-sm font-bold text-slate-800 block">Escolher ficheiro .zstheme / .xdl para editar cores</span>
+                  <span className="text-xs text-slate-400 block mt-0.5">Ficheiro de tema ou layout exportado pelo ZoneSoft FrontOffice Designer</span>
+                </div>
+                <input
+                  type="file"
+                  accept=".zstheme,.xdl"
+                  className="hidden"
+                  onChange={(e) => handleFileSelected(e.target.files?.[0] || null)}
+                />
+              </label>
+
+              {/* Painel de Desencriptação Direta de Ficheiros .xdl */}
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-3 bg-amber-600 text-white rounded-xl shadow-md shadow-amber-600/20 shrink-0">
+                    <FileCode className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      Desencriptar Ficheiro .xdl em 1 Clique
+                      <span className="text-[10px] bg-amber-200 text-amber-900 font-mono px-2 py-0.5 rounded-md font-extrabold">Zone Soft Data Link</span>
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Selecione qualquer ficheiro <code className="bg-amber-100/80 px-1 py-0.5 rounded text-amber-900 font-mono text-[11px]">.xdl</code> à sua escolha para obter o XML/texto desencriptado imediatamente.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-md shadow-amber-600/20 transition shrink-0">
+                  <Unlock className="w-4 h-4" />
+                  Escolher Ficheiro .xdl
+                  <input
+                    type="file"
+                    accept=".xdl"
+                    className="hidden"
+                    onChange={(e) => handleDirectXdlDecrypt(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
-              <div className="text-center">
-                <span className="text-sm font-bold text-slate-800 block">Escolher ficheiro .zstheme</span>
-                <span className="text-xs text-slate-400 block mt-0.5">Ficheiro de tema exportado pelo ZoneSoft FrontOffice Designer</span>
-              </div>
-              <input
-                type="file"
-                accept=".zstheme"
-                className="hidden"
-                onChange={(e) => handleFileSelected(e.target.files?.[0] || null)}
-              />
-            </label>
+            </div>
           )}
 
           {file && (
