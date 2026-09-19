@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Upload, Download, RefreshCw, Palette, AlertCircle, Sparkles, Sliders, Check, FileCode, Unlock, Key, Copy } from 'lucide-react';
+import { X, Upload, Download, RefreshCw, Palette, AlertCircle, Sparkles, Sliders, Check } from 'lucide-react';
 
 interface ZSThemeModalProps {
   isOpen: boolean;
@@ -42,56 +42,6 @@ export const ZSThemeModal: React.FC<ZSThemeModalProps> = ({ isOpen, onClose, onS
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const [xdlDecryptedResult, setXdlDecryptedResult] = useState<{
-    filename: string;
-    plain_text: string;
-    config: { server: string; database: string; username: string; password: string };
-    passwords_found: string[];
-  } | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
-
-  const handleDirectXdlDecrypt = async (selected: File | null) => {
-    if (!selected) return;
-    setIsAnalyzing(true);
-    setErrorMsg(null);
-    setXdlDecryptedResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', selected);
-      const res = await fetch('/api/xdl/parse-config', { method: 'POST', body: formData });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErrorMsg(data.detail || 'Erro ao desencriptar o ficheiro .xdl.');
-        return;
-      }
-      const data = await res.json();
-      setXdlDecryptedResult(data);
-
-      // Descarregar ficheiro .xml como antes
-      const blob = new Blob([data.plain_text], { type: 'application/xml;charset=utf-8' });
-      const outName = selected.name.replace(/\.xdl$/i, '') + '.xml';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = outName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-
-      const foundPwd = data.config?.password || (data.passwords_found && data.passwords_found[0]);
-      if (foundPwd) {
-        onSuccess(`Ficheiro .xdl desencriptado! Palavra-passe detetada: "${foundPwd}"`);
-      } else {
-        onSuccess(`Ficheiro .xdl desencriptado e guardado como "${outName}" com sucesso!`);
-      }
-    } catch (err) {
-      setErrorMsg('Falha de rede ao desencriptar o ficheiro .xdl.');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
 
   const handleFileSelected = async (selected: File | null) => {
     setErrorMsg(null);
@@ -260,112 +210,16 @@ export const ZSThemeModal: React.FC<ZSThemeModalProps> = ({ isOpen, onClose, onS
                   <Upload className="w-7 h-7" />
                 </div>
                 <div className="text-center">
-                  <span className="text-sm font-bold text-slate-800 block">Escolher ficheiro .zstheme / .xdl para editar cores</span>
-                  <span className="text-xs text-slate-400 block mt-0.5">Ficheiro de tema ou layout exportado pelo ZoneSoft FrontOffice Designer</span>
+                  <span className="text-sm font-bold text-slate-800 block">Escolher ficheiro .zstheme</span>
+                  <span className="text-xs text-slate-400 block mt-0.5">Ficheiro de tema exportado pelo ZoneSoft FrontOffice Designer</span>
                 </div>
                 <input
                   type="file"
-                  accept=".zstheme,.xdl"
+                  accept=".zstheme"
                   className="hidden"
                   onChange={(e) => handleFileSelected(e.target.files?.[0] || null)}
                 />
               </label>
-
-              {/* Painel de Desencriptação Direta de Ficheiros .xdl */}
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-                <div className="flex items-center gap-3.5">
-                  <div className="p-3 bg-amber-600 text-white rounded-xl shadow-md shadow-amber-600/20 shrink-0">
-                    <FileCode className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      Desencriptar Ficheiro .xdl em 1 Clique
-                      <span className="text-[10px] bg-amber-200 text-amber-900 font-mono px-2 py-0.5 rounded-md font-extrabold">Zone Soft Data Link</span>
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-0.5">
-                      Selecione qualquer ficheiro <code className="bg-amber-100/80 px-1 py-0.5 rounded text-amber-900 font-mono text-[11px]">.xdl</code> à sua escolha para obter o XML/texto desencriptado imediatamente.
-                    </p>
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-md shadow-amber-600/20 transition shrink-0">
-                  <Unlock className="w-4 h-4" />
-                  Escolher Ficheiro .xdl
-                  <input
-                    type="file"
-                    accept=".xdl"
-                    className="hidden"
-                    onChange={(e) => handleDirectXdlDecrypt(e.target.files?.[0] || null)}
-                  />
-                </label>
-              </div>
-
-              {xdlDecryptedResult && (
-                <div className="bg-slate-900 text-white border border-amber-500/40 rounded-2xl p-4 space-y-3 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Key className="w-5 h-5 text-amber-400" />
-                      <div>
-                        <h4 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">
-                          Resultado da Desencriptação XDL: {xdlDecryptedResult.filename}
-                        </h4>
-                        <p className="text-[11px] text-slate-400">
-                          Ficheiro desencriptado com sucesso. Dados de ligação e texto XML abaixo:
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setXdlDecryptedResult(null)}
-                      className="text-xs text-slate-400 hover:text-white px-2 py-1 bg-slate-800 rounded-lg"
-                    >
-                      Fechar
-                    </button>
-                  </div>
-
-                  {(xdlDecryptedResult.config?.password || (xdlDecryptedResult.passwords_found && xdlDecryptedResult.passwords_found.length > 0)) && (
-                    <div className="bg-amber-950/80 border border-amber-500/50 rounded-xl p-3 flex items-center justify-between gap-3">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold tracking-widest text-amber-300 block">Palavra-passe SQL Desencriptada</span>
-                        <code className="text-base font-black text-amber-400 font-mono tracking-wide">
-                          {xdlDecryptedResult.config?.password || xdlDecryptedResult.passwords_found[0]}
-                        </code>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const pwd = xdlDecryptedResult.config?.password || xdlDecryptedResult.passwords_found[0];
-                          navigator.clipboard.writeText(pwd);
-                          setCopiedKey(true);
-                          setTimeout(() => setCopiedKey(false), 2000);
-                        }}
-                        className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black px-3 py-1.5 rounded-lg shadow-md transition"
-                      >
-                        {copiedKey ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiedKey ? 'Copiado!' : 'Copiar Palavra-passe'}
-                      </button>
-                    </div>
-                  )}
-
-                  {xdlDecryptedResult.config && (xdlDecryptedResult.config.server || xdlDecryptedResult.config.database) && (
-                    <div className="grid grid-cols-3 gap-2 text-xs font-mono bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                      <div><span className="text-slate-500 block text-[10px] font-sans font-bold">Servidor</span><span className="text-slate-200 font-bold">{xdlDecryptedResult.config.server || '-'}</span></div>
-                      <div><span className="text-slate-500 block text-[10px] font-sans font-bold">Base de Dados</span><span className="text-slate-200 font-bold">{xdlDecryptedResult.config.database || '-'}</span></div>
-                      <div><span className="text-slate-500 block text-[10px] font-sans font-bold">Utilizador</span><span className="text-slate-200 font-bold">{xdlDecryptedResult.config.username || '-'}</span></div>
-                    </div>
-                  )}
-
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 block mb-1">Conteúdo XML Completo Desencriptado:</span>
-                    <textarea
-                      readOnly
-                      rows={6}
-                      value={xdlDecryptedResult.plain_text}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-300 focus:outline-none leading-relaxed"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

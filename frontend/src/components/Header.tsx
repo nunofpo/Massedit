@@ -132,10 +132,10 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onOpenZsTheme}
           className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-violet-200 transition shadow-sm"
-          title="Editor de Temas ZSRest (.zstheme / .xdl) e Desencriptador de Ficheiros Zone Soft Data Link (.xdl)"
+          title="Editor de Temas ZSRest (.zstheme)"
         >
           <Palette className="w-3.5 h-3.5 text-violet-600" />
-          Temas ZSRest & .XDL
+          Temas ZSRest
         </button>
 
         <button
