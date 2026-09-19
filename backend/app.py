@@ -41,6 +41,7 @@ from backend.services.products import (
 from backend.services.reports import run_data_quality_report
 from backend.services.zstheme import analyze_zstheme, transform_zstheme
 from backend.services.cashlogy_logs import analyze_logs as analyze_cashlogy_logs, investigate as investigate_cashlogy
+from backend.services.cashlogy_sales import fetch_sales
 from backend.services.pos_layout import (
     get_pos_layout_products, preview_pos_layout, apply_pos_layout
 )
@@ -346,8 +347,11 @@ async def cashlogy_investigate_endpoint(
     when: str = Form(...),
     before: int = Form(5),
     after: int = Form(5),
+    with_sales: bool = Form(False),
 ):
-    """Linha do tempo de todos os logs do Cashlogy num intervalo à volta de `when` (AAAA-MM-DD HH:MM[:SS])."""
+    """Linha do tempo de todos os logs do Cashlogy num intervalo à volta de `when` (AAAA-MM-DD HH:MM[:SS]).
+
+    Com `with_sales`, cruza também com as vendas (dbo.documentos) da base de dados ligada, só em leitura."""
     from datetime import datetime
     try:
         center = datetime.fromisoformat(when.strip().replace("T", " "))
@@ -356,8 +360,9 @@ async def cashlogy_investigate_endpoint(
     if not (0 <= before <= 720 and 0 <= after <= 720) or before + after < 1:
         raise HTTPException(status_code=400, detail="O intervalo tem de estar entre 1 e 1440 minutos (até 12 h para cada lado).")
     payload = [(f.filename or "", await f.read()) for f in files]
+    fetcher = (lambda start, end: fetch_sales(db_manager.get_connection, start, end)) if with_sales else None
     try:
-        return investigate_cashlogy(payload, center, before, after)
+        return investigate_cashlogy(payload, center, before, after, sales_fetcher=fetcher)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Não foi possível investigar o intervalo: {str(e)}")
 

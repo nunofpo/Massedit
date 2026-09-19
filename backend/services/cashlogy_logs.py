@@ -11,6 +11,7 @@ Ficheiros suportados (identificados pelo nome):
   - LogTran_AAAAMMDD.txt            entradas/saídas de dinheiro do CashlogyConnector, por denominação
   - LogCom_AAAAMMDD.txt             comandos POS↔Connector (#C# cobrar, #G# backoffice) e respostas
   - LogUsr_AAAAMMDD.txt             ações do operador no POS (cobranças, backoffice, mensagens)
+  - LogErr_AAAAMMDD.txt             erros do Connector (numeração 6xxx-8xxx; inclui «INCAPAZ DE PAGAR»)
 
 Todos os valores monetários são inteiros em cêntimos (denominação 200 = 2,00 €).
 Os ficheiros são lidos em memória; não há acesso à base de dados.
@@ -44,6 +45,7 @@ SUPPORTED_KINDS = {
     "tran": "LogTran",
     "com": "LogCom",
     "usr": "LogUsr",
+    "logerr": "LogErr",
 }
 
 _UNSUPPORTED_HINTS = {
@@ -104,6 +106,8 @@ def detect_kind(filename: str) -> Optional[str]:
         return "com"
     if "logusr" in name:
         return "usr"
+    if "logerr" in name:
+        return "logerr"
     return None
 
 
@@ -585,6 +589,13 @@ def parse_errors(text: str) -> Dict[str, Any]:
         if m:
             cur[_E_KEYS[m.group(1)]] = m.group(2)
 
+    return _error_report(events, timestamps, "errors")
+
+
+def _error_report(events: List[Dict[str, Any]], timestamps: List[datetime], source: str,
+                  items_labels: Tuple[str, str] = ("admitidos", "devolvidos")) -> Dict[str, Any]:
+    """Análise comum aos dois logs de erros (Opos_ResultCodeExtended e LogErr): códigos, episódios,
+    avisos por resolver, Descuadre e eventos da linha do tempo."""
     # descrição por (código, nível), para os eventos cujo Info veio vazio
     info_by_key: Dict[Tuple[int, str], str] = {}
     for e in events:
@@ -654,14 +665,14 @@ def parse_errors(text: str) -> Dict[str, Any]:
         desc = e["info"] or info_by_key.get((e["code"], e["level"]), "")
         extras = [e["product"]]
         if e["items_in"] and not e["items_in"].startswith("0x0000"):
-            extras.append(f"admitidos {e['items_in']}")
+            extras.append(f"{items_labels[0]} {e['items_in']}")
         if e["items_out"] and not e["items_out"].startswith("0x0000"):
-            extras.append(f"devolvidos {e['items_out']}")
+            extras.append(f"{items_labels[1]} {e['items_out']}")
         if e["mismatch"]:
             extras.append(f"Descuadre {e['mismatch']}")
         severity = "ok" if e["clear"] else "error" if e["level"] == "ERROR" else "warning"
-        timeline.append(_ev(e["dt"], "errors", "hardware", severity, f"{e['code']} {desc}".strip(),
-                            " · ".join(x for x in extras if x)))
+        title = f"{e['code']} {desc}".strip() if e["code"] else desc  # sem código (ex.: 'INCAPAZ DE PAGAR ...')
+        timeline.append(_ev(e["dt"], source, "hardware", severity, title, " · ".join(x for x in extras if x)))
 
     return {
         "_events": timeline,
@@ -675,6 +686,52 @@ def parse_errors(text: str) -> Dict[str, Any]:
         "events_truncated": len(events) > MAX_EVENTS,
         "_timestamps": timestamps,
     }
+
+
+# ---------------------------------------------------------------------------
+# LogErr_AAAAMMDD.txt (erros do Connector; numeração 6xxx-8xxx)
+# ---------------------------------------------------------------------------
+
+# "dd/mm/aaaa hh:mm:ss[.mmm],CÓDIGO,Nível (CÓDIGO) - dd/mm/aaaa hh:mm:ss - Módulo - descrição - DepositAffectedItems: ..."
+# e, sem código nem módulo: "...,0000,Error - dd/mm/aaaa hh:mm:ss - INCAPAZ DE PAGAR 0,04 €"
+_LOGERR_LINE = re.compile(
+    r'^"(\d{2})/(\d{2})/(\d{4}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?,(\d+),(\w+)\s*(?:\(\d+\))?\s*-\s*'
+    r'\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}\s*-\s*(.*?)\s*"\s*$')
+_LOGERR_LEVELS = {"WARNING": "WARNING", "OK": "OK", "ERRO": "ERROR", "ERROR": "ERROR"}
+_LOGERR_SPLIT = re.compile(r"\s+-\s+(?=(?:Deposit|Dispense)AffectedItems:)")
+
+
+def _affected_text(raw: str) -> str:
+    """'2;,500,1000' -> '2 c, 5 €, 10 €' (denominações em cêntimos; ';' separa moedas de notas)."""
+    return ", ".join(denom_label(int(v)) for v in re.split(r"[,;\s]+", raw) if v.isdigit())
+
+
+def parse_logerr(text: str) -> Dict[str, Any]:
+    events: List[Dict[str, Any]] = []
+    timestamps: List[datetime] = []
+    for ln in text.splitlines():
+        m = _LOGERR_LINE.match(ln)
+        if not m:
+            continue
+        dd, mo, yyyy, hh, mi, ss, ms, code, level, body = m.groups()
+        try:
+            dt = datetime(int(yyyy), int(mo), int(dd), int(hh), int(mi), int(ss), int(ms or 0) * 1000)
+        except ValueError:
+            continue
+        timestamps.append(dt)
+        main, *affected = _LOGERR_SPLIT.split(body)
+        module, desc = (main.split(" - ", 1) if int(code) and " - " in main else ("", main))
+        deposit = dispense = ""
+        for part in affected:
+            kind, _, items = part.partition(":")
+            if kind.startswith("Deposit"):
+                deposit = _affected_text(items)
+            else:
+                dispense = _affected_text(items)
+        events.append({"code": int(code), "level": _LOGERR_LEVELS.get(level.upper(), level.upper()), "dt": dt,
+                       "ts": _fmt(dt), "info": desc.strip(), "subcode": "", "product": module.strip(),
+                       "items_in": deposit, "items_out": dispense, "mismatch": ""})
+    return _error_report(events, timestamps, "logerr", items_labels=("depósito", "dispensa"))
 
 
 # ---------------------------------------------------------------------------
@@ -1226,6 +1283,7 @@ _PARSERS = {
     "tran": parse_tran,
     "com": parse_com,
     "usr": parse_usr,
+    "logerr": parse_logerr,
 }
 
 
@@ -1262,25 +1320,33 @@ def _build_findings(result: Dict[str, Any]) -> List[Dict[str, str]]:
             if low:
                 add("warning", "Níveis fora do normal no último estado: " + ", ".join(low))
 
-    er = result.get("errors")
-    if er:
+    for err_key in ("errors", "logerr"):
+        er = result.get(err_key)
+        tag = "" if err_key == "errors" else " (LogErr)"
+        if not er:
+            continue
+        # o Connector regista «INCAPAZ DE PAGAR x,xx €» quando não consegue dar o troco
+        unable = [e for e in er["events"] if e["info"].upper().startswith("INCAPAZ DE PAGAR")]
+        if unable:
+            add("error", f"A máquina não conseguiu pagar o troco {len(unable)} vez(es){tag}",
+                "; ".join(f"{e['ts'][:16]} — {e['info']}" for e in unable[-5:]))
         for ep in er["episodes"]:
             if ep["count"] >= 20:
-                add("warning", f"Código {ep['code']} repetido {ep['count']} vezes",
+                add("warning", f"Código {ep['code']} repetido {ep['count']} vezes{tag}",
                     f"{ep['info']} — oscila entre aviso e normal; mediana {ep['median_s']} s por episódio, "
                     f"{ep['total_s'] / 3600:.1f} h em aviso no total.")
-        errors = [r for r in er["by_code"] if r["level"] == "ERROR"]
+        errors = [r for r in er["by_code"] if r["level"] == "ERROR" and r["code"]]
         if errors:
             total = sum(r["count"] for r in errors)
-            add("error", f"{total} erro(s) de hardware em {len(errors)} código(s)",
+            add("error", f"{total} erro(s) de hardware em {len(errors)} código(s){tag}",
                 "; ".join(f"{r['code']} ×{r['count']}: {r['info'] or 'sem descrição'}" for r in errors[:8]))
         mm = er["accounting_mismatches"]
         if mm:
             last = mm[-3:]
-            add("warning", f"{len(mm)} incompatibilidade(s) de contabilidade (Descuadre)",
+            add("warning", f"{len(mm)} incompatibilidade(s) de contabilidade (Descuadre){tag}",
                 "Últimos valores (brutos, do log): " + ", ".join(f"{m['value']} em {m['ts']}" for m in last))
         if er["still_open"]:
-            add("warning", "Avisos por resolver no fim do log: códigos " + ", ".join(map(str, er["still_open"])))
+            add("warning", f"Avisos por resolver no fim do log{tag}: códigos " + ", ".join(map(str, er["still_open"])))
 
     ti = result.get("times")
     if ti:
@@ -1363,25 +1429,34 @@ def _analyze(files: List[Tuple[str, bytes]], timeline: bool = False):
     periods: Dict[str, Tuple[datetime, datetime]] = {}
     private: Dict[Tuple[str, str], Any] = {}
 
+    # Vários ficheiros do mesmo tipo (um por dia, ex.: LogTran_20260915..18) juntam-se por ordem de nome
+    # e analisam-se como um só; antes só ficava o último e os outros eram ignorados em silêncio.
+    groups: Dict[str, List[Tuple[str, int, str]]] = {}
     for name, data in files:
         kind = detect_kind(name)
         if kind is None:
             ignored.append({"name": name, "reason": _unsupported_reason(name)})
             continue
-        text = decode_log(data)
-        parsed = _PARSERS[kind](text)
+        groups.setdefault(kind, []).append((name, len(data), decode_log(data)))
+
+    for kind, items in groups.items():
+        items.sort(key=lambda it: it[0])
+        parsed = _PARSERS[kind]("\n".join(text for _, _, text in items))
         ts = parsed.pop("_timestamps", [])
         all_ts.extend(ts)
         for key in [k for k in parsed if k.startswith("_")]:  # dados internos, não vão na resposta
             private[(kind, key)] = parsed.pop(key)
         result[kind] = parsed
-        if ts:
-            periods[name] = (min(ts), max(ts))
-        file_rows.append({
-            "name": name, "kind": kind, "label": SUPPORTED_KINDS[kind],
-            "size": len(data), "lines": text.count("\n") + 1,
-            "start": _fmt(min(ts)) if ts else None, "end": _fmt(max(ts)) if ts else None,
-        })
+        for name, size, text in items:
+            # com um só ficheiro o período já é conhecido; com vários, lê-se cada um só para as datas
+            file_ts = ts if len(items) == 1 else _PARSERS[kind](text).get("_timestamps", [])
+            if file_ts:
+                periods[name] = (min(file_ts), max(file_ts))
+            file_rows.append({
+                "name": name, "kind": kind, "label": SUPPORTED_KINDS[kind],
+                "size": size, "lines": text.count("\n") + 1,
+                "start": _fmt(min(file_ts)) if file_ts else None, "end": _fmt(max(file_ts)) if file_ts else None,
+            })
 
     if "com" in result and ("tran", "_moves") in private:
         result["com"]["crosscheck"] = _crosscheck_com_tran(result["com"]["operations"], private[("tran", "_moves")])
@@ -1390,6 +1465,11 @@ def _analyze(files: List[Tuple[str, bytes]], timeline: bool = False):
 
     # os eventos da linha do tempo usam campos internos (_start, _dt) e têm de ser recolhidos antes da limpeza
     events = _collect_events(result, private) if timeline else []
+    if timeline and "com" in result:
+        private[("com", "_charges")] = [
+            {"start": r["_start"], "end": r["_end"], "amount": r["amount"], "net": r["net"],
+             "cancelled": r["cancelled"], "ok": r["ok"], "result": r["result"]}
+            for r in result["com"]["operations"] if r["kind"] == "charge"]
 
     if "com" in result:
         for row in result["com"]["operations"]:
@@ -1429,7 +1509,7 @@ def analyze_logs(files: List[Tuple[str, bytes]]) -> Dict[str, Any]:
 
 SOURCE_LABELS = {
     "transactions": "Transações", "times": "Tempos", "errors": "Erros do hardware", "payments": "Pagamentos",
-    "opos": "Níveis (OPOS)", "tran": "LogTran", "com": "LogCom", "usr": "LogUsr",
+    "opos": "Níveis (OPOS)", "tran": "LogTran", "com": "LogCom", "usr": "LogUsr", "logerr": "LogErr", "sales": "Vendas (POS)",
 }
 MAX_TIMELINE = 1500
 _COM_RESULT_LABELS = {"0": "OK", "WR:CANCEL": "cancelada", "WR:LEVEL": "aviso de nível (WR:LEVEL)"}
@@ -1491,13 +1571,31 @@ def _context_lines(private: Dict[Tuple[str, str], Any], end: datetime) -> List[s
     return lines
 
 
-def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int = 5, after_min: int = 5) -> Dict[str, Any]:
-    """Linha do tempo única de todos os logs recebidos no intervalo [when-before, when+after]."""
+def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int = 5, after_min: int = 5,
+                sales_fetcher: Optional[Any] = None) -> Dict[str, Any]:
+    """Linha do tempo única de todos os logs recebidos no intervalo [when-before, when+after].
+
+    `sales_fetcher(start, end)` (opcional) devolve as vendas do POS; ver cashlogy_sales.fetch_sales.
+    """
     start = when - timedelta(minutes=before_min)
     end = when + timedelta(minutes=after_min)
     out, events, periods, private = _analyze(files, timeline=True)
 
-    inside = sorted((e for e in events if start <= e["dt"] <= end), key=lambda e: e["dt"])
+    inside = [e for e in events if start <= e["dt"] <= end]
+    sales_out: Optional[Dict[str, Any]] = None
+    if sales_fetcher is not None:
+        from backend.services.cashlogy_sales import match_sales
+        info = sales_fetcher(start, end)
+        sales_out = {"requested": True, "available": info["available"], "reason": info["reason"],
+                     "truncated": info.get("truncated", False), "sales": 0, "matched": 0, "cash_codes": [], "note": None}
+        if info["available"]:
+            charges = private.get(("com", "_charges"), [])
+            m = match_sales(info["rows"], charges, start, end)
+            inside.extend(m["events"])
+            sales_out.update(m["summary"])
+            if not charges:
+                sales_out["note"] = "Não há cobranças do Cashlogy (LogCom) carregadas: as vendas são mostradas sem cruzamento."
+    inside.sort(key=lambda e: e["dt"])
 
     # Só se descreve o que se sabe: a relação entre os registos do ficheiro e o intervalo. Os logs de
     # eventos só escrevem quando algo acontece, por isso não se sabe até quando o ficheiro "cobre".
@@ -1541,4 +1639,5 @@ def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int 
                     "kind": e["kind"], "severity": e["severity"], "title": e["title"], "detail": e["detail"]}
                    for e in inside[:MAX_TIMELINE]],
         "events_truncated": len(inside) > MAX_TIMELINE,
+        "sales": sales_out,
     }

@@ -27,6 +27,18 @@ interface TimingKind {
   slow_count: number; slow_threshold: number | null;
   slowest: { ts: string; total_ms: number; phases: Record<string, number> }[];
 }
+// Opos_ResultCodeExtended e LogErr têm a mesma forma
+interface ErrorsReport {
+  total_events: number;
+  by_code: { code: number; level: string; info: string; count: number; first: string; last: string }[];
+  episodes: { code: number; info: string; count: number; total_s: number; median_s: number; max_s: number }[];
+  still_open: number[];
+  accounting_mismatches: { ts: string; code: number; value: number }[];
+  warnings_per_day: { day: string; count: number }[];
+  events: { ts: string; code: number; level: string; info: string; subcode: string; product: string; items_in: string; items_out: string; clear: boolean; mismatch: string }[];
+  events_truncated: boolean;
+}
+
 interface Analysis {
   files: LogFile[];
   ignored: { name: string; reason: string }[];
@@ -45,16 +57,8 @@ interface Analysis {
     stock: { ts: string; denominations: StockRow[]; stacker_state: string; devices_with_error: string[] } | null;
   };
   times?: { incomplete: number; deposit: TimingKind; dispense: TimingKind };
-  errors?: {
-    total_events: number;
-    by_code: { code: number; level: string; info: string; count: number; first: string; last: string }[];
-    episodes: { code: number; info: string; count: number; total_s: number; median_s: number; max_s: number }[];
-    still_open: number[];
-    accounting_mismatches: { ts: string; code: number; value: number }[];
-    warnings_per_day: { day: string; count: number }[];
-    events: { ts: string; code: number; level: string; info: string; subcode: string; product: string; items_in: string; items_out: string; clear: boolean; mismatch: string }[];
-    events_truncated: boolean;
-  };
+  errors?: ErrorsReport;
+  logerr?: ErrorsReport;
   payments?: {
     total: number; by_result: Record<string, number>;
     duration_ms: { count: number; avg: number | null; median: number | null; p95: number | null; max: number | null };
@@ -125,6 +129,10 @@ interface Investigation {
   context: string[];
   events: InvEvent[];
   events_truncated: boolean;
+  sales: null | {
+    requested: boolean; available: boolean; reason: string | null; truncated: boolean;
+    sales: number; matched: number; cash_codes: number[]; note: string | null;
+  };
 }
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -136,6 +144,8 @@ const SOURCE_STYLE: Record<string, string> = {
   tran: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   com: 'bg-teal-50 text-teal-800 border-teal-200',
   usr: 'bg-amber-50 text-amber-800 border-amber-200',
+  sales: 'bg-lime-50 text-lime-800 border-lime-200',
+  logerr: 'bg-rose-50 text-rose-800 border-rose-200',
 };
 
 // ---- Formatação --------------------------------------------------------------
@@ -292,6 +302,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   const [invTime, setInvTime] = useState('');
   const [invBefore, setInvBefore] = useState(5);
   const [invAfter, setInvAfter] = useState(5);
+  const [invSales, setInvSales] = useState(false);
   const [inv, setInv] = useState<Investigation | null>(null);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState<string | null>(null);
@@ -308,6 +319,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
       formData.append('when', `${day} ${invTime}`);
       formData.append('before', String(invBefore));
       formData.append('after', String(invAfter));
+      formData.append('with_sales', String(invSales));
       const res = await fetch('/api/cashlogy/investigate', { method: 'POST', body: formData });
       const body = await res.json();
       if (!res.ok) { setInvError(typeof body.detail === 'string' ? body.detail : 'Não foi possível investigar o intervalo.'); return; }
@@ -371,7 +383,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     { id: 'summary', label: 'Resumo', show: true, badge: data?.findings.length },
     { id: 'investigate', label: 'Investigar', show: !!data && data.files.length > 0 },
     { id: 'transactions', label: 'Transações', show: !!tx, badge: tx?.transactions.length },
-    { id: 'alerts', label: 'Alertas', show: !!data?.errors },
+    { id: 'alerts', label: 'Alertas', show: !!(data?.errors || data?.logerr) },
     { id: 'levels', label: 'Níveis', show: !!data?.opos },
     { id: 'connector', label: 'Connector', show: !!(data?.tran || data?.com) },
     { id: 'operator', label: 'Operador', show: !!data?.usr },
@@ -544,11 +556,20 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   };
 
   const renderAlerts = () => {
-    const er = data?.errors;
-    if (!er) return null;
+    const both = !!(data?.errors && data?.logerr);
+    return (
+      <div className="space-y-8">
+        {data?.errors && renderErrorReport(data.errors, both ? 'Opos_ResultCodeExtended' : '', ['Admitido', 'Devolvido'])}
+        {data?.logerr && renderErrorReport(data.logerr, both ? 'LogErr (Connector)' : 'LogErr (erros do Connector)', ['Depósito', 'Dispensa'])}
+      </div>
+    );
+  };
+
+  const renderErrorReport = (er: ErrorsReport, title: string, itemHeads: [string, string]) => {
     const maxDay = Math.max(1, ...er.warnings_per_day.map(d => d.count));
     return (
       <div className="space-y-5">
+        {title && <h2 className="text-sm font-black text-slate-900 border-b border-slate-200 pb-1">{title}</h2>}
         <div className="space-y-2">
           <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Por código ({er.total_events} eventos)</h3>
           <TableWrap>
@@ -556,7 +577,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
             <tbody>
               {er.by_code.map((r, i) => (
                 <tr key={i}>
-                  <Td mono>{r.code}</Td>
+                  <Td mono>{r.code || '—'}</Td>
                   <Td><Badge cls={r.level === 'OK' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r.level === 'ERROR' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200'}>{r.level}</Badge></Td>
                   <Td>{r.info || '—'}</Td><Td right mono>{r.count}</Td><Td mono>{dt(r.first)}</Td><Td mono>{dt(r.last)}</Td>
                 </tr>
@@ -611,10 +632,10 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
         <div className="space-y-2">
           <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Últimos eventos {er.events_truncated && <span className="text-slate-400 normal-case font-semibold">(só os mais recentes)</span>}</h3>
           <TableWrap>
-            <thead><tr><Th>Data/hora</Th><Th>Código</Th><Th>Nível</Th><Th>Descrição</Th><Th>Admitido</Th><Th>Devolvido</Th></tr></thead>
+            <thead><tr><Th>Data/hora</Th><Th>Código</Th><Th>Nível</Th><Th>Descrição</Th><Th>{itemHeads[0]}</Th><Th>{itemHeads[1]}</Th></tr></thead>
             <tbody>
               {er.events.slice(-100).reverse().map((e, i) => (
-                <tr key={i}><Td mono>{dt(e.ts)}</Td><Td mono>{e.code}</Td><Td>{e.level}</Td><Td>{e.info || '—'}</Td><Td mono>{e.items_in || '—'}</Td><Td mono>{e.items_out || '—'}</Td></tr>
+                <tr key={i}><Td mono>{dt(e.ts)}</Td><Td mono>{e.code || '—'}</Td><Td>{e.level}</Td><Td>{e.info || '—'}</Td><Td mono>{e.items_in || '—'}</Td><Td mono>{e.items_out || '—'}</Td></tr>
               ))}
             </tbody>
           </TableWrap>
@@ -717,6 +738,10 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               <input type="number" min={0} max={720} value={invAfter} onChange={(e) => setInvAfter(Math.max(0, Number(e.target.value) || 0))}
                      className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono w-24 bg-white" />
             </label>
+            <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 pb-2 cursor-pointer" title="Consulta, só em leitura, as vendas (dbo.documentos) de uma base ZoneSoft ligada em «Conexão DB». Não se aplica a clientes com outro POS (ex.: WinREST).">
+              <input type="checkbox" checked={invSales} onChange={(e) => setInvSales(e.target.checked)} />
+              Cruzar com as vendas (só ZoneSoft) da base de dados ligada
+            </label>
             <button onClick={investigate} disabled={invLoading}
                     className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition">
               {invLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}Investigar
@@ -742,6 +767,23 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
                 {invCopied ? 'Copiado!' : 'Copiar resumo'}
               </button>
             </div>
+
+            {inv.sales && (
+              inv.sales.available ? (
+                <div className="bg-lime-50 border border-lime-200 rounded-xl px-3 py-2 text-[11px] text-lime-900 space-y-0.5">
+                  <div className="font-bold">
+                    Vendas no intervalo: {inv.sales.sales} · {inv.sales.matched} coincidem com cobranças do Cashlogy
+                    {inv.sales.cash_codes.length > 0 && <span className="font-semibold"> · pagamento identificado como dinheiro (inferido): {inv.sales.cash_codes.join(', ')}</span>}
+                  </div>
+                  {inv.sales.note && <div className="opacity-80">{inv.sales.note}</div>}
+                  {inv.sales.truncated && <div className="text-amber-800 font-semibold">Foram lidas só as primeiras 500 vendas do período; o cruzamento pode estar incompleto.</div>}
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold px-3 py-2 rounded-xl">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />Vendas não incluídas: {inv.sales.reason}
+                </div>
+              )
+            )}
 
             <div className="space-y-2">
               <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">O que se destaca</h3>

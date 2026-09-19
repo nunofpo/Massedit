@@ -1,5 +1,6 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from backend.services.cashlogy_logs import (
     analyze_logs,
@@ -7,6 +8,7 @@ from backend.services.cashlogy_logs import (
     detect_kind,
     investigate,
     parse_errors,
+    parse_logerr,
     parse_com,
     parse_opos,
     parse_payments,
@@ -16,6 +18,7 @@ from backend.services.cashlogy_logs import (
     parse_usr,
     parse_versions,
 )
+from backend.services.cashlogy_sales import fetch_sales, match_sales
 
 SEP = "        " + "+" * 60
 
@@ -693,6 +696,302 @@ class TestInvestigate(unittest.TestCase):
         a = json.dumps(analyze_logs(_files_for_investigation()))
         self.assertNotIn('"_events"', a)
         self.assertNotIn('"_ops_full"', a)
+
+
+def _charge(start, end, amount, cancelled=False):
+    return {"start": start, "end": end, "amount": amount, "net": amount, "cancelled": cancelled, "ok": True, "result": "0"}
+
+
+def _sale(dt, total, code=1, numero=1, anulado=0, pay_dt=None):
+    return {"id": numero, "doc": "FR        ", "serie": "A", "numero": numero, "datahora": dt, "datapag": pay_dt,
+            "total": Decimal(total), "anulado": anulado, "pagamento": code, "idcx": 1, "emp": 1, "mesa": 0}
+
+
+D = datetime
+W_START, W_END = D(2026, 9, 18, 19, 15, 0), D(2026, 9, 18, 20, 15, 0)
+
+
+class TestSalesCrossCheck(unittest.TestCase):
+    def test_matching_sale_and_charge_is_reported_and_infers_cash_code(self):
+        rows = [_sale(D(2026, 9, 18, 19, 32, 25), "9.90", code=3, numero=101)]
+        charges = [_charge(D(2026, 9, 18, 19, 32, 0), D(2026, 9, 18, 19, 32, 22), 990)]
+        m = match_sales(rows, charges, W_START, W_END)
+        self.assertEqual(m["summary"]["cash_codes"], [3])
+        self.assertEqual(m["summary"]["matched"], 1)
+        e = m["events"][0]
+        self.assertEqual((e["severity"], e["title"]), ("info", "Venda FR A/101 9,90 €"))
+        self.assertIn("coincide com a cobrança Cashlogy das 19:32:00", e["detail"])
+
+    def test_value_mismatch_on_cash_code_is_an_error(self):
+        rows = [_sale(D(2026, 9, 18, 19, 20, 10), "4.50", numero=1),          # ok: define o código 1 como dinheiro
+                _sale(D(2026, 9, 18, 19, 45, 10), "12.00", numero=2)]         # POS: 12,00 €, Cashlogy cobrou 10,20 €
+        charges = [_charge(D(2026, 9, 18, 19, 19, 40), D(2026, 9, 18, 19, 20, 5), 450),
+                   _charge(D(2026, 9, 18, 19, 44, 40), D(2026, 9, 18, 19, 44, 58), 1020)]
+        m = match_sales(rows, charges, W_START, W_END)
+        err = [e for e in m["events"] if e["severity"] == "error"]
+        self.assertEqual(len(err), 1)
+        self.assertIn("venda FR A/2 12,00 € vs cobrança Cashlogy 10,20 €", err[0]["title"])
+        self.assertIn("diferença +1,80 €", err[0]["detail"])
+        self.assertIn("possível", err[0]["detail"])
+
+    def test_card_sale_is_not_flagged(self):
+        rows = [_sale(D(2026, 9, 18, 19, 20, 10), "4.50", code=1, numero=1),
+                _sale(D(2026, 9, 18, 19, 50, 0), "30.00", code=2, numero=2)]   # cartão: nunca passa pelo Cashlogy
+        charges = [_charge(D(2026, 9, 18, 19, 19, 40), D(2026, 9, 18, 19, 20, 5), 450)]
+        m = match_sales(rows, charges, W_START, W_END)
+        self.assertEqual([e for e in m["events"] if e["severity"] in ("error", "warning")], [])
+        self.assertTrue(any(e["title"].startswith("Venda FR A/2 30,00") for e in m["events"]))
+
+    def test_unmatched_cash_sale_and_unmatched_charge_are_warnings(self):
+        rows = [_sale(D(2026, 9, 18, 19, 20, 10), "4.50", numero=1), _sale(D(2026, 9, 18, 20, 0, 0), "8.00", numero=2)]
+        charges = [_charge(D(2026, 9, 18, 19, 19, 40), D(2026, 9, 18, 19, 20, 5), 450),
+                   _charge(D(2026, 9, 18, 20, 10, 0), D(2026, 9, 18, 20, 10, 20), 300)]
+        titles = [e["title"] for e in match_sales(rows, charges, W_START, W_END)["events"] if e["severity"] == "warning"]
+        self.assertIn("Venda FR A/2 8,00 € sem cobrança Cashlogy correspondente", titles)
+        self.assertIn("Cobrança Cashlogy 3,00 € sem venda correspondente", titles)
+
+    def test_without_any_match_nothing_is_flagged_and_note_explains(self):
+        rows = [_sale(D(2026, 9, 18, 19, 45, 10), "12.00")]
+        charges = [_charge(D(2026, 9, 18, 19, 44, 40), D(2026, 9, 18, 19, 44, 58), 1020)]
+        m = match_sales(rows, charges, W_START, W_END)
+        self.assertEqual(m["summary"]["cash_codes"], [])
+        self.assertIn("não foi possível identificar o código de pagamento", m["summary"]["note"])
+        self.assertEqual([e for e in m["events"] if e["severity"] == "error"], [])
+
+    def test_cancelled_charges_and_documents(self):
+        rows = [_sale(D(2026, 9, 18, 19, 30, 0), "5.00", anulado=1)]
+        charges = [_charge(D(2026, 9, 18, 19, 29, 0), D(2026, 9, 18, 19, 29, 30), 500, cancelled=True)]
+        m = match_sales(rows, charges, W_START, W_END)
+        self.assertEqual([e["title"] for e in m["events"]], ["Documento anulado FR A/1 5,00 €"])
+
+    def test_only_events_inside_the_window_are_emitted(self):
+        rows = [_sale(D(2026, 9, 18, 17, 0, 0), "4.50", numero=1)]
+        charges = [_charge(D(2026, 9, 18, 16, 59, 40), D(2026, 9, 18, 17, 0, 5), 450)]
+        self.assertEqual(match_sales(rows, charges, W_START, W_END)["events"], [])
+
+    def test_datapag_is_only_the_accounting_date_and_is_ignored(self):
+        # como nas vendas reais: datapag = data contabilística (00:00 do dia), não a hora do pagamento
+        rows = [_sale(D(2026, 9, 18, 19, 32, 25), "9.90", pay_dt=D(2026, 9, 18, 0, 0, 0))]
+        charges = [_charge(D(2026, 9, 18, 19, 32, 0), D(2026, 9, 18, 19, 32, 22), 990)]
+        m = match_sales(rows, charges, W_START, W_END)
+        self.assertEqual(m["summary"]["matched"], 1)
+        self.assertEqual(m["events"][0]["dt"], D(2026, 9, 18, 19, 32, 25))   # na hora do documento, não à meia-noite
+
+
+class TestRealShapedSales(unittest.TestCase):
+    """Vendas reais (FS/FT) pagas SEM o Cashlogy ligado: não pode haver alarmes."""
+
+    ROWS = [  # (hora, total, pagamento, numero)
+        (D(2026, 9, 19, 0, 45, 25), "14.70", 1, 1), (D(2026, 9, 19, 0, 45, 33), "44.50", 1, 2),
+        (D(2026, 9, 19, 0, 45, 39), "8.60", 3, 1), (D(2026, 9, 19, 0, 45, 53), "12.30", 3, 2),
+        (D(2026, 9, 19, 0, 45, 58), "15.60", 1, 3),
+    ]
+
+    def _rows(self):
+        return [{**_sale(dt, total, code=code, numero=n), "serie": "7A2601", "datapag": D(2026, 9, 18, 0, 0, 0)}
+                for dt, total, code, n in self.ROWS]
+
+    def test_sales_without_cashlogy_are_listed_and_never_flagged(self):
+        m = match_sales(self._rows(), [], D(2026, 9, 19, 0, 40, 0), D(2026, 9, 19, 0, 50, 0))
+        self.assertEqual(len(m["events"]), 5)
+        self.assertEqual({e["severity"] for e in m["events"]}, {"info"})
+        self.assertEqual(m["summary"]["cash_codes"], [])
+        self.assertIn("não foi possível identificar o código de pagamento", m["summary"]["note"])
+        self.assertEqual(m["events"][0]["title"], "Venda FR 7A2601/1 14,70 €")
+
+    def test_sales_outside_the_window_are_left_out(self):
+        m = match_sales(self._rows(), [], D(2026, 9, 19, 0, 45, 30), D(2026, 9, 19, 0, 45, 40))
+        self.assertEqual([e["title"] for e in m["events"]], ["Venda FR 7A2601/2 44,50 €", "Venda FR 7A2601/1 8,60 €"])
+
+
+class _FakeCursor:
+    def __init__(self, rows=None, boom=None):
+        self.rows, self.boom, self.sql, self.params = rows or [], boom, None, ()
+        self.description = [(c,) for c in ("id", "doc", "serie", "numero", "datahora", "datapag", "total", "anulado", "pagamento", "idcx", "emp", "mesa")]
+
+    def execute(self, sql, *params):
+        if self.boom:
+            raise self.boom
+        self.sql, self.params = sql, params
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakeConn:
+    def __init__(self, cursor):
+        self.cur, self.rolled_back, self.closed = cursor, False, False
+
+    def cursor(self):
+        return self.cur
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+class TestFetchSales(unittest.TestCase):
+    def test_query_is_read_only_parameterised_and_connection_is_released(self):
+        cur = _FakeCursor(rows=[(1, "FR", "A", 7, D(2026, 9, 18, 19, 32), None, Decimal("9.90"), 0, 3, 1, 1, 0)])
+        conn = _FakeConn(cur)
+        r = fetch_sales(lambda: conn, W_START, W_END)
+        self.assertTrue(r["available"])
+        self.assertEqual(r["rows"][0]["numero"], 7)
+        self.assertTrue(cur.sql.lstrip().upper().startswith("SELECT"))
+        for word in ("INSERT", "UPDATE", "DELETE", "DROP", "EXEC", "MERGE"):
+            self.assertNotIn(word, cur.sql.upper())
+        self.assertNotIn("2026", cur.sql)                 # datas só como parâmetros
+        self.assertEqual(cur.params[0], W_START - timedelta(hours=2))
+        self.assertTrue(conn.rolled_back and conn.closed)
+
+    def test_connection_failure_is_reported_not_raised(self):
+        def boom():
+            raise RuntimeError("servidor inacessível")
+        r = fetch_sales(boom, W_START, W_END)
+        self.assertFalse(r["available"])
+        self.assertIn("servidor inacessível", r["reason"])
+
+    def test_query_failure_still_closes_connection(self):
+        conn = _FakeConn(_FakeCursor(boom=RuntimeError("coluna inválida 'datapag'")))
+        r = fetch_sales(lambda: conn, W_START, W_END)
+        self.assertFalse(r["available"])
+        self.assertIn("datapag", r["reason"])
+        self.assertTrue(conn.closed)
+
+
+class TestInvestigateWithSales(unittest.TestCase):
+    WHEN = datetime(2026, 9, 18, 19, 32, 10)
+
+    def _fetcher(self, rows):
+        return lambda start, end: {"available": True, "reason": None, "rows": rows, "truncated": False}
+
+    def test_sale_appears_in_timeline_and_matches_the_charge(self):
+        rows = [_sale(D(2026, 9, 18, 17, 2, 40), "3.60", code=1, numero=1),   # define o código 1 como dinheiro
+                _sale(D(2026, 9, 18, 19, 32, 25), "9.90", code=1, numero=2)]
+        retry = ('"18/09/2026 17:02:29.980,#C#1#1#360#1#15360#0#0#0#1#0#0# "\n'
+                 '"18/09/2026 17:02:37.490,#WR:LEVEL#500#140#0#0#"\n')
+        r = investigate(_files_for_investigation(com=COM + retry), self.WHEN, 2, 2, sales_fetcher=self._fetcher(rows))
+        self.assertTrue(r["sales"]["available"])
+        self.assertEqual(r["sales"]["cash_codes"], [1])
+        sale = [e for e in r["events"] if e["source"] == "sales"]
+        self.assertEqual([e["title"] for e in sale], ["Venda FR A/2 9,90 €"])
+        stamps = [e["ts"] for e in r["events"]]
+        self.assertEqual(stamps, sorted(stamps))
+
+    def test_wrong_amount_in_pos_becomes_a_highlight(self):
+        rows = [_sale(D(2026, 9, 18, 17, 2, 40), "3.60", code=1, numero=1),
+                _sale(D(2026, 9, 18, 19, 32, 25), "10.90", code=1, numero=2)]   # POS registou 10,90 €, Cashlogy cobrou 9,90 €
+        retry = ('"18/09/2026 17:02:29.980,#C#1#1#360#1#15360#0#0#0#1#0#0# "\n'
+                 '"18/09/2026 17:02:37.490,#WR:LEVEL#500#140#0#0#"\n')   # cobrança concluída (a do fixture é a cancelada)
+        r = investigate(_files_for_investigation(com=COM + retry), self.WHEN, 2, 2, sales_fetcher=self._fetcher(rows))
+        h = [x for x in r["highlights"] if x["source"] == "sales"]
+        self.assertEqual(len(h), 1)
+        self.assertEqual(h[0]["severity"], "error")
+        self.assertIn("venda FR A/2 10,90 € vs cobrança Cashlogy 9,90 €", h[0]["title"])
+
+    def test_unavailable_database_is_reported_and_timeline_still_works(self):
+        fetch = lambda s, e: {"available": False, "reason": "Sem ligação à base de dados: x", "rows": [], "truncated": False}
+        r = investigate(_files_for_investigation(), self.WHEN, 2, 2, sales_fetcher=fetch)
+        self.assertFalse(r["sales"]["available"])
+        self.assertIn("Sem ligação", r["sales"]["reason"])
+        self.assertTrue(any(e["source"] == "com" for e in r["events"]))
+
+    def test_without_logcom_sales_are_shown_with_explanatory_note(self):
+        rows = [_sale(D(2026, 9, 18, 19, 32, 25), "9.90")]
+        files = [("LogTran_20260918.txt", TRAN.encode("cp1252"))]
+        r = investigate(files, self.WHEN, 2, 2, sales_fetcher=self._fetcher(rows))
+        self.assertIn("LogCom", r["sales"]["note"])
+        self.assertEqual(len([e for e in r["events"] if e["source"] == "sales"]), 1)
+
+    def test_sales_key_is_none_when_not_requested_and_json_safe(self):
+        import json
+        r = investigate(_files_for_investigation(), self.WHEN, 2, 2)
+        self.assertIsNone(r["sales"])
+        json.dumps(investigate(_files_for_investigation(), self.WHEN, 2, 2,
+                               sales_fetcher=self._fetcher([_sale(D(2026, 9, 18, 19, 32, 25), "9.90")])))
+
+
+LOGERR = '''"18/09/2026 09:12:51,6320,Warning (6320) - 18/09/2026 09:12:51 - ReciclagemNotas - Nota à espera de ser retirada da boca de entrada "
+"18/09/2026 09:12:59,6321,OK (6321) - 18/09/2026 09:12:59 - ReciclagemNotas - Nota liberta da boca de entrada "
+"18/09/2026 15:40:15,7310,Erro (7310) - 18/09/2026 15:40:15 - ReciclagemNotas - Erro na Leitura: Sensores da entrada unidade - DepositAffectedItems: ;500,1000 - DispenseAffectedItems: ;500 "
+"18/09/2026 15:45:18,7310,OK (7310) - 18/09/2026 15:45:18 - ReciclagemNotas - Corrigido-Erro na Leitura: Sensores da entrada unidade "
+"18/09/2026 20:38:56,8523,Warning (8523) - 18/09/2026 20:38:56 - Devolvedor_2c - Registado vão no devolvedor (Devolvedor_2c) - DispenseAffectedItems: 2 "
+"18/09/2026 20:39:09,6120,Warning (6120) - 18/09/2026 20:39:09 - Estado - Não existem moedas suficientes para realizar a devolução - DispenseAffectedItems: 2 "
+"18/09/2026 20:40:17.430,0000,Error - 18/09/2026 20:40:17 - INCAPAZ DE PAGAR 0,04 €"
+"18/09/2026 20:41:28,6131,Warning (6131) - 18/09/2026 20:41:28 - ReciclagemNotas - Possível incompatibilidade na contabilidade por nota preso - Admissão (n=1) - DepositAffectedItems: ;1000 "
+'''
+
+
+class TestLogErr(unittest.TestCase):
+    def test_lines_are_parsed_including_the_one_without_code_or_module(self):
+        r = parse_logerr(LOGERR)
+        self.assertEqual(r["total_events"], 8)
+        by = {(c["code"], c["level"]): c for c in r["by_code"]}
+        self.assertIn((7310, "ERROR"), by)                       # 'Erro' (pt) normalizado
+        self.assertEqual(by[(0, "ERROR")]["info"], "INCAPAZ DE PAGAR 0,04 €")
+        ev = {e["code"]: e for e in r["events"]}
+        self.assertEqual((ev[6131]["product"], ev[6131]["items_in"]), ("ReciclagemNotas", "10 €"))   # ';1000' = nota de 10 €
+        self.assertEqual((ev[8523]["product"], ev[8523]["items_out"]), ("Devolvedor_2c", "2 c"))
+        self.assertEqual(ev[0]["product"], "")
+
+    def test_episodes_pair_warning_with_next_code_or_corrigido(self):
+        ep = {e["code"]: e for e in parse_logerr(LOGERR)["episodes"]}
+        self.assertEqual(ep[6320]["total_s"], 8)                  # 6320 -> 6321
+        self.assertEqual(ep[7310]["total_s"], 303)                # 7310 erro -> 7310 'Corrigido-...'
+
+    def test_unable_to_pay_and_hardware_errors_become_findings(self):
+        found = analyze_logs([("LogErr_20260918.txt", LOGERR.encode("cp1252"))])["findings"]
+        titles = {f["title"]: f for f in found}
+        unable = titles["A máquina não conseguiu pagar o troco 1 vez(es) (LogErr)"]
+        self.assertEqual(unable["severity"], "error")
+        self.assertIn("INCAPAZ DE PAGAR 0,04 €", unable["detail"])
+        hw = titles["1 erro(s) de hardware em 1 código(s) (LogErr)"]     # o código 0 não conta como código de hardware
+        self.assertIn("7310", hw["detail"])
+
+    def test_investigation_shows_the_chain_around_the_unable_to_pay_event(self):
+        r = investigate([("LogErr_20260918.txt", LOGERR.encode("cp1252")), ("LogTran_20260918.txt", TRAN.encode("cp1252"))],
+                        datetime(2026, 9, 18, 20, 40, 17), 3, 2)
+        titles = [e["title"] for e in r["events"] if e["source"] == "logerr"]
+        self.assertEqual(titles[0], "8523 Registado vão no devolvedor (Devolvedor_2c)")
+        self.assertIn("INCAPAZ DE PAGAR 0,04 €", titles)
+        self.assertEqual(r["highlights"][0]["title"], "INCAPAZ DE PAGAR 0,04 €")
+        self.assertEqual(r["highlights"][0]["severity"], "error")
+        first = [e for e in r["events"] if e["source"] == "logerr"][0]
+        self.assertIn("dispensa 2 c", first["detail"])
+        self.assertEqual([e["ts"] for e in r["events"]], sorted(e["ts"] for e in r["events"]))
+
+
+class TestSeveralFilesOfTheSameKind(unittest.TestCase):
+    """Um ficheiro por dia (LogTran_20260917 + LogTran_20260918): antes só ficava o último."""
+
+    DAY17 = TRAN.replace("18/09/2026", "17/09/2026")
+
+    def _files(self):
+        return [("LogTran_20260918.txt", TRAN.encode("cp1252")), ("LogTran_20260917.txt", self.DAY17.encode("cp1252"))]
+
+    def test_all_days_are_analysed_together(self):
+        r = analyze_logs(self._files())
+        self.assertEqual(r["tran"]["summary"]["ins"], 4)             # 2 entradas por dia
+        self.assertEqual(r["period"], {"start": "2026-09-17 07:23:35", "end": "2026-09-18 19:32:22"})
+
+    def test_each_file_keeps_its_own_period(self):
+        rows = {f["name"]: (f["start"][:10], f["end"][:10]) for f in analyze_logs(self._files())["files"]}
+        self.assertEqual(rows["LogTran_20260917.txt"], ("2026-09-17", "2026-09-17"))
+        self.assertEqual(rows["LogTran_20260918.txt"], ("2026-09-18", "2026-09-18"))
+
+    def test_investigating_the_older_day_finds_its_events(self):
+        r = investigate(self._files(), datetime(2026, 9, 17, 19, 32, 10), 2, 2)
+        self.assertEqual([e["title"] for e in r["events"]], ["Entrada 20,00 €", "Saída 10,10 €"])
+        rel = {c["name"]: c["relation"] for c in r["coverage"]}
+        self.assertEqual(rel["LogTran_20260917.txt"], "overlap")
+        self.assertEqual(rel["LogTran_20260918.txt"], "after")
+
+    def test_order_of_upload_does_not_matter(self):
+        a = analyze_logs(self._files())["tran"]["summary"]
+        b = analyze_logs(list(reversed(self._files())))["tran"]["summary"]
+        self.assertEqual(a, b)
 
 
 class TestAnalyze(unittest.TestCase):
