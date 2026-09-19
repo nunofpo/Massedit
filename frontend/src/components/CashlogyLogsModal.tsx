@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X, Upload, RefreshCw, ScrollText, AlertCircle, AlertTriangle, Info, Check,
   ArrowDownToLine, ArrowUpFromLine, FileText,
@@ -7,7 +7,20 @@ import {
 interface CashlogyLogsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Abre a janela «Conexão DB» (o leitor fecha-se, mas mantém os ficheiros carregados). */
+  onOpenConfig?: () => void;
 }
+
+// Estado da ligação à base de dados (GET /api/config)
+interface DbStatus { connected: boolean; server: string; database: string; message: string }
+
+const SALES_CHOICE_KEY = 'cashlogy.investigate.useDb';
+const readSalesChoice = (): boolean => {
+  try { return localStorage.getItem(SALES_CHOICE_KEY) === '1'; } catch { return false; }
+};
+const writeSalesChoice = (v: boolean) => {
+  try { localStorage.setItem(SALES_CHOICE_KEY, v ? '1' : '0'); } catch { /* sem armazenamento: a escolha não é lembrada */ }
+};
 
 // ---- Tipos da resposta de /api/cashlogy/analyze -----------------------------
 
@@ -289,7 +302,7 @@ const RejectionChart: React.FC<{ rej: NonNullable<Analysis['transactions']>['rej
 
 // ---- Modal -------------------------------------------------------------------
 
-export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, onClose }) => {
+export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, onClose, onOpenConfig }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [data, setData] = useState<Analysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -302,7 +315,31 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   const [invTime, setInvTime] = useState('');
   const [invBefore, setInvBefore] = useState(5);
   const [invAfter, setInvAfter] = useState(5);
-  const [invSales, setInvSales] = useState(false);
+  const [invSales, setInvSalesState] = useState<boolean>(readSalesChoice);
+  const setInvSales = (v: boolean) => { setInvSalesState(v); writeSalesChoice(v); };
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [dbChecking, setDbChecking] = useState(false);
+
+  const checkDb = async () => {
+    setDbChecking(true);
+    try {
+      const res = await fetch('/api/config');
+      const body = await res.json();
+      setDbStatus({
+        connected: !!body.is_connected, message: body.message || '',
+        server: body.config?.server || '', database: body.config?.database || '',
+      });
+    } catch {
+      setDbStatus({ connected: false, server: '', database: '', message: 'Não foi possível consultar o estado da ligação.' });
+    } finally {
+      setDbChecking(false);
+    }
+  };
+
+  // só se consulta a base quando a escolha é ligar e o separador Investigar está à vista
+  useEffect(() => {
+    if (isOpen && tab === 'investigate' && invSales) checkDb();
+  }, [isOpen, tab, invSales]);
   const [inv, setInv] = useState<Investigation | null>(null);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState<string | null>(null);
@@ -738,15 +775,35 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               <input type="number" min={0} max={720} value={invAfter} onChange={(e) => setInvAfter(Math.max(0, Number(e.target.value) || 0))}
                      className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono w-24 bg-white" />
             </label>
-            <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 pb-2 cursor-pointer" title="Consulta, só em leitura, as vendas (dbo.documentos) de uma base ZoneSoft ligada em «Conexão DB». Não se aplica a clientes com outro POS (ex.: WinREST).">
-              <input type="checkbox" checked={invSales} onChange={(e) => setInvSales(e.target.checked)} />
-              Cruzar com as vendas (só ZoneSoft) da base de dados ligada
-            </label>
             <button onClick={investigate} disabled={invLoading}
                     className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition">
               {invLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}Investigar
             </button>
           </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] border-t border-slate-200 pt-2"
+               title="Consulta, só em leitura, as vendas (dbo.documentos) de uma base ZoneSoft ligada em «Conexão DB». Não se aplica a clientes com outro POS (ex.: WinREST).">
+            <span className="font-extrabold uppercase tracking-wider text-slate-500">Vendas do POS (só ZoneSoft)</span>
+            <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
+              <input type="radio" name="inv-db" checked={!invSales} onChange={() => setInvSales(false)} />
+              Não ligar à base de dados
+            </label>
+            <label className="flex items-center gap-1.5 font-semibold text-slate-700 cursor-pointer">
+              <input type="radio" name="inv-db" checked={invSales} onChange={() => setInvSales(true)} />
+              Ligar à base de dados e cruzar com as vendas
+            </label>
+            {invSales && (
+              <span className="flex items-center gap-2">
+                {dbChecking ? <span className="text-slate-400">a verificar…</span>
+                  : dbStatus && (dbStatus.connected
+                    ? <span className="text-emerald-700 font-semibold">● Ligada: {dbStatus.server}{dbStatus.database ? ` / ${dbStatus.database}` : ''}</span>
+                    : <span className="text-rose-700 font-semibold" title={dbStatus.message}>● Sem ligação</span>)}
+                <button type="button" onClick={checkDb} className="text-sky-700 font-bold hover:text-sky-900">Verificar</button>
+                {onOpenConfig && <button type="button" onClick={onOpenConfig} className="text-sky-700 font-bold hover:text-sky-900">Configurar ligação</button>}
+              </span>
+            )}
+          </div>
+          {!invSales && <p className="text-[11px] text-slate-400">Sem ligar à base de dados, a análise dos logs funciona na mesma; só não cruza com as vendas.</p>}
           {invError && (
             <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold px-3 py-2 rounded-lg">
               <AlertCircle className="w-4 h-4 shrink-0" />{invError}

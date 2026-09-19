@@ -639,6 +639,7 @@ export const App: React.FC = () => {
       <CashlogyLogsModal
         isOpen={isCashlogyLogsOpen}
         onClose={() => setIsCashlogyLogsOpen(false)}
+        onOpenConfig={() => { setIsCashlogyLogsOpen(false); setIsConfigOpen(true); }}
       />
 
     </div>
