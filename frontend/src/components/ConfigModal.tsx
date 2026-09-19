@@ -69,8 +69,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       } else if (hasCreds) {
         setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} lido com sucesso e dados de conexão preenchidos.`);
       } else {
-        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} desencriptado com sucesso! (Ficheiro de Layout/Tema do ZSRest).`);
-        setShowXdlXml(true);
+        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} lido: Este é um ficheiro de layout/tema do POS e não contém dados de ligação à Base de Dados.`);
+        setShowXdlXml(false);
       }
     } catch (e) {
       alert('Erro de rede ao ler o ficheiro .xdl');

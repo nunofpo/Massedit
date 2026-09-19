@@ -36,18 +36,23 @@ def detect_and_decrypt_text(data: bytes) -> str:
     """
     Desencripta e converte bytes para texto com deteção automática de encoding:
     UTF-8 com BOM, UTF-8 simples ou Windows-1252 (ANSI).
+    Sanitiza carateres nulos e de controlo não-imprimíveis.
     """
     plain_bytes = decrypt(data) if is_xdl_encrypted(data) else data
 
     if plain_bytes.startswith(b'\xef\xbb\xbf'):
-        return plain_bytes[3:].decode('utf-8', errors='replace')
-    if plain_bytes.startswith(b'\xff\xfe'):
-        return plain_bytes[2:].decode('utf-16le', errors='replace')
+        raw_text = plain_bytes[3:].decode('utf-8', errors='replace')
+    elif plain_bytes.startswith(b'\xff\xfe'):
+        raw_text = plain_bytes[2:].decode('utf-16le', errors='replace')
+    else:
+        try:
+            raw_text = plain_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            raw_text = plain_bytes.decode('cp1252', errors='replace')
 
-    try:
-        return plain_bytes.decode('utf-8')
-    except UnicodeDecodeError:
-        return plain_bytes.decode('cp1252', errors='replace')
+    # Remover bytes nulos e carateres de controlo não imprimíveis (exceto \n, \r, \t)
+    cleaned_chars = [c for c in raw_text if c in ('\n', '\r', '\t') or 32 <= ord(c) <= 126 or ord(c) >= 160]
+    return ''.join(cleaned_chars)
 
 
 import re
