@@ -331,6 +331,22 @@ async def xdl_decrypt_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Erro ao desencriptar ficheiro .xdl: {str(e)}")
 
 
+@app.post("/api/xdl/parse-config")
+async def xdl_parse_config_endpoint(file: UploadFile = File(...)):
+    """
+    Desencripta um ficheiro .xdl de configuração do ZoneSoft, extrai o texto XML e deteta
+    palavras-passe e definições de conexão à base de dados SQL Server.
+    """
+    from backend.services.xdl import parse_xdl_db_config
+    file_bytes = await file.read()
+    try:
+        res = parse_xdl_db_config(file_bytes)
+        res["filename"] = file.filename or "config.xdl"
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao desencriptar ficheiro .xdl: {str(e)}")
+
+
 @app.post("/api/cashlogy/analyze")
 async def cashlogy_analyze_endpoint(files: List[UploadFile] = File(...)):
     """Analisa logs do Cashlogy (Transactions, Process_Times, ResultCodeExtended, GestorAdminDev, VersionsHistory)."""

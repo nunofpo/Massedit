@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server, Radar, Eye, EyeOff } from 'lucide-react';
+import { X, Settings, Database, CheckCircle2, AlertCircle, Key, User, Server, Radar, Eye, EyeOff, FileCode, Unlock } from 'lucide-react';
 import { DatabaseConfig, PortInfo, PortScanResponse } from '../types';
 
 interface ConfigModalProps {
@@ -25,6 +25,42 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [drivers, setDrivers] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [importedPasswordMsg, setImportedPasswordMsg] = useState<string | null>(null);
+
+  const handleImportXdlConfig = async (file: File | null) => {
+    if (!file) return;
+    setImportedPasswordMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/xdl/parse-config', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Não foi possível ler o ficheiro .xdl');
+        return;
+      }
+      const data = await res.json();
+      const cfg = data.config || {};
+      setFormConfig(prev => ({
+        ...prev,
+        server: cfg.server || prev.server,
+        database: cfg.database || prev.database,
+        username: cfg.username || prev.username,
+        password: cfg.password || prev.password,
+        save_password: cfg.password ? true : prev.save_password
+      }));
+
+      if (cfg.password || (data.passwords_found && data.passwords_found.length > 0)) {
+        const pwd = cfg.password || data.passwords_found[0];
+        setImportedPasswordMsg(`Palavra-passe desencriptada do ${data.filename || '.xdl'}: "${pwd}"`);
+        setShowPassword(true);
+      } else {
+        setImportedPasswordMsg(`Ficheiro ${data.filename || '.xdl'} lido com sucesso e campos preenchidos.`);
+      }
+    } catch (e) {
+      alert('Erro de rede ao ler o ficheiro .xdl');
+    }
+  };
 
   // Port Scan states
   const [isScanningPorts, setIsScanningPorts] = useState(false);
@@ -235,6 +271,39 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Importar e Desencriptar Ficheiro .xdl do ZoneSoft */}
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-600 text-white rounded-lg shadow-xs shrink-0">
+                <FileCode className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-extrabold text-slate-900 text-xs block">Carregar Ficheiro .xdl do ZoneSoft</span>
+                <span className="text-[10px] text-slate-600 block">Desencripta o ficheiro de configuração do POS e preenche a palavra-passe SQL</span>
+              </div>
+            </div>
+            <label className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition shrink-0 flex items-center gap-1.5 shadow-xs">
+              <Unlock className="w-3.5 h-3.5" />
+              Carregar .xdl
+              <input
+                type="file"
+                accept=".xdl"
+                className="hidden"
+                onChange={(e) => handleImportXdlConfig(e.target.files?.[0] || null)}
+              />
+            </label>
+          </div>
+
+          {importedPasswordMsg && (
+            <div className="bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold text-xs p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+              <span className="flex items-center gap-1.5">
+                <Key className="w-4 h-4 text-emerald-600 shrink-0" />
+                {importedPasswordMsg}
+              </span>
+              <button type="button" onClick={() => setImportedPasswordMsg(null)} className="text-emerald-700 hover:text-emerald-950 text-xs font-bold px-1.5">✕</button>
+            </div>
+          )}
 
           {/* Servidor & Porta com Scan de Portas */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">

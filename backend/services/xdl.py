@@ -48,3 +48,81 @@ def detect_and_decrypt_text(data: bytes) -> str:
         return plain_bytes.decode('utf-8')
     except UnicodeDecodeError:
         return plain_bytes.decode('cp1252', errors='replace')
+
+
+import re
+import xml.etree.ElementTree as ET
+from typing import Dict, Any, List
+
+
+def parse_xdl_db_config(data: bytes) -> Dict[str, Any]:
+    """
+    Desencripta um ficheiro .xdl de configuração do ZoneSoft,
+    extrai o texto XML em claro e deteta automaticamente os parâmetros de ligação
+    à base de dados (Servidor, BD, Utilizador e Palavra-Passe).
+    """
+    plain_text = detect_and_decrypt_text(data)
+
+    config = {
+        "server": "",
+        "database": "",
+        "username": "",
+        "password": "",
+        "port": None,
+    }
+    passwords_found: List[str] = []
+
+    # 1. Tentar parse como XML
+    try:
+        root = ET.fromstring(plain_text)
+        for el in root.iter():
+            tag = el.tag.lower()
+            text = (el.text or "").strip()
+            if not text:
+                continue
+
+            if any(k in tag for k in ("server", "host", "datasource", "ip", "servidor")):
+                if not config["server"]:
+                    config["server"] = text
+            elif any(k in tag for k in ("database", "dbname", "catalog", "basedados", "bd")):
+                if not config["database"]:
+                    config["database"] = text
+            elif any(k in tag for k in ("user", "username", "userid", "uid", "utilizador")):
+                if not config["username"]:
+                    config["username"] = text
+            elif any(k in tag for k in ("password", "pwd", "pass", "palavra-passe", "palavrapasse", "pin")):
+                if not config["password"]:
+                    config["password"] = text
+                if text not in passwords_found:
+                    passwords_found.append(text)
+    except Exception:
+        pass
+
+    # 2. Regex fallback para pares Chave=Valor ou tags XML via regex (caso o XML não seja bem formatado)
+    if not config["password"]:
+        pwd_match = re.search(r'(?:password|pwd|pass|palavrapasse)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
+        if pwd_match:
+            config["password"] = pwd_match.group(1)
+            if config["password"] not in passwords_found:
+                passwords_found.append(config["password"])
+
+    if not config["server"]:
+        srv_match = re.search(r'(?:server|host|datasource|servidor)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
+        if srv_match:
+            config["server"] = srv_match.group(1)
+
+    if not config["database"]:
+        db_match = re.search(r'(?:database|dbname|catalog|basedados)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
+        if db_match:
+            config["database"] = db_match.group(1)
+
+    if not config["username"]:
+        usr_match = re.search(r'(?:user|username|userid|utilizador)\s*[:=><"]+\s*([^"\'<>\s;]+)', plain_text, re.IGNORECASE)
+        if usr_match:
+            config["username"] = usr_match.group(1)
+
+    return {
+        "plain_text": plain_text,
+        "config": config,
+        "passwords_found": passwords_found,
+    }
