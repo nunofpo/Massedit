@@ -105,6 +105,21 @@ class TestContracts(unittest.TestCase):
         self.assertFalse(is_valid_empty)
         self.assertEqual(msg_empty, "NIF Vazio")
 
+    def test_unique_codes_deduplication(self):
+        from backend.services.products import _unique_codes
+        raw = [101, 102, 101, "103", 102, "bad", None, 104]
+        res = _unique_codes(raw)
+        self.assertEqual(res, [101, 102, 103, 104])
+
+    def test_chunks_partitioning(self):
+        from backend.services.products import _chunks
+        items = list(range(1250))
+        chunks = list(_chunks(items, 500))
+        self.assertEqual(len(chunks), 3)
+        self.assertEqual(len(chunks[0]), 500)
+        self.assertEqual(len(chunks[1]), 500)
+        self.assertEqual(len(chunks[2]), 250)
+
 
 if __name__ == "__main__":
     unittest.main()

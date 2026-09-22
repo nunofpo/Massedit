@@ -330,9 +330,16 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
             where.append("p.codigo BETWEEN ? AND ?")
             params.extend([c_start, c_end])
         elif len(list_match) > 1 and all(len(x) <= 8 for x in list_match) and ("," in raw_search or ";" in raw_search):
-            code_ints = [int(x) for x in list_match]
-            where.append(f"p.codigo IN ({_placeholders(len(code_ints))})")
-            params.extend(code_ints)
+            code_ints = _unique_codes(list_match)
+            if len(code_ints) <= 1000:
+                where.append(f"p.codigo IN ({_placeholders(len(code_ints))})")
+                params.extend(code_ints)
+            else:
+                in_clauses = []
+                for chunk in _chunks(code_ints, 1000):
+                    in_clauses.append(f"p.codigo IN ({_placeholders(len(chunk))})")
+                    params.extend(chunk)
+                where.append(f"({' OR '.join(in_clauses)})")
         else:
             st = f"%{raw_search}%"
             where.append(
@@ -397,7 +404,8 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
         if filters.codes is not None and len(filters.codes) > 1000:
             temp_table = "#filter_codes_search"
             cursor.execute(f"CREATE TABLE {temp_table} (codigo INT PRIMARY KEY)")
-            for chunk in _chunks(filters.codes, 1000):
+            unique_codes_list = _unique_codes(filters.codes)
+            for chunk in _chunks(unique_codes_list, 1000):
                 val_rows = ",".join(["(?)"] * len(chunk))
                 cursor.execute(f"INSERT INTO {temp_table} (codigo) VALUES {val_rows}", chunk)
 
@@ -419,7 +427,7 @@ def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
         sort_col = sort_map.get(filters.sort_by or "codigo", "p.codigo")
         sort_dir = "DESC" if filters.sort_order == "desc" else "ASC"
         order_sql = f"{sort_col} {sort_dir}" + (", p.codigo ASC" if sort_col != "p.codigo" else "")
-        offset = (page - 1) * page_size
+        offset = max(0, (page - 1) * page_size)
 
         cursor.execute(
             f"SELECT {_product_select_sql(schema)} {PRODUCT_FROM_SQL} WHERE {where_sql} "
@@ -446,7 +454,8 @@ def get_filtered_product_codes(filters: ProductFilter) -> Dict[str, Any]:
         if filters.codes is not None and len(filters.codes) > 1000:
             temp_table = "#filter_codes_list"
             cursor.execute(f"CREATE TABLE {temp_table} (codigo INT PRIMARY KEY)")
-            for chunk in _chunks(filters.codes, 1000):
+            unique_codes_list = _unique_codes(filters.codes)
+            for chunk in _chunks(unique_codes_list, 1000):
                 val_rows = ",".join(["(?)"] * len(chunk))
                 cursor.execute(f"INSERT INTO {temp_table} (codigo) VALUES {val_rows}", chunk)
 

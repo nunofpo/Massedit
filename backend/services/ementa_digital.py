@@ -18,7 +18,8 @@ from backend.models import (
     EmentaSaveTranslationsRequest, EmentaSaveFamilyTranslationsRequest
 )
 from backend.services.products import (
-    _schema, _text_limit, _chunks, create_backup_snapshot, transform_text_case
+    _schema, _text_limit, _chunks, _unique_codes, _placeholders,
+    create_backup_snapshot, transform_text_case
 )
 
 # Diretório para armazenamento local de imagens caso a base de dados use image_url relativo
@@ -548,7 +549,7 @@ def search_ementa_products(filter_req: EmentaProductFilter) -> EmentaProductResp
         total_count = count_row[0] if count_row else 0
 
         # Paginação
-        offset = (filter_req.page - 1) * filter_req.page_size
+        offset = max(0, (filter_req.page - 1) * filter_req.page_size)
         total_pages = max(1, (total_count + filter_req.page_size - 1) // filter_req.page_size)
 
         if has_ementa:
@@ -714,9 +715,17 @@ def import_products_to_ementa(req: EmentaImportFromPosRequest) -> EmentaImportRe
         where_parts = ["1=1"]
         params: List[Any] = []
         if req.codes:
-            placeholders = ",".join("?" for _ in req.codes)
-            where_parts.append(f"p.codigo IN ({placeholders})")
-            params.extend(req.codes)
+            unique_req_codes = _unique_codes(req.codes)
+            if len(unique_req_codes) <= 1000:
+                placeholders = ",".join("?" for _ in unique_req_codes)
+                where_parts.append(f"p.codigo IN ({placeholders})")
+                params.extend(unique_req_codes)
+            else:
+                in_clauses = []
+                for chunk in _chunks(unique_req_codes, 1000):
+                    in_clauses.append(f"p.codigo IN ({_placeholders(len(chunk))})")
+                    params.extend(chunk)
+                where_parts.append(f"({' OR '.join(in_clauses)})")
         elif req.familia is not None:
             where_parts.append("p.familia = ?")
             params.append(req.familia)
@@ -762,11 +771,14 @@ def import_products_to_ementa(req: EmentaImportFromPosRequest) -> EmentaImportRe
                 message="Nenhum artigo novo para importar para a ementa digital com os critérios indicados."
             )
 
-        # Snapshot de backup
+        # Snapshot de backup (particionado para nunca exceder o limite de 2100 parâmetros do SQL Server)
         codes_list = [int(r[0]) for r in to_import]
-        cursor.execute(f"SELECT * FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({','.join('?' for _ in codes_list)})", codes_list)
-        desc = [c[0].lower() for c in cursor.description]
-        prev_snapshot = [dict(zip(desc, row)) for row in cursor.fetchall()]
+        prev_snapshot = []
+        for chunk in _chunks(codes_list, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"SELECT * FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", chunk)
+            desc = [c[0].lower() for c in cursor.description]
+            prev_snapshot.extend([dict(zip(desc, row)) for row in cursor.fetchall()])
 
         try:
             create_backup_snapshot(
@@ -1692,22 +1704,31 @@ def detect_products_with_image_issues(
     """
     import io
     from PIL import Image
-    conn = db_manager.get_connection()
+    prods = []
+    conn = None
     try:
+        conn = db_manager.get_connection()
         cursor = conn.cursor()
         schema = _schema(cursor)
         if "ementa_digital_produtos" not in schema:
             return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "issues": [], "total_scanned": 0, "issue_count": 0}
 
         if cod_produtos and len(cod_produtos) > 0:
-            placeholders = ",".join("?" for _ in cod_produtos)
-            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+            unique_prod_codes = _unique_codes(cod_produtos)
+            for chunk in _chunks(unique_prod_codes, 500):
+                placeholders = ",".join("?" for _ in chunk)
+                cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", chunk)
+                prods.extend(cursor.fetchall())
         else:
             cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+            prods = cursor.fetchall()
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao aceder à base de dados para detetar imagens: {str(e)}", "issues": [], "total_scanned": 0, "issue_count": 0}
+    finally:
+        if conn:
+            conn.close()
 
-        prods = cursor.fetchall()
-        conn.close()
-
+    try:
         issues = []
         for row in prods:
             cod = int(row[0])
@@ -1772,22 +1793,31 @@ def batch_fix_product_image_borders(
     Varre os artigos da ementa digital que possuem imagem, deteta bordas cinzentas / artefactos / dimensões excessivas
     e re-processa com ajuste automático (remoção de bordas cinzentas, fundo branco puro para transparências, máx 600x600 px).
     """
-    conn = db_manager.get_connection()
+    prods = []
+    conn = None
     try:
+        conn = db_manager.get_connection()
         cursor = conn.cursor()
         schema = _schema(cursor)
         if "ementa_digital_produtos" not in schema:
             return {"success": False, "message": "A tabela dbo.ementa_digital_produtos não existe.", "total": 0, "fixed": 0, "details": []}
 
         if cod_produtos and len(cod_produtos) > 0:
-            placeholders = ",".join("?" for _ in cod_produtos)
-            cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", cod_produtos)
+            unique_prod_codes = _unique_codes(cod_produtos)
+            for chunk in _chunks(unique_prod_codes, 500):
+                placeholders = ",".join("?" for _ in chunk)
+                cursor.execute(f"SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE cod_produto IN ({placeholders})", chunk)
+                prods.extend(cursor.fetchall())
         else:
             cursor.execute("SELECT cod_produto, produto, image_url FROM dbo.ementa_digital_produtos WHERE (image_url IS NOT NULL AND image_url <> '') OR (imagem IS NOT NULL AND DATALENGTH(imagem) > 0)")
+            prods = cursor.fetchall()
+    except Exception as e:
+        return {"success": False, "message": f"Erro ao aceder à base de dados para corrigir imagens: {str(e)}", "total": 0, "fixed": 0, "details": []}
+    finally:
+        if conn:
+            conn.close()
 
-        prods = cursor.fetchall()
-        conn.close()
-
+    try:
         total = len(prods)
         fixed_count = 0
         unmodified_count = 0

@@ -43,16 +43,19 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 
 
 def get_next_auto_code() -> int:
+    conn = None
     try:
         conn = db_manager.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT ISNULL(MAX(codigo), 7000000) FROM dbo.produtos WHERE codigo >= 7000000 AND codigo < 8000000")
         row = cursor.fetchone()
         next_c = (row[0] if row and row[0] >= 7000000 else 7000000) + 1
-        conn.close()
         return max(7000001, next_c)
     except Exception:
         return 7000001
+    finally:
+        if conn:
+            conn.close()
 
 
 def parse_plain_text_menu(text: str) -> MenuExtractionResponse:
@@ -320,6 +323,7 @@ def convert_matched_to_import_rows(rows: List[MenuReviewedRow], price_mapping: D
     created_fam_cache: Dict[str, int] = {}
 
     auto_code = 7000001
+    conn = None
     try:
         conn = db_manager.get_connection()
         cursor = conn.cursor()
@@ -328,9 +332,11 @@ def convert_matched_to_import_rows(rows: List[MenuReviewedRow], price_mapping: D
         auto_code = (row_c[0] if row_c and row_c[0] >= 7000000 else 7000000) + 1
         if auto_code < 7000001:
             auto_code = 7000001
-        conn.close()
     except Exception:
         pass
+    finally:
+        if conn:
+            conn.close()
 
     for r in rows:
         if r.selected is False:
