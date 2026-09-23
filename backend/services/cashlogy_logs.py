@@ -1467,8 +1467,11 @@ def _analyze(files: List[Tuple[str, bytes]], timeline: bool = False):
     events = _collect_events(result, private) if timeline else []
     if timeline and "com" in result:
         private[("com", "_charges")] = [
-            {"start": r["_start"], "end": r["_end"], "amount": r["amount"], "net": r["net"],
-             "cancelled": r["cancelled"], "ok": r["ok"], "result": r["result"]}
+            {"start": r["_start"], "end": r["_end"], "amount": r["amount"],
+             "introduced": r.get("introduced", 0), "returned": r.get("returned", 0),
+             "net": r["net"], "cancelled": r["cancelled"], "ok": r["ok"], "result": r["result"],
+             "duration_ms": r.get("duration_ms", 0), "tran_match": r.get("tran_match"),
+             "tran_in": r.get("tran_in"), "tran_out": r.get("tran_out")}
             for r in result["com"]["operations"] if r["kind"] == "charge"]
 
     if "com" in result:
@@ -1571,6 +1574,304 @@ def _context_lines(private: Dict[Tuple[str, str], Any], end: datetime) -> List[s
     return lines
 
 
+def _generate_human_explanation(
+    inside: List[Dict[str, Any]],
+    private: Dict[Tuple[str, str], Any],
+    when: datetime,
+    start: datetime,
+    end: datetime,
+    sales_out: Optional[Dict[str, Any]] = None,
+    context: Optional[List[str]] = None,
+    highlights: Optional[List[Dict[str, Any]]] = None,
+    quiet: Optional[List[str]] = None,
+    device: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    context = context or []
+    highlights = highlights or []
+    quiet = quiet or []
+    device = device or {}
+
+    if not inside:
+        headline = "Nenhum evento registado nesta janela temporal."
+        story = [f"Os ficheiros carregados não contêm qualquer registo entre {start.strftime('%H:%M:%S')} e {end.strftime('%H:%M:%S')}."]
+        return {
+            "headline": headline,
+            "status": "neutral",
+            "story": story,
+            "financial": None,
+            "cause": None,
+            "recommendations": ["Alargar a janela de minutos antes/depois ou confirmar a hora do incidente."],
+            "client_report": {
+                "datetime": _fmt(when),
+                "date": when.strftime("%d/%m/%Y"),
+                "time": when.strftime("%H:%M:%S"),
+                "terminal": device.get("ip") or device.get("windows") or "Caixa / Terminal",
+                "headline": headline,
+                "summary": f"No dia {when.strftime('%d/%m/%Y')}, pelas {when.strftime('%H:%M')}, não foram registadas ocorrências nos ficheiros analisados.",
+                "financial": None,
+                "suggested_settlement": "sem_valores",
+            },
+        }
+
+    charges = [
+        c for c in private.get(("com", "_charges"), [])
+        if c["start"] <= end and c["end"] >= start
+    ]
+
+    logerr_events = [e for e in inside if e["source"] == "logerr"]
+    incapaz_events = [e for e in logerr_events if "INCAPAZ DE PAGAR" in e["title"]]
+    hw_errors = [e for e in inside if e["source"] in ("errors", "logerr") and e["severity"] in ("error", "warning") and "INCAPAZ DE PAGAR" not in e["title"]]
+    usr_events = [e for e in inside if e["source"] == "usr"]
+
+    if charges:
+        charges.sort(key=lambda c: (
+            0 if (not c.get("ok") or c.get("cancelled") or (c.get("net") != c.get("amount"))) else 1,
+            abs((c["start"] - when).total_seconds())
+        ))
+        main_c = charges[0]
+        amount = main_c.get("amount", 0)
+        introduced = main_c.get("introduced", 0)
+        returned = main_c.get("returned", 0)
+        cancelled = main_c.get("cancelled", False)
+        ok = main_c.get("ok", True)
+        result_code = main_c.get("result", "0")
+        expected_change = max(0, introduced - amount) if not cancelled else introduced
+        diff = returned - expected_change
+
+        start_ts = main_c["start"].strftime("%H:%M:%S")
+        end_ts = main_c["end"].strftime("%H:%M:%S")
+        duration_s = (main_c["end"] - main_c["start"]).total_seconds()
+
+        # Se o LogTran registar uma saída física diferente do que o Connector reportou:
+        physical_out = main_c.get("tran_out")
+        tran_mismatch = (main_c.get("tran_match") is False and physical_out is not None and physical_out != returned)
+        if tran_mismatch and physical_out < expected_change:
+            diff = physical_out - expected_change
+
+        if cancelled:
+            if diff == 0 or returned == introduced:
+                status = "warning"
+                headline = f"Cobrança de {_eur(amount)} cancelada: todo o dinheiro introduzido ({_eur(returned)}) foi devolvido ao cliente."
+                client_impact = "A operação foi cancelada e o cliente recuperou todo o dinheiro inserido. Não houve retenção."
+                cause = "A transação foi cancelada no POS ou no ecrã da máquina antes da conclusão."
+                recommendations = ["Se a venda foi cancelada por engano, reiniciar a operação no POS."]
+                diff_str = "0,00 €"
+                settlement = "Sem valores em falta"
+                settlement_code = "sem_valores"
+            else:
+                status = "danger"
+                retido = abs(diff) if diff != 0 else (introduced - returned)
+                headline = f"Cobrança cancelada com retenção: o cliente inseriu {_eur(introduced)}, mas a máquina só devolveu {_eur(returned)} (ficaram retidos {_eur(retido)})."
+                client_impact = f"Ficaram retidos {_eur(retido)} na máquina após o cancelamento da cobrança."
+                cause = "A transação foi cancelada, mas a máquina não conseguiu ejetar todas as notas ou moedas introduzidas."
+                recommendations = [f"Reembolsar o cliente no valor retido de {_eur(retido)}.", "Verificar se o dinheiro foi parar ao cofre (stacker) ou ficou preso no validador."]
+                diff_str = f"-{_eur(retido)}"
+                settlement = "Pendente de reembolso ao cliente"
+                settlement_code = "dinheiro_manual"
+        elif diff < 0:
+            status = "danger"
+            missing = abs(diff)
+            headline = f"Troco incompleto: ficaram em falta {_eur(missing)} de troco ao cliente."
+            client_impact = f"Ficaram em falta {_eur(missing)} de troco ao cliente."
+            if tran_mismatch and physical_out is not None:
+                cause = f"Divergência entre software e saída física: o Connector reportou devolução de {_eur(returned)}, mas o LogTran registou a saída de apenas {_eur(physical_out)} (ficaram retidos {_eur(returned - physical_out)} dentro da máquina)."
+            elif incapaz_events:
+                cause = f"Falha na dispensa de troco: a máquina registou o erro '{incapaz_events[0]['title']}'. O reciclador falhou por falta de moedas/notas ou encravamento mecânico."
+            elif result_code == "WR:LEVEL":
+                cause = "A máquina emitiu aviso de nível (WR:LEVEL): um ou mais módulos recicladores de troco estavam no limite mínimo ou vazios."
+            else:
+                cause = f"A máquina não dispensou o troco completo ({_eur(missing)} em falta), provavelmente por esgotamento de stock de moedas/notas ou bloqueio mecânico."
+            recommendations = [
+                "Confirmar se o operador compensou o cliente manualmente no momento com dinheiro de caixa.",
+                "Verificar os níveis de stock dos recicladores e efetuar recarga de troco.",
+                "Inspecionar as calhas de saída do dispensador de moedas e notas para verificar bloqueios.",
+            ]
+            diff_str = f"-{_eur(missing)}"
+            settlement = "Pendente de reembolso ao cliente"
+            settlement_code = "dinheiro_manual"
+        elif diff > 0:
+            status = "warning"
+            headline = f"Troco em excesso: a máquina devolveu {_eur(diff)} a mais do que o troco previsto."
+            client_impact = f"O cliente recebeu {_eur(diff)} a mais de troco."
+            cause = "Possível dupla dispensa mecânica de moeda ou nota pelo reciclador."
+            recommendations = ["Realizar conferência do stock físico do equipamento."]
+            diff_str = f"+{_eur(diff)}"
+            settlement = "Diferença a favor do cliente"
+            settlement_code = "diferenca_cliente"
+        else:
+            status = "success"
+            headline = f"Cobrança de {_eur(amount)} concluída com sucesso: valores corretos e troco entregue."
+            client_impact = "O valor cobrado e o troco entregue conferem na totalidade sem anomalias."
+            cause = "Operação normal e sem erros registados."
+            recommendations = []
+            diff_str = "0,00 €"
+            settlement = "Regularizado"
+            settlement_code = "sem_valores"
+
+        financial = {
+            "has_values": True,
+            "requested": _eur(amount),
+            "paid": _eur(introduced),
+            "expected_change": _eur(expected_change),
+            "returned": _eur(returned),
+            "difference": diff_str,
+            "difference_raw": diff,
+            "client_impact": client_impact,
+            "settlement_status": settlement,
+        }
+
+        story = [f"Às {start_ts}, o POS solicitou uma cobrança no valor de {_eur(amount)}."]
+        if introduced > 0:
+            story.append(f"O cliente introduziu {_eur(introduced)} em dinheiro na máquina.")
+        if cancelled:
+            story.append(f"Às {end_ts}, a cobrança foi cancelada no sistema (duração: {duration_s:.1f} s).")
+            if returned > 0:
+                story.append(f"A máquina devolveu {_eur(returned)} ao cliente.")
+            else:
+                story.append("A máquina não devolveu nenhum valor ao cliente.")
+        else:
+            if expected_change > 0:
+                story.append(f"O troco calculado a devolver era de {_eur(expected_change)}.")
+            if diff < 0:
+                actual_out = physical_out if (tran_mismatch and physical_out is not None) else returned
+                note_sw = f" (o software indicou {_eur(returned)})" if (tran_mismatch and physical_out is not None) else ""
+                story.append(f"A máquina apenas dispensou {_eur(actual_out)} de troco{note_sw}, ficando em falta {_eur(abs(diff))}.")
+            elif diff > 0:
+                story.append(f"A máquina dispensou {_eur(returned)} de troco ({_eur(diff)} a mais do que o previsto).")
+            elif returned > 0:
+                story.append(f"A máquina dispensou {_eur(returned)} de troco com sucesso (duração: {duration_s:.1f} s).")
+
+        for e in logerr_events:
+            story.append(f"Às {e['dt'].strftime('%H:%M:%S')}, o LogErr registou: '{e['title']}'{(' (' + e['detail'] + ')') if e['detail'] else ''}.")
+        for e in hw_errors:
+            story.append(f"Às {e['dt'].strftime('%H:%M:%S')}, o hardware reportou: '{e['title']}'.")
+        for a in usr_events:
+            if a["dt"] >= main_c["start"] - timedelta(seconds=5):
+                story.append(f"Às {a['dt'].strftime('%H:%M:%S')}: {a['title']}{(' — ' + a['detail']) if a['detail'] else ''}.")
+
+        if sales_out and sales_out.get("matched", 0) > 0:
+            story.append("A venda correspondente foi validada e identificada na base de dados de faturação do POS.")
+        elif sales_out and sales_out.get("sales", 0) > 0:
+            story.append("Foram detetadas vendas no POS nesta janela temporal, mas nenhuma foi associada automaticamente a esta cobrança.")
+
+    elif incapaz_events:
+        inc_e = incapaz_events[0]
+        m = re.search(r"INCAPAZ DE PAGAR\s+([\d,.]+)\s*€?", inc_e["title"], re.IGNORECASE)
+        missing_val = m.group(1).strip() + " €" if m else "valor não especificado"
+        status = "danger"
+        headline = f"Falha na dispensa de troco ({missing_val}): registado erro 'INCAPAZ DE PAGAR'."
+        client_impact = f"Ficaram em falta {missing_val} de troco ao cliente."
+        cause = "O módulo reciclador/devolvedor falhou ao tentar dispensar o troco solicitado (bloqueio físico ou stock esgotado)."
+        recommendations = [
+            "Confirmar se o cliente foi compensado manualmente pelo operador no momento.",
+            "Verificar o nível de troco e possíveis encravamentos nos módulos devolvedores.",
+        ]
+        financial = {
+            "has_values": True,
+            "requested": "—",
+            "paid": "—",
+            "expected_change": "—",
+            "returned": "—",
+            "difference": f"-{missing_val}",
+            "difference_raw": -1,
+            "client_impact": client_impact,
+            "settlement_status": "Pendente de reembolso ao cliente",
+        }
+        settlement_code = "dinheiro_manual"
+        story = [f"Às {e['dt'].strftime('%H:%M:%S')}: [{SOURCE_LABELS.get(e['source'], e['source'])}] {e['title']}{(' — ' + e['detail']) if e['detail'] else ''}." for e in inside]
+
+    elif hw_errors:
+        first_err = hw_errors[0]
+        status = "danger"
+        headline = f"Ocorrência de hardware no equipamento: {first_err['title']}."
+        client_impact = "Alerta técnico nos módulos do equipamento Cashlogy."
+        cause = f"Erro reportado pelos sensores ou drivers do Cashlogy ({first_err['title']})."
+        recommendations = ["Verificar estado físico dos módulos, limpar sensores ou reiniciar o equipamento."]
+        financial = None
+        settlement_code = "sem_valores"
+        story = [f"Às {e['dt'].strftime('%H:%M:%S')}: [{SOURCE_LABELS.get(e['source'], e['source'])}] {e['title']}{(' — ' + e['detail']) if e['detail'] else ''}." for e in inside]
+
+    elif any(e["source"] == "tran" for e in inside):
+        tran_ins = sum(a for _, d, a in private.get(("tran", "_moves"), []) if d == "in" and start <= _ <= end)
+        tran_outs = sum(a for _, d, a in private.get(("tran", "_moves"), []) if d == "out" and start <= _ <= end)
+        status = "info"
+        headline = f"Movimentação física de dinheiro: entrada de {_eur(tran_ins)} e saída de {_eur(tran_outs)}."
+        financial = {
+            "has_values": True,
+            "requested": "—",
+            "paid": _eur(tran_ins),
+            "expected_change": "—",
+            "returned": _eur(tran_outs),
+            "difference": _eur(tran_ins - tran_outs),
+            "difference_raw": tran_ins - tran_outs,
+            "client_impact": "Movimento de notas/moedas registado no aceitador/devolvedor.",
+            "settlement_status": "Registado",
+        }
+        settlement_code = "sem_valores"
+        cause = "Entrada ou saída de dinheiro registada no validador."
+        recommendations = []
+        story = [f"Às {e['dt'].strftime('%H:%M:%S')}: [{SOURCE_LABELS.get(e['source'], e['source'])}] {e['title']}{(' — ' + e['detail']) if e['detail'] else ''}." for e in inside]
+
+    elif usr_events:
+        status = "info"
+        headline = f"Ação de operador registada: {usr_events[0]['title']}."
+        financial = None
+        cause = "Operação executada pelo utilizador no ecrã ou menu de manutenção."
+        recommendations = []
+        settlement_code = "sem_valores"
+        story = [f"Às {e['dt'].strftime('%H:%M:%S')}: [{SOURCE_LABELS.get(e['source'], e['source'])}] {e['title']}{(' — ' + e['detail']) if e['detail'] else ''}." for e in inside]
+
+    else:
+        status = "info"
+        headline = f"Registo de {len(inside)} evento(s) no intervalo."
+        financial = None
+        cause = None
+        recommendations = []
+        settlement_code = "sem_valores"
+        story = [f"Às {e['dt'].strftime('%H:%M:%S')}: [{SOURCE_LABELS.get(e['source'], e['source'])}] {e['title']}{(' — ' + e['detail']) if e['detail'] else ''}." for e in inside]
+
+    dedup_story = []
+    for line in story:
+        if not dedup_story or dedup_story[-1] != line:
+            dedup_story.append(line)
+
+    client_report_summary = (
+        f"No dia {when.strftime('%d/%m/%Y')}, pelas {when.strftime('%H:%M')}, registou-se uma ocorrência no equipamento de pagamento automático (Cashlogy):\n"
+        f"{headline}\n\n"
+    )
+    if financial and financial.get("has_values"):
+        client_report_summary += (
+            f"Discriminação de valores apurados:\n"
+            f"• Valor da compra: {financial['requested']}\n"
+            f"• Valor entregue pelo cliente: {financial['paid']}\n"
+            f"• Troco previsto: {financial['expected_change']}\n"
+            f"• Troco devolvido pela máquina: {financial['returned']}\n"
+            f"• Diferença apurada: {financial['difference']}\n"
+            f"• Conclusão: {financial['client_impact']}\n"
+        )
+    if cause:
+        client_report_summary += f"\nCausa técnica apurada: {cause}\n"
+
+    return {
+        "headline": headline,
+        "status": status,
+        "story": dedup_story,
+        "financial": financial,
+        "cause": cause,
+        "recommendations": recommendations,
+        "client_report": {
+            "datetime": _fmt(when),
+            "date": when.strftime("%d/%m/%Y"),
+            "time": when.strftime("%H:%M:%S"),
+            "terminal": device.get("ip") or device.get("windows") or "Caixa / Terminal",
+            "headline": headline,
+            "summary": client_report_summary,
+            "financial": financial,
+            "suggested_settlement": settlement_code,
+        },
+    }
+
+
 def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int = 5, after_min: int = 5,
                 sales_fetcher: Optional[Any] = None) -> Dict[str, Any]:
     """Linha do tempo única de todos os logs recebidos no intervalo [when-before, when+after].
@@ -1624,6 +1925,20 @@ def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int 
     for g in highlights:
         g["first"], g["last"] = _fmt_ms(g["first"]), _fmt_ms(g["last"])
 
+    context = _context_lines(private, end)
+    explanation = _generate_human_explanation(
+        inside=inside,
+        private=private,
+        when=when,
+        start=start,
+        end=end,
+        sales_out=sales_out,
+        context=context,
+        highlights=highlights,
+        quiet=quiet,
+        device=out.get("device", {}),
+    )
+
     return {
         "window": {"center": _fmt(when), "start": _fmt(start), "end": _fmt(end),
                    "before_min": before_min, "after_min": after_min},
@@ -1634,10 +1949,12 @@ def investigate(files: List[Tuple[str, bytes]], when: datetime, before_min: int 
         "ignored": out["ignored"],
         "quiet_sources": quiet,
         "highlights": highlights[:40],
-        "context": _context_lines(private, end),
+        "context": context,
         "events": [{"ts": _fmt_ms(e["dt"]), "source": e["source"], "source_label": SOURCE_LABELS[e["source"]],
                     "kind": e["kind"], "severity": e["severity"], "title": e["title"], "detail": e["detail"]}
                    for e in inside[:MAX_TIMELINE]],
         "events_truncated": len(inside) > MAX_TIMELINE,
         "sales": sales_out,
+        "device": out.get("device", {}),
+        "explanation": explanation,
     }

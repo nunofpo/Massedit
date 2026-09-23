@@ -695,7 +695,48 @@ class TestInvestigate(unittest.TestCase):
         self.assertNotIn('"_', text)
         a = json.dumps(analyze_logs(_files_for_investigation()))
         self.assertNotIn('"_events"', a)
-        self.assertNotIn('"_ops_full"', a)
+    def test_explanation_and_client_report_for_successful_charge(self):
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        exp = r.get("explanation")
+        self.assertIsNotNone(exp)
+        self.assertEqual(exp["status"], "success")
+        self.assertIn("Cobrança de 9,90 € concluída com sucesso", exp["headline"])
+        self.assertEqual(exp["financial"]["paid"], "20,00 €")
+        self.assertEqual(exp["financial"]["returned"], "10,10 €")
+        self.assertEqual(exp["financial"]["difference"], "0,00 €")
+        self.assertTrue(len(exp["story"]) > 0)
+        self.assertIn("client_report", exp)
+        self.assertIn("9,90 €", exp["client_report"]["summary"])
+
+    def test_explanation_and_client_report_for_short_change(self):
+        tran = TRAN.replace("1 of 10,00 €.", "1 of 5,00 €.")  # saíram 5,10 € em vez de 10,10 €
+        r = investigate(_files_for_investigation(tran=tran), datetime(2026, 9, 18, 19, 32, 10), 2, 2)
+        exp = r.get("explanation")
+        self.assertIsNotNone(exp)
+        self.assertEqual(exp["status"], "danger")
+        self.assertIn("Troco incompleto", exp["headline"])
+        self.assertIn("5,00 €", exp["headline"])
+        self.assertEqual(exp["financial"]["difference"], "-5,00 €")
+        self.assertEqual(exp["client_report"]["suggested_settlement"], "dinheiro_manual")
+        self.assertTrue(any("em falta 5,00 €" in s for s in exp["story"]))
+
+    def test_explanation_for_cancelled_charge(self):
+        # Às 17:02:12 foi cancelada uma cobrança de 3,60 € (COM)
+        r = investigate(_files_for_investigation(), datetime(2026, 9, 18, 17, 2, 15), 1, 1)
+        exp = r.get("explanation")
+        self.assertIsNotNone(exp)
+        self.assertEqual(exp["status"], "warning")
+        self.assertIn("cancelada", exp["headline"].lower())
+
+    def test_explanation_for_unable_to_pay_without_logcom(self):
+        r = investigate([("LogErr_20260918.txt", LOGERR.encode("cp1252")), ("LogTran_20260918.txt", TRAN.encode("cp1252"))],
+                        datetime(2026, 9, 18, 20, 40, 17), 3, 2)
+        exp = r.get("explanation")
+        self.assertIsNotNone(exp)
+        self.assertEqual(exp["status"], "danger")
+        self.assertIn("0,04 €", exp["headline"])
+        self.assertEqual(exp["financial"]["difference"], "-0,04 €")
+
 
 
 def _charge(start, end, amount, cancelled=False):

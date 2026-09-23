@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   X, Upload, RefreshCw, ScrollText, AlertCircle, AlertTriangle, Info, Check,
-  ArrowDownToLine, ArrowUpFromLine, FileText,
+  ArrowDownToLine, ArrowUpFromLine, FileText, Printer, Copy,
 } from 'lucide-react';
 
 interface CashlogyLogsModalProps {
@@ -130,6 +130,39 @@ interface Analysis {
 
 type TabId = 'summary' | 'investigate' | 'transactions' | 'alerts' | 'levels' | 'connector' | 'operator' | 'times' | 'payments' | 'device';
 
+interface FinancialSummary {
+  has_values: boolean;
+  requested: string;
+  paid: string;
+  expected_change: string;
+  returned: string;
+  difference: string;
+  difference_raw: number;
+  client_impact: string;
+  settlement_status: string;
+}
+
+interface ClientReportData {
+  datetime: string;
+  date: string;
+  time: string;
+  terminal: string;
+  headline: string;
+  summary: string;
+  financial?: FinancialSummary | null;
+  suggested_settlement: string;
+}
+
+interface HumanExplanation {
+  headline: string;
+  status: 'danger' | 'warning' | 'success' | 'info' | 'neutral';
+  story: string[];
+  financial?: FinancialSummary | null;
+  cause?: string | null;
+  recommendations: string[];
+  client_report: ClientReportData;
+}
+
 // Resposta de /api/cashlogy/investigate
 interface InvEvent { ts: string; source: string; source_label: string; kind: string; severity: 'error' | 'warning' | 'info' | 'ok'; title: string; detail: string }
 interface Investigation {
@@ -146,6 +179,8 @@ interface Investigation {
     requested: boolean; available: boolean; reason: string | null; truncated: boolean;
     sales: number; matched: number; cash_codes: number[]; note: string | null;
   };
+  device?: Record<string, string>;
+  explanation?: HumanExplanation;
 }
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -345,6 +380,107 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
   const [invError, setInvError] = useState<string | null>(null);
   const [invCopied, setInvCopied] = useState(false);
 
+  const [showClientReport, setShowClientReport] = useState(false);
+  const [clientReportMeta, setClientReportMeta] = useState({
+    clientName: '',
+    clientNif: '',
+    operatorName: 'Operador de Caixa',
+    terminal: '',
+    settlement: 'dinheiro_manual',
+    customNotes: '',
+  });
+  const [clientReportCopied, setClientReportCopied] = useState(false);
+
+  const openClientReport = () => {
+    if (!inv || !inv.explanation) return;
+    const rep = inv.explanation.client_report;
+    setClientReportMeta({
+      clientName: '',
+      clientNif: '',
+      operatorName: 'Operador de Caixa',
+      terminal: rep.terminal || 'Caixa / Terminal',
+      settlement: rep.suggested_settlement || 'dinheiro_manual',
+      customNotes: '',
+    });
+    setShowClientReport(true);
+  };
+
+  const generateClientReportText = () => {
+    if (!inv || !inv.explanation) return '';
+    const exp = inv.explanation;
+    const fin = exp.financial;
+    const rep = exp.client_report;
+
+    const settlementText =
+      clientReportMeta.settlement === 'dinheiro_manual'
+        ? `O montante em falta (${fin?.difference || 'apurado'}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
+        : clientReportMeta.settlement === 'pendente'
+        ? `O montante em falta (${fin?.difference || 'apurado'}) encontra-se pendente de regularização / liquidação futura ao cliente.`
+        : 'Transação confirmada sem retenção de valores nem montantes em falta.';
+
+    return [
+      '====================================================================',
+      '        DECLARAÇÃO DE OCORRÊNCIA EM EQUIPAMENTO CASHLOGY',
+      '           (Comprovativo de Anomalia de Cobrança / Troco)',
+      '====================================================================',
+      '',
+      `Data e Hora do Incidente: ${rep.date} às ${rep.time}`,
+      `Equipamento / Terminal:   ${clientReportMeta.terminal || 'Caixa / Terminal'}`,
+      `Operador Responsável:     ${clientReportMeta.operatorName || 'Operador de Caixa'}`,
+      ...(clientReportMeta.clientName ? [`Nome do Cliente:          ${clientReportMeta.clientName}`] : []),
+      ...(clientReportMeta.clientNif ? [`NIF do Cliente:           ${clientReportMeta.clientNif}`] : []),
+      '',
+      '--------------------------------------------------------------------',
+      'DESCRIÇÃO DOS FACTOS:',
+      `Declara-se que na data e hora supramencionadas, durante o processo de pagamento,`,
+      `verificou-se a seguinte ocorrência no equipamento automático de numerário:`,
+      `"${exp.headline}"`,
+      '',
+      ...(fin && fin.has_values ? [
+        '--------------------------------------------------------------------',
+        'DISCRIMINAÇÃO DOS VALORES APURADOS:',
+        `  • Valor a Cobrar / Compra:             ${fin.requested}`,
+        `  • Valor Entregue pelo Cliente:         ${fin.paid}`,
+        `  • Troco Previsto / Devido:             ${fin.expected_change}`,
+        `  • Troco Dispensado pelo Equipamento:   ${fin.returned}`,
+        `  ------------------------------------------------------------------`,
+        `  • DIFERENÇA APURADA / EM FALTA:        ${fin.difference}`,
+        `  • Conclusão:                           ${fin.client_impact}`,
+        '',
+      ] : []),
+      '--------------------------------------------------------------------',
+      'SITUAÇÃO DA REGULARIZAÇÃO:',
+      settlementText,
+      '',
+      ...(clientReportMeta.customNotes ? [
+        'OBSERVAÇÕES ADICIONAIS:',
+        clientReportMeta.customNotes,
+        '',
+      ] : []),
+      '--------------------------------------------------------------------',
+      '',
+      'Assinatura do Responsável do Estabelecimento: ________________________',
+      '',
+      'Assinatura / Confirmação do Cliente:         ________________________',
+      '',
+      '====================================================================',
+    ].join('\n');
+  };
+
+  const copyClientReport = async () => {
+    try {
+      await navigator.clipboard.writeText(generateClientReportText());
+      setClientReportCopied(true);
+      setTimeout(() => setClientReportCopied(false), 2000);
+    } catch {
+      alert('Não foi possível copiar para a área de transferência.');
+    }
+  };
+
+  const printClientReport = () => {
+    window.print();
+  };
+
   const investigate = async () => {
     setInvError(null);
     const day = invDate || (data?.period.end ? data.period.end.slice(0, 10) : '');
@@ -372,12 +508,30 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     if (!inv) return;
     const lines = [
       `Intervalo: ${inv.window.start} → ${inv.window.end} (${inv.summary.events} eventos, ${inv.summary.errors} erros, ${inv.summary.warnings} avisos)`,
+    ];
+    if (inv.explanation) {
+      lines.push(
+        '',
+        'DIAGNÓSTICO DO INCIDENTE (Explicação Humana):',
+        `Resumo: ${inv.explanation.headline}`,
+        ...(inv.explanation.financial?.has_values ? [
+          `Valor Pedido: ${inv.explanation.financial.requested} · Valor Entregue: ${inv.explanation.financial.paid}`,
+          `Troco Previsto: ${inv.explanation.financial.expected_change} · Troco Entregue: ${inv.explanation.financial.returned}`,
+          `Diferença: ${inv.explanation.financial.difference} (${inv.explanation.financial.client_impact})`,
+        ] : []),
+        ...(inv.explanation.cause ? [`Causa Provável: ${inv.explanation.cause}`] : []),
+        '',
+        'História dos Acontecimentos:',
+        ...inv.explanation.story.map((s, idx) => `${idx + 1}. ${s}`),
+      );
+    }
+    lines.push(
       '', 'O que se destaca:',
       ...(inv.highlights.length ? inv.highlights.map(h => `- [${h.severity}] ${h.source_label}: ${h.title}${h.count > 1 ? ` ×${h.count}` : ''}${h.detail ? ` — ${h.detail}` : ''}`) : ['- nada']),
       ...(inv.context.length ? ['', 'Contexto:', ...inv.context.map(c => `- ${c}`)] : []),
       '', 'Linha do tempo:',
       ...inv.events.map(e => `${e.ts.slice(11)}  [${e.source_label}]  ${e.title}${e.detail ? ` — ${e.detail}` : ''}`),
-    ];
+    );
     try { await navigator.clipboard.writeText(lines.join('\n')); setInvCopied(true); setTimeout(() => setInvCopied(false), 2000); }
     catch { setInvError('Não foi possível copiar para a área de transferência.'); }
   };
@@ -820,10 +974,138 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
                   {inv.summary.events} evento(s) · <span className={inv.summary.errors ? 'text-rose-700' : ''}>{inv.summary.errors} erro(s)</span> · <span className={inv.summary.warnings ? 'text-amber-700' : ''}>{inv.summary.warnings} aviso(s)</span>
                 </span>
               </div>
-              <button onClick={copyInvestigation} className="text-xs font-bold text-sky-700 hover:text-sky-900">
-                {invCopied ? 'Copiado!' : 'Copiar resumo'}
-              </button>
+              <div className="flex items-center gap-2">
+                {inv.explanation && (
+                  <button
+                    onClick={openClientReport}
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition"
+                    title="Gerar declaração formal / comprovativo para entregar ao cliente"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Gerar Relatório para Cliente
+                  </button>
+                )}
+                <button onClick={copyInvestigation} className="text-xs font-bold text-sky-700 hover:text-sky-900 border border-sky-200 bg-sky-50 px-2.5 py-1.5 rounded-lg hover:bg-sky-100 transition">
+                  {invCopied ? 'Copiado!' : 'Copiar resumo'}
+                </button>
+              </div>
             </div>
+
+            {inv.explanation && (
+              <div className={`border rounded-2xl p-4 space-y-3.5 shadow-xs ${
+                inv.explanation.status === 'danger'
+                  ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                  : inv.explanation.status === 'warning'
+                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                  : inv.explanation.status === 'success'
+                  ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                  : 'bg-slate-50 border-slate-200 text-slate-900'
+              }`}>
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-3 border-current/10">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                      inv.explanation.status === 'danger'
+                        ? 'bg-rose-200/80 text-rose-900'
+                        : inv.explanation.status === 'warning'
+                        ? 'bg-amber-200/80 text-amber-900'
+                        : inv.explanation.status === 'success'
+                        ? 'bg-emerald-200/80 text-emerald-900'
+                        : 'bg-slate-200 text-slate-800'
+                    }`}>
+                      {inv.explanation.status === 'danger' ? <AlertCircle className="w-5 h-5" /> :
+                       inv.explanation.status === 'warning' ? <AlertTriangle className="w-5 h-5" /> :
+                       inv.explanation.status === 'success' ? <Check className="w-5 h-5" /> :
+                       <Info className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider opacity-75">
+                        Diagnóstico do Incidente · Explicação Humana
+                      </div>
+                      <h4 className="text-sm font-extrabold leading-tight">
+                        {inv.explanation.headline}
+                      </h4>
+                    </div>
+                  </div>
+                  <button
+                    onClick={openClientReport}
+                    className="flex items-center gap-1.5 bg-white border border-current/20 hover:bg-white/80 text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                    Gerar Relatório para Cliente
+                  </button>
+                </div>
+
+                {inv.explanation.financial && inv.explanation.financial.has_values && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs bg-white/70 backdrop-blur-xs border border-current/10 rounded-xl p-2.5">
+                    <div className="p-2 rounded-lg bg-white border border-slate-100">
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">A Cobrar</div>
+                      <div className="text-xs font-extrabold font-mono text-slate-800">{inv.explanation.financial.requested}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white border border-slate-100">
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Entregue</div>
+                      <div className="text-xs font-extrabold font-mono text-slate-800">{inv.explanation.financial.paid}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white border border-slate-100">
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Troco Devido</div>
+                      <div className="text-xs font-extrabold font-mono text-slate-800">{inv.explanation.financial.expected_change}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white border border-slate-100">
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Troco Entregue</div>
+                      <div className="text-xs font-extrabold font-mono text-slate-800">{inv.explanation.financial.returned}</div>
+                    </div>
+                    <div className={`p-2 rounded-lg col-span-2 sm:col-span-1 border ${
+                      inv.explanation.financial.difference_raw < 0
+                        ? 'bg-rose-50 border-rose-200 text-rose-800'
+                        : inv.explanation.financial.difference_raw > 0
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    }`}>
+                      <div className="text-[10px] font-semibold opacity-80 uppercase tracking-wider">Diferença</div>
+                      <div className="text-xs font-black font-mono">{inv.explanation.financial.difference}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-xs bg-white/50 rounded-xl p-3 border border-current/10">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider opacity-75">
+                    O que aconteceu passo a passo:
+                  </div>
+                  <ol className="space-y-1 pl-1">
+                    {inv.explanation.story.map((st, sIdx) => (
+                      <li key={sIdx} className="flex items-start gap-2">
+                        <span className="font-mono font-bold opacity-60 select-none text-[11px] shrink-0 mt-0.5">
+                          {sIdx + 1}.
+                        </span>
+                        <span className="leading-snug">{st}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
+                  {inv.explanation.cause && (
+                    <div className="space-y-1 bg-white/60 rounded-xl p-2.5 border border-current/10">
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider opacity-75">
+                        Causa Técnica Provável
+                      </div>
+                      <p className="leading-relaxed opacity-90">{inv.explanation.cause}</p>
+                    </div>
+                  )}
+                  {inv.explanation.recommendations.length > 0 && (
+                    <div className="space-y-1 bg-white/60 rounded-xl p-2.5 border border-current/10">
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider opacity-75">
+                        Ações Recomendadas
+                      </div>
+                      <ul className="list-disc pl-4 space-y-0.5 opacity-90">
+                        {inv.explanation.recommendations.map((rec, rIdx) => (
+                          <li key={rIdx}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {inv.sales && (
               inv.sales.available ? (
@@ -1180,6 +1462,258 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     );
   };
 
+  const renderClientReportModal = () => {
+    if (!showClientReport || !inv || !inv.explanation) return null;
+    const exp = inv.explanation;
+    const fin = exp.financial;
+    const rep = exp.client_report;
+
+    return (
+      <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <style>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            #client-report-printable, #client-report-printable * {
+              visibility: visible !important;
+            }
+            #client-report-printable {
+              position: fixed !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 24px !important;
+              background: white !important;
+              color: black !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
+        `}</style>
+
+        <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 no-print">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800">Declaração / Relatório para o Cliente</h3>
+                <p className="text-[11px] text-slate-500">Comprovativo formal para o cliente e registo interno de caixa</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowClientReport(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Form controls (no-print) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 text-xs no-print">
+              <div className="font-extrabold text-slate-700 uppercase tracking-wider text-[11px]">
+                Preenchimento dos Dados da Declaração
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 font-semibold text-slate-600">
+                  Nome do Cliente (opcional)
+                  <input
+                    type="text"
+                    placeholder="Ex: João Silva"
+                    value={clientReportMeta.clientName}
+                    onChange={(e) => setClientReportMeta({ ...clientReportMeta, clientName: e.target.value })}
+                    className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-sky-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 font-semibold text-slate-600">
+                  NIF do Cliente (opcional)
+                  <input
+                    type="text"
+                    placeholder="Ex: 123456789"
+                    value={clientReportMeta.clientNif}
+                    onChange={(e) => setClientReportMeta({ ...clientReportMeta, clientNif: e.target.value })}
+                    className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-sky-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 font-semibold text-slate-600">
+                  Operador Responsável
+                  <input
+                    type="text"
+                    value={clientReportMeta.operatorName}
+                    onChange={(e) => setClientReportMeta({ ...clientReportMeta, operatorName: e.target.value })}
+                    className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-sky-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 font-semibold text-slate-600">
+                  Caixa / Equipamento
+                  <input
+                    type="text"
+                    value={clientReportMeta.terminal}
+                    onChange={(e) => setClientReportMeta({ ...clientReportMeta, terminal: e.target.value })}
+                    className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-sky-500"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <span className="font-semibold text-slate-600">Situação da Regularização:</span>
+                <div className="space-y-1 pl-1">
+                  <label className="flex items-center gap-2 font-medium text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="settlement-opt"
+                      checked={clientReportMeta.settlement === 'dinheiro_manual'}
+                      onChange={() => setClientReportMeta({ ...clientReportMeta, settlement: 'dinheiro_manual' })}
+                    />
+                    <span>O valor em falta foi regularizado de imediato ao cliente através de dinheiro manual de caixa.</span>
+                  </label>
+                  <label className="flex items-center gap-2 font-medium text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="settlement-opt"
+                      checked={clientReportMeta.settlement === 'pendente'}
+                      onChange={() => setClientReportMeta({ ...clientReportMeta, settlement: 'pendente' })}
+                    />
+                    <span>O valor em falta encontra-se pendente de regularização / liquidação futura ao cliente.</span>
+                  </label>
+                  <label className="flex items-center gap-2 font-medium text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="settlement-opt"
+                      checked={clientReportMeta.settlement === 'sem_valores'}
+                      onChange={() => setClientReportMeta({ ...clientReportMeta, settlement: 'sem_valores' })}
+                    />
+                    <span>Transação confirmada sem retenção de valores nem montantes em falta.</span>
+                  </label>
+                </div>
+              </div>
+
+              <label className="flex flex-col gap-1 font-semibold text-slate-600 pt-1">
+                Observações Adicionais (opcional)
+                <input
+                  type="text"
+                  placeholder="Ex: Entregue nota de 5€ da gaveta manual..."
+                  value={clientReportMeta.customNotes}
+                  onChange={(e) => setClientReportMeta({ ...clientReportMeta, customNotes: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-sky-500"
+                />
+              </label>
+            </div>
+
+            {/* Printable Document Box */}
+            <div id="client-report-printable" className="border border-slate-300 rounded-xl p-6 bg-white space-y-5 text-slate-800 font-sans shadow-xs">
+              <div className="text-center border-b border-slate-300 pb-4 space-y-1">
+                <h2 className="text-base font-black uppercase tracking-wider text-slate-900">
+                  Declaração de Ocorrência em Equipamento Cashlogy
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Comprovativo Técnico de Anomalia de Cobrança / Troco Automático
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs border-b border-slate-200 pb-3">
+                <div><span className="font-bold text-slate-500">Data / Hora:</span> <span className="font-semibold text-slate-900">{rep.date} às {rep.time}</span></div>
+                <div><span className="font-bold text-slate-500">Terminal / Caixa:</span> <span className="font-semibold text-slate-900">{clientReportMeta.terminal || 'Caixa'}</span></div>
+                <div><span className="font-bold text-slate-500">Operador:</span> <span className="font-semibold text-slate-900">{clientReportMeta.operatorName || 'Operador de Caixa'}</span></div>
+                {clientReportMeta.clientName && <div><span className="font-bold text-slate-500">Cliente:</span> <span className="font-semibold text-slate-900">{clientReportMeta.clientName}</span></div>}
+                {clientReportMeta.clientNif && <div><span className="font-bold text-slate-500">NIF:</span> <span className="font-semibold text-slate-900">{clientReportMeta.clientNif}</span></div>}
+              </div>
+
+              <div className="space-y-1.5 text-xs leading-relaxed">
+                <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Descrição dos Factos</div>
+                <p className="text-slate-800">
+                  Declara-se que, na data e hora supramencionadas, durante o processo de pagamento no equipamento automático de gestão de numerário (Cashlogy), registou-se a seguinte ocorrência:
+                </p>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-semibold text-slate-900">
+                  {exp.headline}
+                </div>
+              </div>
+
+              {fin && fin.has_values && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Discriminação de Valores</div>
+                  <table className="w-full border-collapse border border-slate-300 text-left">
+                    <tbody>
+                      <tr className="border-b border-slate-200"><td className="p-2 font-medium text-slate-600">Valor da Compra / Conta:</td><td className="p-2 font-bold font-mono text-right">{fin.requested}</td></tr>
+                      <tr className="border-b border-slate-200"><td className="p-2 font-medium text-slate-600">Valor Entregue pelo Cliente:</td><td className="p-2 font-bold font-mono text-right">{fin.paid}</td></tr>
+                      <tr className="border-b border-slate-200"><td className="p-2 font-medium text-slate-600">Troco Devido ao Cliente:</td><td className="p-2 font-bold font-mono text-right">{fin.expected_change}</td></tr>
+                      <tr className="border-b border-slate-200"><td className="p-2 font-medium text-slate-600">Troco Dispensado pela Máquina:</td><td className="p-2 font-bold font-mono text-right">{fin.returned}</td></tr>
+                      <tr className="bg-slate-100 font-bold"><td className="p-2 text-slate-900 font-extrabold">DIFERENÇA / VALOR EM FALTA:</td><td className="p-2 font-black font-mono text-right text-rose-700 text-sm">{fin.difference}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="space-y-1 text-xs">
+                <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Regularização</div>
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">
+                  {clientReportMeta.settlement === 'dinheiro_manual'
+                    ? `O montante em falta (${fin?.difference || 'apurado'}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
+                    : clientReportMeta.settlement === 'pendente'
+                    ? `O montante em falta (${fin?.difference || 'apurado'}) encontra-se pendente de regularização / liquidação futura ao cliente.`
+                    : 'Transação confirmada sem retenção de valores nem montantes em falta.'}
+                </div>
+              </div>
+
+              {clientReportMeta.customNotes && (
+                <div className="space-y-1 text-xs">
+                  <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Observações</div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
+                    {clientReportMeta.customNotes}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
+                <div className="space-y-2">
+                  <div className="border-b border-slate-400 w-full h-8" />
+                  <div className="font-semibold text-slate-600">Assinatura do Responsável / Operador</div>
+                </div>
+                <div className="space-y-2">
+                  <div className="border-b border-slate-400 w-full h-8" />
+                  <div className="font-semibold text-slate-600">Assinatura / Confirmação do Cliente</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer (no-print) */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50 no-print">
+            <button
+              onClick={copyClientReport}
+              className="flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-900 px-3 py-2 rounded-lg border border-sky-200 bg-white hover:bg-sky-50 transition"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              {clientReportCopied ? 'Declaração Copiada!' : 'Copiar Texto da Declaração'}
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowClientReport(false)}
+                className="text-xs font-bold text-slate-600 hover:text-slate-800 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 transition"
+              >
+                Fechar
+              </button>
+              <button
+                onClick={printClientReport}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimir Declaração
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div className={`bg-white w-full max-w-5xl max-h-[92vh] ${data ? 'h-[92vh]' : ''} rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200`}>
@@ -1274,6 +1808,7 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
           )}
         </div>
       </div>
+      {renderClientReportModal()}
     </div>
   );
 };
