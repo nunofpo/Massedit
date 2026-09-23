@@ -411,11 +411,12 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
     const fin = exp.financial;
     const rep = exp.client_report;
 
+    const diffDisplay = fin?.difference ? fin.difference.replace(/^[+-]/, '') : 'apurado';
     const settlementText =
       clientReportMeta.settlement === 'dinheiro_manual'
-        ? `O montante em falta (${fin?.difference || 'apurado'}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
+        ? `O montante em falta (${diffDisplay}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
         : clientReportMeta.settlement === 'pendente'
-        ? `O montante em falta (${fin?.difference || 'apurado'}) encontra-se pendente de regularização / liquidação futura ao cliente.`
+        ? `O montante em falta (${diffDisplay}) encontra-se pendente de regularização / liquidação futura ao cliente.`
         : 'Transação confirmada sem retenção de valores nem montantes em falta.';
 
     return [
@@ -553,6 +554,10 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
       }
       setData(body);
       setTxLimit(200);
+      if (body.period?.end) {
+        setInvDate(body.period.end.slice(0, 10));
+        setInvTime(body.period.end.slice(11, 19));
+      }
     } catch {
       setErrorMsg('Falha de rede ao analisar os logs.');
     } finally {
@@ -621,6 +626,23 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
               </div>
             );
           })}
+        </div>
+
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950">
+          <div className="flex items-center gap-2.5">
+            <Info className="w-4 h-4 text-sky-600 shrink-0" />
+            <div>
+              <span className="font-extrabold block">Quer uma explicação humana ou gerar um relatório/declaração para o cliente?</span>
+              <span className="text-[11px] text-slate-600">Aceda ao separador <strong>Investigar</strong> para analisar o incidente passo a passo à volta da hora indicada.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTab('investigate')}
+            className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition shrink-0"
+          >
+            Ir para Investigar →
+          </button>
         </div>
 
         {tx && tx.rejections.by_day.length > 0 && <RejectionChart rej={tx.rejections} />}
@@ -1655,9 +1677,9 @@ export const CashlogyLogsModal: React.FC<CashlogyLogsModalProps> = ({ isOpen, on
                 <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Regularização</div>
                 <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">
                   {clientReportMeta.settlement === 'dinheiro_manual'
-                    ? `O montante em falta (${fin?.difference || 'apurado'}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
+                    ? `O montante em falta (${fin?.difference ? fin.difference.replace(/^[+-]/, '') : 'apurado'}) foi regularizado e entregue ao cliente de imediato através de dinheiro manual de caixa.`
                     : clientReportMeta.settlement === 'pendente'
-                    ? `O montante em falta (${fin?.difference || 'apurado'}) encontra-se pendente de regularização / liquidação futura ao cliente.`
+                    ? `O montante em falta (${fin?.difference ? fin.difference.replace(/^[+-]/, '') : 'apurado'}) encontra-se pendente de regularização / liquidação futura ao cliente.`
                     : 'Transação confirmada sem retenção de valores nem montantes em falta.'}
                 </div>
               </div>

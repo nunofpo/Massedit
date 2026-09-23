@@ -1059,5 +1059,55 @@ class TestAnalyze(unittest.TestCase):
         self.assertEqual(r["findings"], [])
 
 
+class TestIncidentInvestigation(unittest.TestCase):
+    def test_investigate_add_change_command(self):
+        # LogCom com comando #A# (adicionar troco) no qual foram inseridos 10,00 € (1000 cêntimos)
+        com_log = (
+            '"18/09/2026 15:30:00.100,; Connector.Started()    ; (v2.5.0.136)"\n'
+            '"18/09/2026 15:30:05.200,#A#1#1#1#1#1#1#1#1#1#0#1#1#1# "\n'
+            '"18/09/2026 15:30:25.400,#0#1000#"\n'
+        )
+        r = investigate([("LogCom_20260918.txt", com_log.encode("cp1252"))], datetime(2026, 9, 18, 15, 30, 20), 5, 5)
+        exp = r["explanation"]
+        self.assertIsNotNone(exp)
+        self.assertEqual(exp["status"], "danger")
+        self.assertIn("10,00 €", exp["headline"])
+        self.assertIn("Adicionar Trocos", exp["headline"])
+        fin = exp["financial"]
+        self.assertTrue(fin["has_values"])
+        self.assertEqual(fin["paid"], "10,00 €")
+        self.assertEqual(fin["returned"], "0,00 €")
+        self.assertEqual(fin["difference"], "-10,00 €")
+        self.assertEqual(fin["difference_raw"], -1000)
+        self.assertIn("Adicionar Trocos", exp["cause"])
+        self.assertIn("stock", exp["cause"].lower())
+        self.assertEqual(exp["client_report"]["suggested_settlement"], "dinheiro_manual")
+        self.assertIn("10,00 €", exp["client_report"]["summary"])
+
+    def test_investigate_add_change_screen_with_tran(self):
+        # LogTran com entrada física de 10 € e LogUsr com ecrã de Adicionar Troco aberto
+        tran_log = '"18/09/2026 16:15:10.120,IN: 1 of 10,00 €."\n'
+        usr_log = '"18/09/2026 16:15:02.050,frmAddChange_Load"\n'
+        r = investigate([
+            ("LogTran_20260918.txt", tran_log.encode("cp1252")),
+            ("LogUsr_20260918.txt", usr_log.encode("cp1252")),
+        ], datetime(2026, 9, 18, 16, 15, 10), 3, 3)
+        exp = r["explanation"]
+        self.assertEqual(exp["status"], "danger")
+        self.assertIn("10,00 €", exp["headline"])
+        self.assertIn("Adicionar Trocos", exp["headline"])
+        self.assertEqual(exp["financial"]["paid"], "10,00 €")
+        self.assertEqual(exp["financial"]["returned"], "0,00 €")
+        self.assertEqual(exp["financial"]["difference"], "-10,00 €")
+        self.assertTrue(any("Adicionar Troco" in s for s in exp["story"]))
+
+    def test_investigate_regular_charge_not_confused(self):
+        # Cobrança regular de 3,60 € cancelada
+        r = investigate([("LogCom_20260918.txt", COM.encode("cp1252"))], datetime(2026, 9, 18, 17, 2, 15), 1, 1)
+        exp = r["explanation"]
+        self.assertEqual(exp["financial"]["requested"], "3,60 €")
+        self.assertIn("cancelada", exp["headline"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()

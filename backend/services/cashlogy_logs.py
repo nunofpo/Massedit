@@ -1187,6 +1187,9 @@ _USR_ACTIONS = {
     "frmCharge.cmdCancel_Click": ("charge_cancel", "Cobrança cancelada pelo operador"),
     "frmBackOffice._Load": ("backoffice", "Backoffice aberto"),
     "frmAddChange_Load": ("add_change", "Adicionar troco"),
+    "frmAddChange._Load": ("add_change", "Adicionar troco"),
+    "frmAddChange.cmdAccept_Click": ("add_change_accept", "Adicionar troco aceite"),
+    "frmAddChange.cmdCancel_Click": ("add_change_cancel", "Adicionar troco cancelado"),
     "frmGiveChange._Load": ("give_change", "Dar troco"),
     "frmGiveChange.cmdAcceptDeposit_Click": ("give_deposit", "Troco: depósito aceite"),
     "frmGiveChange.cmdCancelDeposit_Click": ("give_cancel", "Troco: depósito cancelado"),
@@ -1205,6 +1208,12 @@ def parse_usr(text: str) -> Dict[str, Any]:
         head = payload.split(" - ", 1)[0]
         if payload in _USR_ACTIONS:
             row["kind"], row["label"] = _USR_ACTIONS[payload]
+        elif head in _USR_ACTIONS:
+            row["kind"], row["label"] = _USR_ACTIONS[head]
+        elif head.startswith("frmAddChange"):
+            row["kind"], row["label"] = ("add_change", "Adicionar troco")
+        elif head.startswith("frmBackOffice"):
+            row["kind"], row["label"] = ("backoffice", "Backoffice aberto")
         elif payload.startswith("frmMsgBox._Load - Text="):
             row.update(kind="message", label="Mensagem ao operador", detail=payload.split("Text=", 1)[1].strip())
         elif payload.startswith("frmDispense._Load"):
@@ -1473,6 +1482,13 @@ def _analyze(files: List[Tuple[str, bytes]], timeline: bool = False):
              "duration_ms": r.get("duration_ms", 0), "tran_match": r.get("tran_match"),
              "tran_in": r.get("tran_in"), "tran_out": r.get("tran_out")}
             for r in result["com"]["operations"] if r["kind"] == "charge"]
+        private[("com", "_backoffice")] = [
+            {"start": r["_start"], "end": r["_end"], "cmd": r["cmd"],
+             "introduced": r.get("introduced", 0), "returned": r.get("returned", 0),
+             "result": r["result"], "duration_ms": r.get("duration_ms", 0),
+             "tran_match": r.get("tran_match"),
+             "tran_in": r.get("tran_in"), "tran_out": r.get("tran_out")}
+            for r in result["com"]["operations"] if r.get("kind") == "backoffice"]
 
     if "com" in result:
         for row in result["com"]["operations"]:
@@ -1623,7 +1639,151 @@ def _generate_human_explanation(
     hw_errors = [e for e in inside if e["source"] in ("errors", "logerr") and e["severity"] in ("error", "warning") and "INCAPAZ DE PAGAR" not in e["title"]]
     usr_events = [e for e in inside if e["source"] == "usr"]
 
-    if charges:
+    backoffice_com = [
+        b for b in private.get(("com", "_backoffice"), [])
+        if b["start"] <= end and b["end"] >= start and b.get("introduced", 0) > 0
+    ]
+
+    charges_with_money = [c for c in charges if c.get("introduced", 0) > 0]
+
+    tran_moves_in = [m for m in private.get(("tran", "_moves"), []) if m[1] == "in" and start <= m[0] <= end]
+    tran_moves_out = [m for m in private.get(("tran", "_moves"), []) if m[1] == "out" and start <= m[0] <= end]
+    tran_ins = sum(m[2] for m in tran_moves_in)
+    tran_outs = sum(m[2] for m in tran_moves_out)
+
+    tran_bo_in = any(e["source"] == "tran" and e.get("kind") == "backoffice" and "entrada" in e.get("title", "").lower() for e in inside)
+    usr_bo = [
+        e for e in inside
+        if e["source"] == "usr" and (
+            e.get("kind") in ("add_change", "add_change_accept", "backoffice", "give_change", "give_deposit")
+            or "adicionar" in e.get("title", "").lower()
+            or "troco" in e.get("title", "").lower()
+            or "backoffice" in e.get("title", "").lower()
+        )
+    ]
+
+    is_backoffice_cash = False
+    if backoffice_com:
+        if not charges_with_money:
+            is_backoffice_cash = True
+        else:
+            closest_bo = min(abs((b["start"] - when).total_seconds()) for b in backoffice_com)
+            closest_ch = min(abs((c["start"] - when).total_seconds()) for c in charges_with_money)
+            if closest_bo <= closest_ch:
+                is_backoffice_cash = True
+    elif tran_ins > 0 and not charges_with_money:
+        is_backoffice_cash = True
+    elif tran_ins > 0 and (tran_bo_in or usr_bo) and tran_outs < tran_ins:
+        if not charges_with_money or all(c.get("introduced", 0) == 0 for c in charges):
+            is_backoffice_cash = True
+
+    if is_backoffice_cash:
+        if backoffice_com:
+            main_bo = sorted(backoffice_com, key=lambda b: abs((b["start"] - when).total_seconds()))[0]
+            amount_entered = main_bo.get("introduced", 0)
+            amount_returned = main_bo.get("returned", 0)
+            bo_ts = main_bo["start"]
+            bo_cmd = main_bo.get("cmd", "")
+            if bo_cmd == "A":
+                bo_label = "«Adicionar Trocos»"
+            else:
+                bo_label = "Backoffice"
+        else:
+            amount_entered = tran_ins
+            amount_returned = tran_outs
+            bo_ts = tran_moves_in[0][0] if tran_moves_in else when
+            if usr_bo:
+                u_title = usr_bo[0].get("title", "")
+                if "adicionar" in u_title.lower() or usr_bo[0].get("kind") in ("add_change", "add_change_accept"):
+                    bo_label = "«Adicionar Trocos»"
+                else:
+                    bo_label = f"«{u_title}»"
+            elif tran_bo_in:
+                bo_label = "Backoffice («Adicionar Trocos»)"
+            else:
+                bo_label = "«Adicionar Trocos» / Abertura de Dia"
+
+        retained = max(0, amount_entered - amount_returned)
+        status = "danger"
+        headline = (
+            f"Entrada de {_eur(amount_entered)} com opção {bo_label} ativa: "
+            f"o dinheiro entrou para o stock da máquina e não foi emitido troco."
+        )
+        client_impact = (
+            f"O cliente introduziu {_eur(amount_entered)} enquanto o equipamento estava com a opção "
+            f"{bo_label} ativa. O valor ficou retido no stock interno da máquina "
+            f"(montante em dívida ao cliente: {_eur(retained)})."
+        )
+        cause = (
+            f"O funcionário tinha ativa a opção {bo_label} no ecrã da máquina "
+            f"(ou o ecrã de abertura de dia em espera de dinheiro para fundo de caixa). "
+            f"Neste modo, o equipamento não está a processar uma venda nem a comunicar com o POS: "
+            f"o validador aceita notas/moedas diretamente para o stock interno de trocos da máquina, "
+            f"pelo que não calcula nem efetua a devolução de troco ao cliente."
+        )
+        recommendations = [
+            f"Reembolsar o cliente no valor de {_eur(retained)} através do dinheiro manual de caixa da loja.",
+            f"O montante de {_eur(amount_entered)} não está perdido nem em falta física: foi registado e absorvido pelo stock interno da Cashlogy (fundo de trocos).",
+            "Garantir que os operadores fecham qualquer ecrã de Backoffice ou «Adicionar Trocos» antes de receberem pagamentos de clientes.",
+        ]
+        diff_str = f"-{_eur(retained)}"
+        settlement = "Pendente de reembolso ao cliente"
+        settlement_code = "dinheiro_manual"
+
+        financial = {
+            "has_values": True,
+            "requested": "0,00 € (Sem venda ativa)",
+            "paid": _eur(amount_entered),
+            "expected_change": "0,00 € (Modo reposição)",
+            "returned": _eur(amount_returned),
+            "difference": diff_str,
+            "difference_raw": -retained,
+            "client_impact": client_impact,
+            "settlement_status": settlement,
+        }
+
+        story = []
+        if bo_ts:
+            story.append(f"Pelas {bo_ts.strftime('%H:%M:%S')}, o equipamento encontrava-se com a opção {bo_label} ativa no ecrã (modo de reposição de troco ou ecrã de abertura de dia).")
+        else:
+            story.append(f"O equipamento encontrava-se com a opção {bo_label} ativa no ecrã (modo de reposição de troco ou ecrã de abertura de dia).")
+
+        in_details = []
+        if private.get(("tran", "_moves_counts")):
+            for dt_m, dir_m, c in private[("tran", "_moves_counts")]:
+                if dir_m == "in" and start <= dt_m <= end:
+                    in_details.append(f"às {dt_m.strftime('%H:%M:%S')}: {_counts_text(c)}")
+
+        if in_details:
+            story.append(f"Entrada física de notas/moedas registada no validador: {', '.join(in_details)} (total: {_eur(amount_entered)}).")
+        else:
+            story.append(f"O cliente introduziu {_eur(amount_entered)} em numerário na ranhura do validador.")
+
+        story.append(
+            f"Por estar selecionada a opção {bo_label}, a máquina tratou esta entrada como reforço de trocos (fundo de caixa) e não como pagamento de uma venda."
+        )
+        if amount_returned == 0:
+            story.append(
+                f"A máquina guardou a totalidade do valor ({_eur(amount_entered)}) no seu stock interno e não dispensou troco (0,00 € saídos)."
+            )
+        else:
+            story.append(
+                f"A máquina dispensou {_eur(amount_returned)} e reteve {_eur(retained)} no seu stock interno."
+            )
+
+        story.append(
+            f"O montante de {_eur(retained)} pertence ao cliente e deve ser-lhe devolvido manualmente a partir do caixa da loja."
+        )
+
+        for e in logerr_events:
+            story.append(f"Às {e['dt'].strftime('%H:%M:%S')}, o LogErr registou: '{e['title']}'{(' (' + e['detail'] + ')') if e['detail'] else ''}.")
+        for e in hw_errors:
+            story.append(f"Às {e['dt'].strftime('%H:%M:%S')}, o hardware reportou: '{e['title']}'.")
+        for a in usr_events:
+            if bo_ts and a["dt"] >= bo_ts - timedelta(seconds=10):
+                story.append(f"Às {a['dt'].strftime('%H:%M:%S')}: {a['title']}{(' — ' + a['detail']) if a['detail'] else ''}.")
+
+    elif charges:
         charges.sort(key=lambda c: (
             0 if (not c.get("ok") or c.get("cancelled") or (c.get("net") != c.get("amount"))) else 1,
             abs((c["start"] - when).total_seconds())
