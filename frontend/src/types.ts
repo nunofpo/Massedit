@@ -584,8 +584,22 @@ export interface CustomerItem {
   morada?: string;
   localidade?: string;
   codpostal?: string;
+  codpostal1?: string;
+  pais?: string;
   telefone?: string;
+  telemovel?: string;
   email?: string;
+  web?: string;
+  fax?: string;
+  nomecontacto?: string;
+  desconto?: number;
+  limitecredito?: number;
+  saldo?: number;
+  valordivida?: number;
+  obs?: string;
+  obsaviso?: string;
+  bloqueado?: number;
+  datacriacao?: string;
   is_valid_nif: boolean;
   nif_validation_message?: string;
 }

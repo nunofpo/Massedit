@@ -158,29 +158,37 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         
         c_cols = schema["clientes"]
         nif_col = "contribuinte" if "contribuinte" in c_cols else ("nif" if "nif" in c_cols else None)
-        has_nome = "nome" in c_cols
-        has_morada = "morada" in c_cols
-        has_localidade = "localidade" in c_cols
-        has_codpostal = "codpostal" in c_cols
-        has_telefone = "telefone" in c_cols
-        has_email = "email" in c_cols
         
         cols_select = ["codigo"]
-        cols_select.append("nome" if has_nome else "'' AS nome")
+        cols_select.append("nome" if "nome" in c_cols else "'' AS nome")
         cols_select.append(f"{nif_col} AS nif" if nif_col else "'' AS nif")
-        cols_select.append("morada" if has_morada else "'' AS morada")
-        cols_select.append("localidade" if has_localidade else "'' AS localidade")
-        cols_select.append("codpostal" if has_codpostal else "'' AS codpostal")
-        cols_select.append("telefone" if has_telefone else "'' AS telefone")
-        cols_select.append("email" if has_email else "'' AS email")
+        cols_select.append("morada" if "morada" in c_cols else "'' AS morada")
+        cols_select.append("localidade" if "localidade" in c_cols else "'' AS localidade")
+        cols_select.append("codpostal" if "codpostal" in c_cols else "'' AS codpostal")
+        cols_select.append("telefone" if "telefone" in c_cols else "'' AS telefone")
+        cols_select.append("email" if "email" in c_cols else "'' AS email")
+        cols_select.append("codpostal1" if "codpostal1" in c_cols else "'' AS codpostal1")
+        cols_select.append("pais" if "pais" in c_cols else "'PT' AS pais")
+        cols_select.append("telemovel" if "telemovel" in c_cols else "'' AS telemovel")
+        cols_select.append("web" if "web" in c_cols else "'' AS web")
+        cols_select.append("fax" if "fax" in c_cols else "'' AS fax")
+        cols_select.append("nomecontacto" if "nomecontacto" in c_cols else "'' AS nomecontacto")
+        cols_select.append("desconto" if "desconto" in c_cols else "0.0 AS desconto")
+        cols_select.append("limitecredito" if "limitecredito" in c_cols else "0.0 AS limitecredito")
+        cols_select.append("saldo" if "saldo" in c_cols else "0.0 AS saldo")
+        cols_select.append("valordivida" if "valordivida" in c_cols else "0.0 AS valordivida")
+        cols_select.append("obs" if "obs" in c_cols else "'' AS obs")
+        cols_select.append("obsaviso" if "obsaviso" in c_cols else "'' AS obsaviso")
+        cols_select.append("bloqueado" if "bloqueado" in c_cols else "0 AS bloqueado")
+        cols_select.append("CONVERT(VARCHAR(19), datacriacao, 120) AS datacriacao" if "datacriacao" in c_cols else "NULL AS datacriacao")
         
         where_clauses = []
         params = []
         if search and search.strip():
             s = f"%{search.strip()}%"
             if nif_col:
-                where_clauses.append(f"(nome LIKE ? OR {nif_col} LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
-                params.extend([s, s, s])
+                where_clauses.append(f"(nome LIKE ? OR {nif_col} LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ? OR telefone LIKE ? OR telemovel LIKE ?)")
+                params.extend([s, s, s, s, s])
             else:
                 where_clauses.append("(nome LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
                 params.extend([s, s])
@@ -204,6 +212,20 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
             codpostal = str(r[5] or "").strip()
             telefone = str(r[6] or "").strip()
             email = str(r[7] or "").strip()
+            codpostal1 = str(r[8] or "").strip() if len(r) > 8 else ""
+            pais = str(r[9] or "PT").strip() if len(r) > 9 else "PT"
+            telemovel = str(r[10] or "").strip() if len(r) > 10 else ""
+            web = str(r[11] or "").strip() if len(r) > 11 else ""
+            fax = str(r[12] or "").strip() if len(r) > 12 else ""
+            nomecontacto = str(r[13] or "").strip() if len(r) > 13 else ""
+            desconto = float(r[14] or 0.0) if len(r) > 14 else 0.0
+            limitecredito = float(r[15] or 0.0) if len(r) > 15 else 0.0
+            saldo = float(r[16] or 0.0) if len(r) > 16 else 0.0
+            valordivida = float(r[17] or 0.0) if len(r) > 17 else 0.0
+            obs = str(r[18] or "").strip() if len(r) > 18 else ""
+            obsaviso = str(r[19] or "").strip() if len(r) > 19 else ""
+            bloqueado = int(r[20] or 0) if len(r) > 20 else 0
+            datacriacao = str(r[21]) if len(r) > 21 and r[21] else None
             
             clean_nif = re.sub(r'[^0-9]', '', raw_nif)
             if not clean_nif:
@@ -228,8 +250,22 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
                     morada=morada,
                     localidade=localidade,
                     codpostal=codpostal,
+                    codpostal1=codpostal1,
+                    pais=pais,
                     telefone=telefone,
+                    telemovel=telemovel,
                     email=email,
+                    web=web,
+                    fax=fax,
+                    nomecontacto=nomecontacto,
+                    desconto=desconto,
+                    limitecredito=limitecredito,
+                    saldo=saldo,
+                    valordivida=valordivida,
+                    obs=obs,
+                    obsaviso=obsaviso,
+                    bloqueado=bloqueado,
+                    datacriacao=datacriacao,
                     is_valid_nif=is_valid,
                     nif_validation_message=val_msg
                 ))
@@ -320,28 +356,19 @@ def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewRe
             is_blocked = False
             cur_nome = str(cur.get("nome") or "").strip()
 
-            # Se NIF for alterado ou fornecido, validar NIF português com validate_pt_nif
+            # Proteger NIF: não é permitida a alteração de NIF (salvaguarda fiscal SAF-T)
             if cust.nif is not None and nif_col:
                 clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
-                is_valid, nif_msg = validate_pt_nif(clean_nif)
-                cur_nif = str(cur.get(nif_col) or "").strip()
-                if not is_valid and clean_nif != "999999990":
+                cur_nif = re.sub(r'[^0-9]', '', str(cur.get(nif_col) or "").strip())
+                if clean_nif and cur_nif and clean_nif != cur_nif:
                     is_blocked = True
                     diffs.append(FieldDiff(
                         field_name="nif",
                         field_label="NIF",
                         old_value=cur_nif,
-                        new_value=cust.nif,
-                        blocked=True,
-                        reason=f"NIF português inválido: {nif_msg}"
-                    ))
-                elif cur_nif != clean_nif:
-                    diffs.append(FieldDiff(
-                        field_name="nif",
-                        field_label="NIF",
-                        old_value=cur_nif,
                         new_value=clean_nif,
-                        blocked=False
+                        blocked=True,
+                        reason="O NIF do cliente não pode ser alterado para garantir a integridade fiscal (SAF-T)."
                     ))
 
             field_mappings = [
@@ -349,13 +376,21 @@ def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewRe
                 ("morada", "Morada", cust.morada),
                 ("localidade", "Localidade", cust.localidade),
                 ("codpostal", "Código Postal", cust.codpostal),
+                ("codpostal1", "Extensão Cód. Postal", cust.codpostal1),
+                ("pais", "País", cust.pais),
                 ("telefone", "Telefone", cust.telefone),
+                ("telemovel", "Telemóvel", cust.telemovel),
                 ("email", "Email", cust.email),
+                ("web", "Website", cust.web),
+                ("fax", "Fax", cust.fax),
+                ("nomecontacto", "Nome de Contacto", cust.nomecontacto),
+                ("obs", "Observações", cust.obs),
+                ("obsaviso", "Aviso no POS", cust.obsaviso),
             ]
 
             for field_name, field_label, new_val in field_mappings:
                 if new_val is not None and field_name in c_cols:
-                    clean_val = new_val.strip()
+                    clean_val = str(new_val).strip()
                     cur_val = str(cur.get(field_name) or "").strip()
                     if cur_val != clean_val:
                         diffs.append(FieldDiff(
@@ -365,6 +400,48 @@ def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewRe
                             new_value=clean_val,
                             blocked=False
                         ))
+
+            if cust.desconto is not None and "desconto" in c_cols:
+                try:
+                    cur_d = round(float(cur.get("desconto") or 0.0), 2)
+                    new_d = round(float(cust.desconto), 2)
+                    if cur_d != new_d:
+                        diffs.append(FieldDiff(
+                            field_name="desconto",
+                            field_label="Desconto (%)",
+                            old_value=f"{cur_d:.2f} %",
+                            new_value=f"{new_d:.2f} %",
+                            blocked=False
+                        ))
+                except (ValueError, TypeError):
+                    pass
+
+            if cust.limitecredito is not None and "limitecredito" in c_cols:
+                try:
+                    cur_l = round(float(cur.get("limitecredito") or 0.0), 2)
+                    new_l = round(float(cust.limitecredito), 2)
+                    if cur_l != new_l:
+                        diffs.append(FieldDiff(
+                            field_name="limitecredito",
+                            field_label="Limite de Crédito (€)",
+                            old_value=f"{cur_l:.2f} €",
+                            new_value=f"{new_l:.2f} €",
+                            blocked=False
+                        ))
+                except (ValueError, TypeError):
+                    pass
+
+            if cust.bloqueado is not None and "bloqueado" in c_cols:
+                cur_b = int(cur.get("bloqueado") or 0)
+                new_b = 1 if cust.bloqueado else 0
+                if cur_b != new_b:
+                    diffs.append(FieldDiff(
+                        field_name="bloqueado",
+                        field_label="Estado Bloqueado",
+                        old_value="Bloqueado" if cur_b else "Ativo",
+                        new_value="Bloqueado" if new_b else "Ativo",
+                        blocked=False
+                    ))
 
             if is_blocked:
                 blocked += 1
@@ -427,7 +504,7 @@ def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int
         try:
             create_backup_snapshot(
                 products=[],
-                description=f"Atualização em massa de {len(prev_customers)} cliente(s)",
+                description=f"Atualização de {len(prev_customers)} cliente(s)",
                 clientes=prev_customers
             )
         except Exception as e:
@@ -445,34 +522,66 @@ def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int
             sets = []
             params = []
 
-            # Validar NIF se fornecido/alterado
+            # Proteger NIF: O NIF não pode ser alterado
             if nif_col and cust.nif is not None:
                 clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
-                is_valid, nif_msg = validate_pt_nif(clean_nif)
-                if not is_valid and clean_nif != "999999990":
+                cur_nif = re.sub(r'[^0-9]', '', str(prev.get(nif_col) or "").strip())
+                if clean_nif and cur_nif and clean_nif != cur_nif:
                     conn.rollback()
-                    return False, f"Alteração cancelada: NIF inválido para o cliente #{cust.codigo} ({nif_msg}).", 0
-                if str(prev.get(nif_col) or "").strip() != clean_nif:
-                    sets.append(f"{nif_col} = ?")
-                    params.append(clean_nif)
+                    return False, f"Alteração de NIF não permitida para o cliente #{cust.codigo} (o NIF é bloqueado para salvaguarda fiscal).", 0
 
             fields = [
                 ("nome", cust.nome),
                 ("morada", cust.morada),
                 ("localidade", cust.localidade),
                 ("codpostal", cust.codpostal),
+                ("codpostal1", cust.codpostal1),
+                ("pais", cust.pais),
                 ("telefone", cust.telefone),
+                ("telemovel", cust.telemovel),
                 ("email", cust.email),
+                ("web", cust.web),
+                ("fax", cust.fax),
+                ("nomecontacto", cust.nomecontacto),
+                ("obs", cust.obs),
+                ("obsaviso", cust.obsaviso),
             ]
 
             for col_name, val in fields:
                 if val is not None and col_name in c_cols:
-                    clean_v = val.strip()
+                    clean_v = str(val).strip()
                     if str(prev.get(col_name) or "").strip() != clean_v:
                         sets.append(f"{col_name} = ?")
                         params.append(clean_v)
 
-            # Corrigido o efeito secundário: apenas efetua UPDATE se houver alterações reais nos campos
+            if cust.desconto is not None and "desconto" in c_cols:
+                try:
+                    new_desc = round(float(cust.desconto), 2)
+                    cur_desc = round(float(prev.get("desconto") or 0.0), 2)
+                    if cur_desc != new_desc:
+                        sets.append("desconto = ?")
+                        params.append(new_desc)
+                except (ValueError, TypeError):
+                    pass
+
+            if cust.limitecredito is not None and "limitecredito" in c_cols:
+                try:
+                    new_lim = round(float(cust.limitecredito), 2)
+                    cur_lim = round(float(prev.get("limitecredito") or 0.0), 2)
+                    if cur_lim != new_lim:
+                        sets.append("limitecredito = ?")
+                        params.append(new_lim)
+                except (ValueError, TypeError):
+                    pass
+
+            if cust.bloqueado is not None and "bloqueado" in c_cols:
+                new_bloq = 1 if cust.bloqueado else 0
+                cur_bloq = int(prev.get("bloqueado") or 0)
+                if cur_bloq != new_bloq:
+                    sets.append("bloqueado = ?")
+                    params.append(new_bloq)
+
+            # Efetua UPDATE se houver alterações reais nos campos
             if sets:
                 if has_sync:
                     sets.append("sync = 1")

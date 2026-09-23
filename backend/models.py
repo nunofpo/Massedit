@@ -688,8 +688,22 @@ class CustomerItem(BaseModel):
     morada: Optional[str] = ""
     localidade: Optional[str] = ""
     codpostal: Optional[str] = ""
+    codpostal1: Optional[str] = ""
+    pais: Optional[str] = "PT"
     telefone: Optional[str] = ""
+    telemovel: Optional[str] = ""
     email: Optional[str] = ""
+    web: Optional[str] = ""
+    fax: Optional[str] = ""
+    nomecontacto: Optional[str] = ""
+    desconto: Optional[float] = 0.0
+    limitecredito: Optional[float] = 0.0
+    saldo: Optional[float] = 0.0
+    valordivida: Optional[float] = 0.0
+    obs: Optional[str] = ""
+    obsaviso: Optional[str] = ""
+    bloqueado: Optional[int] = 0
+    datacriacao: Optional[str] = None
     is_valid_nif: bool = True
     nif_validation_message: Optional[str] = ""
 
@@ -719,12 +733,23 @@ class NifLookupResponse(BaseModel):
 class CustomerUpdateItem(BaseModel):
     codigo: int
     nome: Optional[str] = None
-    nif: Optional[str] = None
+    nif: Optional[str] = None  # Read-only from UI; protected on backend
     morada: Optional[str] = None
     localidade: Optional[str] = None
     codpostal: Optional[str] = None
+    codpostal1: Optional[str] = None
+    pais: Optional[str] = None
     telefone: Optional[str] = None
+    telemovel: Optional[str] = None
     email: Optional[str] = None
+    web: Optional[str] = None
+    fax: Optional[str] = None
+    nomecontacto: Optional[str] = None
+    desconto: Optional[float] = None
+    limitecredito: Optional[float] = None
+    obs: Optional[str] = None
+    obsaviso: Optional[str] = None
+    bloqueado: Optional[int] = None
 
 class BulkCustomerUpdateRequest(BaseModel):
     customers: List[CustomerUpdateItem]

@@ -25,7 +25,7 @@ from backend.models import (
     EmentaSaveTranslationsRequest, EmentaSingleProductUpdate,
     EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
-    CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest,
+    CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest, CustomerUpdateItem,
     ZSThemeTransformRequest, SingleProductUpdateRequest
 )
 from backend.services.customers import (
@@ -260,6 +260,16 @@ def update_customers_endpoint(req: BulkCustomerUpdateRequest):
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "updated_count": count}
+
+@app.put("/api/customers/{codigo}")
+def update_single_customer_endpoint(codigo: int, item: CustomerUpdateItem):
+    """Atualiza a ficha completa de um cliente no SQL Server (com NIF bloqueado para salvaguarda fiscal)."""
+    item.codigo = codigo
+    req = BulkCustomerUpdateRequest(customers=[item])
+    success, msg, count = update_customer_data(req)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg}
 
 @app.get("/api/families")
 def list_families_endpoint():

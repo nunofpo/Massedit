@@ -439,7 +439,94 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(res_null.count, 2)
         self.assertEqual(res_null.codes, [40, 41])
 
+    @patch("backend.services.customers.db_manager")
+    def test_customer_full_data_and_locked_nif(self, mock_db):
+        from backend.models import CustomerItem, CustomerUpdateItem, BulkCustomerUpdateRequest
+        from backend.services.customers import get_customers, preview_customer_update, update_customer_data
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.get_connection.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+
+        schema = {
+            "clientes": {
+                "codigo": ("int", None), "nome": ("varchar", 100), "contribuinte": ("varchar", 20),
+                "morada": ("varchar", 250), "localidade": ("varchar", 50), "codpostal": ("varchar", 20),
+                "codpostal1": ("varchar", 20), "pais": ("varchar", 3), "telefone": ("varchar", 50),
+                "telemovel": ("varchar", 50), "email": ("varchar", 50), "web": ("varchar", 50),
+                "fax": ("varchar", 50), "nomecontacto": ("varchar", 50), "desconto": ("money", None),
+                "limitecredito": ("money", None), "saldo": ("money", None), "valordivida": ("money", None),
+                "obs": ("varchar", 250), "obsaviso": ("varchar", 255), "bloqueado": ("int", None),
+                "datacriacao": ("datetime", None), "sync": ("int", None)
+            }
+        }
+        mock_db.get_schema.return_value = schema
+
+        # 1. Test get_customers returning complete fields
+        mock_cursor.fetchall.return_value = [
+            (
+                10, "Empresa Alpha Lda", "501234560", "Rua Industrial 100", "Maia",
+                "4470", "229000000", "geral@alpha.pt", "001", "PT", "912345678",
+                "www.alpha.pt", "229000001", "Sr. Manuel", 5.0, 1500.0,
+                0.0, 250.0, "Cliente habitual", "Verificar encomenda", 0, "2024-01-15 10:30:00"
+            )
+        ]
+        audit = get_customers(limit=10)
+        self.assertEqual(len(audit.customers), 1)
+        cust = audit.customers[0]
+        self.assertEqual(cust.codigo, 10)
+        self.assertEqual(cust.nome, "Empresa Alpha Lda")
+        self.assertEqual(cust.nif, "501234560")
+        self.assertEqual(cust.telemovel, "912345678")
+        self.assertEqual(cust.desconto, 5.0)
+        self.assertEqual(cust.limitecredito, 1500.0)
+        self.assertEqual(cust.valordivida, 250.0)
+        self.assertEqual(cust.obsaviso, "Verificar encomenda")
+        self.assertEqual(cust.pais, "PT")
+
+        # 2. Test preview_customer_update with locked NIF
+        # When attempting to alter NIF, it must be marked as blocked!
+        mock_cursor.description = [
+            ("codigo",), ("nome",), ("contribuinte",), ("morada",), ("localidade",), ("desconto",)
+        ]
+        mock_cursor.fetchall.return_value = [
+            (10, "Empresa Alpha Lda", "501234560", "Rua Industrial 100", "Maia", 5.0)
+        ]
+
+        # Request trying to change NIF
+        req_change_nif = BulkCustomerUpdateRequest(customers=[
+            CustomerUpdateItem(codigo=10, nif="999999990", nome="Novo Nome")
+        ])
+        prev = preview_customer_update(req_change_nif)
+        self.assertEqual(prev.blocked_descriptions_count, 1)
+        diff_nif = next(d for d in prev.previews[0].diffs if d.field_name == "nif")
+        self.assertTrue(diff_nif.blocked)
+        self.assertIn("NIF", diff_nif.reason)
+
+        # 3. Test update_customer_data rejects changing NIF
+        success, msg, count = update_customer_data(req_change_nif)
+        self.assertFalse(success)
+        self.assertIn("NIF", msg)
+
+        # 4. Test update_customer_data successfully updates other fields
+        req_valid_edit = BulkCustomerUpdateRequest(customers=[
+            CustomerUpdateItem(
+                codigo=10,
+                nome="Empresa Alpha Reformulada Lda",
+                morada="Nova Morada 200",
+                telemovel="919999999",
+                desconto=10.0,
+                obs="Nova nota",
+                bloqueado=1
+            )
+        ])
+        success_edit, msg_edit, count_edit = update_customer_data(req_valid_edit)
+        self.assertTrue(success_edit)
+        self.assertEqual(count_edit, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
