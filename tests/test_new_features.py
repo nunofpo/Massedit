@@ -324,6 +324,45 @@ class TestNewFeatures(unittest.TestCase):
             res_fail = client.put("/api/products/999", json={"descricao": "Novo Nome"})
             self.assertEqual(res_fail.status_code, 400)
 
+    def test_menu_detection_and_structure(self):
+        from backend.models import ProductItem, ProductFilter
+        from backend.services.products import _build_product_where, get_menu_structure
+
+        # 1. Model tests
+        normal_item = ProductItem(codigo=10, descricao="Café", composto=0)
+        self.assertFalse(normal_item.is_menu)
+
+        menu_item = ProductItem(codigo=20, descricao="Menu Francesinha", composto=2, is_menu=True)
+        self.assertTrue(menu_item.is_menu)
+
+        # 2. Filter / Where clause test
+        schema = {"produtos": {"composto": ("int", None)}}
+        where_menu, params_menu = _build_product_where(ProductFilter(is_menu=True), schema)
+        self.assertIn("p.composto AS INT), 0) = 2", where_menu)
+
+        where_non_menu, _ = _build_product_where(ProductFilter(is_menu=False), schema)
+        self.assertIn("p.composto AS INT), 0) <> 2", where_non_menu)
+
+        # 3. get_menu_structure test
+        mock_cursor = MagicMock()
+        with patch("backend.services.products._schema") as mock_sch:
+            mock_sch.return_value = {"niveismenu": {}, "niveismenuext": {}}
+            mock_cursor.fetchall.side_effect = [
+                # First fetchall: niveismenu
+                [(1, "Prato", 1, 0), (2, "Bebida", 0, 1)],
+                # Second fetchall: niveismenuext
+                [(1, 101, "Francesinha", 0.0, 0, 1), (2, 201, "Refrigerante", 0.5, 1, 0)]
+            ]
+            levels = get_menu_structure(mock_cursor, 20)
+            self.assertEqual(len(levels), 2)
+            self.assertEqual(levels[0]["descricao"], "Prato")
+            self.assertTrue(levels[0]["obrigatorio"])
+            self.assertEqual(len(levels[0]["options"]), 1)
+            self.assertEqual(levels[0]["options"][0]["descricao"], "Francesinha")
+            self.assertEqual(levels[1]["descricao"], "Bebida")
+            self.assertFalse(levels[1]["obrigatorio"])
+            self.assertEqual(levels[1]["options"][0]["preco"], 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()

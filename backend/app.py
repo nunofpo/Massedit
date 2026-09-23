@@ -578,7 +578,7 @@ def to_import_rows_endpoint(rows: List[MenuReviewedRow], price_mapping: Dict[str
 @app.get("/api/products/{codigo}", response_model=ProductItem)
 def get_single_product_endpoint(codigo: int):
     """Devolve a ficha completa com todos os dados de um artigo por código."""
-    prods = get_products_by_codes([codigo])
+    prods = get_products_by_codes([codigo], with_menu_levels=True)
     if not prods:
         raise HTTPException(status_code=404, detail=f"Artigo #{codigo} não foi encontrado na base de dados.")
     return prods[0]

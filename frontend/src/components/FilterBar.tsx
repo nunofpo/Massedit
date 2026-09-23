@@ -200,6 +200,24 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </select>
           </div>
 
+          {/* Menu / Composto Filter */}
+          <div className="relative min-w-[130px]">
+            <select
+              value={filters.is_menu === undefined || filters.is_menu === null ? '' : String(filters.is_menu)}
+              onChange={(e) => onFilterChange({ is_menu: e.target.value === '' ? undefined : e.target.value === 'true', page: 1 })}
+              className={`w-full border rounded-xl px-3 py-1.5 text-xs font-semibold transition appearance-none shadow-sm cursor-pointer ${
+                filters.is_menu === true
+                  ? 'bg-purple-50 border-purple-400 text-purple-900 font-bold ring-2 ring-purple-100'
+                  : 'bg-slate-50 border-slate-300 text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100'
+              }`}
+              title="Filtrar por Menus / Artigos Compostos (ZSRest)"
+            >
+              <option value="">Menus: Todos</option>
+              <option value="true">🍽️ Apenas Menus</option>
+              <option value="false">Sem Menus</option>
+            </select>
+          </div>
+
           {/* Sort By Select */}
           <div className="relative flex items-center gap-1 min-w-[170px]">
             <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 ml-1" />

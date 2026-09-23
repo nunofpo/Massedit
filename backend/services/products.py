@@ -203,6 +203,7 @@ def _product_select_sql(schema: SchemaInfo) -> str:
     autoquebra_col = opt("autoquebra", 0)
     tiposaft_col = "ISNULL(p.tiposaft, 'P')" if "tiposaft" in _prod_cols(schema) else "'P'"
     precocompra_col = "ISNULL(p.precocompra, 0)" if "precocompra" in _prod_cols(schema) else "0.0"
+    composto_col = opt("composto", 0)
 
     return f"""
         p.codigo, p.descricao, ISNULL(p.descricaocurta, ''), p.familia, f.descricao,
@@ -215,7 +216,8 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)},
         {isencao_col}, {opt('descontinuado', 0)},
         {meiadose_col}, {precomeia_col}, {meiadosedesc_col}, {dosedesc_col},
-        {vendersemstock_col}, {autoquebra_col}, {tiposaft_col}, {precocompra_col}
+        {vendersemstock_col}, {autoquebra_col}, {tiposaft_col}, {precocompra_col},
+        {composto_col}
     """
 
 
@@ -242,6 +244,8 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
     autoquebra_val = _int_or(r[37], 0) if len(r) > 37 else 0
     tiposaft_val = str(r[38] or "P") if len(r) > 38 and r[38] is not None else "P"
     precocompra_val = float(r[39] or 0) if len(r) > 39 and r[39] is not None else 0.0
+    composto_val = _int_or(r[40], 0) if len(r) > 40 else 0
+    is_menu_val = (composto_val == 2)
 
     return ProductItem(
         codigo=code,
@@ -281,14 +285,72 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         autoquebra=autoquebra_val,
         tiposaft=tiposaft_val,
         precocompra=precocompra_val,
+        composto=composto_val,
+        is_menu=is_menu_val,
         has_sales=has_sales,
         sales_check_ok=sales_ok,
         can_edit_description=not has_sales,
     )
 
 
+def get_menu_structure(cursor, menu_code: int) -> List[Dict[str, Any]]:
+    """
+    Obtém os níveis e opções configuradas para um artigo menu na ZoneSoft (ZSRest).
+    Retorna uma lista de níveis, cada um com a lista de artigos/opções possíveis e suplementos.
+    """
+    schema = _schema(cursor)
+    if "niveismenu" not in schema:
+        return []
+
+    # 1. Obter níveis
+    cursor.execute(
+        "SELECT nivel, descricao, ISNULL(obrigatorio, 0), ISNULL(ordem, 0) "
+        "FROM dbo.niveismenu WHERE menu = ? ORDER BY ordem, nivel",
+        (menu_code,)
+    )
+    levels = []
+    level_map = {}
+    for r in cursor.fetchall():
+        lvl_num = int(r[0])
+        lvl_obj = {
+            "nivel": lvl_num,
+            "descricao": r[1] or f"Nível {lvl_num}",
+            "obrigatorio": bool(r[2]),
+            "ordem": int(r[3] or 0),
+            "options": []
+        }
+        levels.append(lvl_obj)
+        level_map[lvl_num] = lvl_obj
+
+    if not levels or "niveismenuext" not in schema:
+        return levels
+
+    # 2. Obter opções de cada nível
+    cursor.execute(
+        "SELECT e.nivel, e.codigo, ISNULL(p.descricao, ''), ISNULL(e.preco, 0), "
+        "ISNULL(e.fixo, 0), ISNULL(e.produtodefault, 0) "
+        "FROM dbo.niveismenuext e "
+        "LEFT JOIN dbo.produtos p ON e.codigo = p.codigo "
+        "WHERE e.menu = ? ORDER BY e.nivel, e.codigo",
+        (menu_code,)
+    )
+    for r in cursor.fetchall():
+        lvl_num = int(r[0])
+        opt_obj = {
+            "codigo": int(r[1]),
+            "descricao": r[2] or f"Artigo #{r[1]}",
+            "preco": float(r[3] or 0),
+            "fixo": bool(r[4]),
+            "default": bool(r[5])
+        }
+        if lvl_num in level_map:
+            level_map[lvl_num]["options"].append(opt_obj)
+
+    return levels
+
+
 def _fetch_products_by_codes(cursor, codes: List[int], with_sales: bool = True,
-                             with_centros: bool = True) -> List[ProductItem]:
+                             with_centros: bool = True, with_menu_levels: bool = False) -> List[ProductItem]:
     codes = _unique_codes(codes)
     if not codes:
         return []
@@ -319,14 +381,19 @@ def _fetch_products_by_codes(cursor, codes: List[int], with_sales: bool = True,
         for code, item in items.items():
             item.centros_prod = centros.get(code, [])
 
+    if with_menu_levels and items:
+        for code, item in items.items():
+            if item.is_menu:
+                item.menu_levels = get_menu_structure(cursor, code)
+
     return [items[c] for c in codes if c in items]
 
 
-def get_products_by_codes(codes: List[int]) -> List[ProductItem]:
+def get_products_by_codes(codes: List[int], with_menu_levels: bool = False) -> List[ProductItem]:
     """Obtém lista detalhada de artigos por código diretamente do SQL Server (suporta milhares de códigos)."""
     conn = db_manager.get_connection()
     try:
-        return _fetch_products_by_codes(conn.cursor(), codes)
+        return _fetch_products_by_codes(conn.cursor(), codes, with_menu_levels=with_menu_levels)
     finally:
         conn.close()
 
@@ -438,6 +505,17 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
                 where.append("1=0")
         else:
             where.append(exists_sql if filters.has_sales else f"NOT {exists_sql}")
+
+    if filters.is_menu is not None:
+        has_composto = _has_optional_int_col(schema, "composto")
+        if has_composto:
+            if filters.is_menu:
+                where.append("ISNULL(CAST(p.composto AS INT), 0) = 2")
+            else:
+                where.append("ISNULL(CAST(p.composto AS INT), 0) <> 2")
+        else:
+            if filters.is_menu:
+                where.append("1=0")
 
     return " AND ".join(where), params
 

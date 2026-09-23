@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ProductItem, PriceZonesMap } from '../types';
-import { ShieldCheck, ShieldAlert, CheckSquare, Square, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Layers, ExternalLink } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, CheckSquare, Square, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Layers, ExternalLink, Utensils } from 'lucide-react';
 
 interface ProductTableProps {
   products: ProductItem[];
@@ -219,6 +219,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span>{product.descricao}</span>
+                          {product.is_menu && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-300 shadow-xs"
+                              title="Artigo do tipo Menu / Combo (ZSRest) com níveis e opções configuradas"
+                            >
+                              <Utensils className="w-3 h-3 text-purple-600" />
+                              Menu
+                            </span>
+                          )}
                           {product.has_sales ? (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 shadow-xs"
@@ -409,6 +418,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     {/* Estado */}
                     <td className="p-3 text-center">
                       <div className="flex flex-col items-center gap-1">
+                        {product.is_menu && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-300 shadow-xs"
+                            title="Menu / Composto"
+                          >
+                            <Utensils className="w-3 h-3 text-purple-600" />
+                            Menu
+                          </span>
+                        )}
                         {product.descontinuado === 1 || product.bloqueado === 1 ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-900 border border-rose-300 shadow-xs" title="Artigo Descontinuado / Bloqueado no POS">
                             <Lock className="w-3 h-3 text-rose-600" />

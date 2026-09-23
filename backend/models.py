@@ -36,6 +36,7 @@ class ProductFilter(BaseModel):
     descontinuado: Optional[int] = None  # 0=Ativo, 1=Descontinuado/Bloqueado, None=Todos
     frontoffice: Optional[int] = None  # 1=Visível, 0=Oculto, None=Todos
     has_sales: Optional[bool] = None  # True=Com Vendas, False=Sem Vendas, None=Todos
+    is_menu: Optional[bool] = None  # True=Apenas Menus, False=Sem Menus, None=Todos
     sort_by: Optional[str] = "codigo"  # "codigo", "descricao", "precovenda", "posicaofront", "familia"
     sort_order: Optional[str] = "asc"  # "asc", "desc"
     page: int = 1
@@ -103,6 +104,9 @@ class ProductItem(BaseModel):
     sales_check_ok: bool = True  # False = não foi possível verificar vendas (designação protegida por segurança)
     can_edit_description: bool = True
     centros_prod: Optional[List[Dict[str, int]]] = None  # Todas as linhas de dbo.produtoscentrosprod (para backups)
+    composto: int = 0  # 0=Simples, 2=Menu/Combo, 3=Opção, 4=Normal
+    is_menu: bool = False
+    menu_levels: Optional[List[Dict[str, Any]]] = None
 
 class ColorUpdate(BaseModel):
     apply_fundo: bool = False

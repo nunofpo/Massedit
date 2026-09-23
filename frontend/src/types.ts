@@ -70,6 +70,25 @@ export interface ProductItem {
   has_sales: boolean;
   sales_check_ok?: boolean;
   can_edit_description: boolean;
+  composto?: number;
+  is_menu?: boolean;
+  menu_levels?: MenuLevelItem[];
+}
+
+export interface MenuOptionItem {
+  codigo: number;
+  descricao: string;
+  preco: number;
+  fixo: boolean;
+  default: boolean;
+}
+
+export interface MenuLevelItem {
+  nivel: number;
+  descricao: string;
+  obrigatorio: boolean;
+  ordem: number;
+  options: MenuOptionItem[];
 }
 
 export interface ProductionCenterItem {
@@ -132,6 +151,7 @@ export interface ProductFilter {
   descontinuado?: number;
   frontoffice?: number;
   has_sales?: boolean;
+  is_menu?: boolean;
   sort_by?: string; // "codigo", "plu", "descricao", "precovenda", "posicaofront", "familia"
   sort_order?: string; // "asc", "desc"
   page: number;
