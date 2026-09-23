@@ -35,6 +35,7 @@ export interface ProductItem {
   subfamilia_desc?: string;
   iva?: number;
   iva_desc?: string;
+  isencao?: string;
   centro_prod?: number;
   centro_prod_desc?: string;
   pvp1: number;

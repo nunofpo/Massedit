@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 from backend.models import (
-    DatabaseConfig, ProductFilter, BulkEditRequest, BulkEditPreviewResponse,
+    DatabaseConfig, ProductFilter, ProductItem, BulkEditRequest, BulkEditPreviewResponse,
     BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
     ImportPreviewResponse, ImportApplyRequest, ImportRow,
     ProductionCenterItem, PrinterItem,
@@ -26,7 +26,7 @@ from backend.models import (
     EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
     CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest,
-    ZSThemeTransformRequest
+    ZSThemeTransformRequest, SingleProductUpdateRequest
 )
 from backend.services.customers import (
     get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
@@ -38,7 +38,8 @@ from backend.services.products import (
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
     get_vats, get_motivos_isencao, get_price_zones_mapping, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers, get_zonesoft_sync_status,
-    get_dead_products_summary, inactivate_dead_products
+    get_dead_products_summary, inactivate_dead_products,
+    get_products_by_codes, update_single_product
 )
 from backend.services.housekeeping import (
     get_db_housekeeping_status, shrink_log_file, optimize_indexes
@@ -573,6 +574,26 @@ def export_zs_template_endpoint(rows: List[MenuReviewedRow]):
 def to_import_rows_endpoint(rows: List[MenuReviewedRow], price_mapping: Dict[str, str] = Body(...)):
     """Converte artigos correspondentes em ImportRow para permitir simulação e gravação atómica."""
     return convert_matched_to_import_rows(rows, price_mapping)
+
+@app.get("/api/products/{codigo}", response_model=ProductItem)
+def get_single_product_endpoint(codigo: int):
+    """Devolve a ficha completa com todos os dados de um artigo por código."""
+    prods = get_products_by_codes([codigo])
+    if not prods:
+        raise HTTPException(status_code=404, detail=f"Artigo #{codigo} não foi encontrado na base de dados.")
+    return prods[0]
+
+@app.put("/api/products/{codigo}")
+def update_single_product_endpoint(codigo: int, req: SingleProductUpdateRequest):
+    """Atualiza diretamente a ficha de um artigo com validação, cópia de segurança e transação."""
+    success, message, updated_prod = update_single_product(codigo, req)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "product": updated_prod.model_dump() if updated_prod else None
+    }
 
 @app.post("/api/products/search")
 def search_products_endpoint(filters: ProductFilter):

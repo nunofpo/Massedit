@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ProductItem, PriceZonesMap } from '../types';
-import { ShieldCheck, ShieldAlert, CheckSquare, Square, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Layers } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, CheckSquare, Square, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Layers, ExternalLink } from 'lucide-react';
 
 interface ProductTableProps {
   products: ProductItem[];
@@ -19,6 +19,7 @@ interface ProductTableProps {
   totalCount: number;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
+  onOpenDetail?: (product: ProductItem) => void;
 }
 
 export const ProductTable: React.FC<ProductTableProps> = ({
@@ -37,7 +38,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   pageSize,
   totalCount,
   onPageChange,
-  onPageSizeChange
+  onPageSizeChange,
+  onOpenDetail
 }) => {
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
   const isAllPageSelected = products.length > 0 && products.every(p => selectedCodes.has(p.codigo));
@@ -164,9 +166,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                   <tr
                     key={product.codigo}
                     onClick={() => onToggleSelect(product.codigo)}
-                    className={`cursor-pointer transition ${
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenDetail) onOpenDetail(product);
+                    }}
+                    className={`cursor-pointer transition select-none group ${
                       isSelected ? 'bg-indigo-50/90 border-l-4 border-l-indigo-600 font-medium' : 'hover:bg-slate-50/80'
                     }`}
+                    title="Duplo clique para abrir a ficha completa do artigo"
                   >
                     {/* Checkbox */}
                     <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
@@ -209,26 +216,42 @@ export const ProductTable: React.FC<ProductTableProps> = ({
 
                     {/* Designação + Protection Badge */}
                     <td className="p-3 font-semibold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <span>{product.descricao}</span>
-                        {product.has_sales ? (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 shadow-xs"
-                            title={product.sales_check_ok === false
-                              ? "Não foi possível verificar as vendas deste artigo. A designação fica protegida por segurança."
-                              : "Artigo com vendas registadas. A designação/nome principal não pode ser alterada."}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{product.descricao}</span>
+                          {product.has_sales ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 shadow-xs"
+                              title={product.sales_check_ok === false
+                                ? "Não foi possível verificar as vendas deste artigo. A designação fica protegida por segurança."
+                                : "Artigo com vendas registadas. A designação/nome principal não pode ser alterada."}
+                            >
+                              <ShieldAlert className="w-3 h-3 text-amber-600" />
+                              {product.sales_check_ok === false ? 'Vendas ?' : 'Com Vendas'}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs"
+                              title="Artigo sem vendas. Designação editável."
+                            >
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              Sem Vendas
+                            </span>
+                          )}
+                        </div>
+
+                        {onOpenDetail && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenDetail(product);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition shrink-0 shadow-xs"
+                            title="Abrir ficha completa deste artigo (duplo clique na linha)"
                           >
-                            <ShieldAlert className="w-3 h-3 text-amber-600" />
-                            {product.sales_check_ok === false ? 'Vendas ?' : 'Com Vendas'}
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs"
-                            title="Artigo sem vendas. Designação editável."
-                          >
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            Sem Vendas
-                          </span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                       {product.descricaocurta && (

@@ -216,6 +216,42 @@ class BulkEditRequest(BaseModel):
     # Sincronização Cloud
     mark_cloud_sync: bool = True
 
+class SingleProductUpdateRequest(BaseModel):
+    descricao: Optional[str] = None
+    descricaocurta: Optional[str] = None
+    codbarras: Optional[str] = None
+    referencia: Optional[str] = None
+    plu: Optional[int] = None
+    familia: Optional[int] = None
+    subfamilia: Optional[int] = None
+    iva: Optional[float] = None
+    motivo_isencao: Optional[str] = None
+    centro_prod: Optional[int] = None
+    pvp1: Optional[float] = None
+    pvp2: Optional[float] = None
+    pvp3: Optional[float] = None
+    pvp4: Optional[float] = None
+    pvp5: Optional[float] = None
+    pvp6: Optional[float] = None
+    pvp7: Optional[float] = None
+    pvp8: Optional[float] = None
+    pvp9: Optional[float] = None
+    pvp10: Optional[float] = None
+    precocompra: Optional[float] = None
+    bloqueado: Optional[int] = None
+    descontinuado: Optional[int] = None
+    frontoffice: Optional[int] = None
+    posicaofront: Optional[int] = None
+    fundo_hex: Optional[str] = None
+    letra_hex: Optional[str] = None
+    meiadose: Optional[int] = None
+    precomeia: Optional[float] = None
+    meiadosedesc: Optional[str] = None
+    dosedesc: Optional[str] = None
+    vendersemstock: Optional[int] = None
+    autoquebra: Optional[int] = None
+    tiposaft: Optional[str] = None
+
 class FieldDiff(BaseModel):
     field_name: str
     field_label: str

@@ -286,6 +286,44 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(res.customers[1].nif, "501234560")
         self.assertFalse(res.customers[2].is_valid_nif)
 
+    def test_single_product_endpoints(self):
+        from fastapi.testclient import TestClient
+        from backend.app import app
+        from backend.models import ProductItem
+        client = TestClient(app)
+
+        mock_prod = ProductItem(
+            codigo=999,
+            descricao="Artigo de Teste",
+            pvp1=5.00,
+            has_sales=True,
+            can_edit_description=False
+        )
+
+        with patch("backend.app.get_products_by_codes") as mock_get:
+            mock_get.return_value = [mock_prod]
+            # 1. Test GET /api/products/999
+            res = client.get("/api/products/999")
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["descricao"], "Artigo de Teste")
+
+            # 2. Test GET non-existent
+            mock_get.return_value = []
+            res_404 = client.get("/api/products/88888")
+            self.assertEqual(res_404.status_code, 404)
+
+        with patch("backend.app.update_single_product") as mock_update:
+            # 3. Test PUT success
+            mock_update.return_value = (True, "Artigo atualizado.", mock_prod)
+            res_put = client.put("/api/products/999", json={"pvp1": 6.50})
+            self.assertEqual(res_put.status_code, 200)
+            self.assertTrue(res_put.json()["success"])
+
+            # 4. Test PUT failure (e.g. description blocked)
+            mock_update.return_value = (False, "Descrição bloqueada por vendas.", None)
+            res_fail = client.put("/api/products/999", json={"descricao": "Novo Nome"})
+            self.assertEqual(res_fail.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ import { ZSThemeModal } from './components/ZSThemeModal';
 import { CashlogyLogsModal } from './components/CashlogyLogsModal';
 import { HousekeepingModal } from './components/HousekeepingModal';
 import { DeadProductsModal } from './components/DeadProductsModal';
+import { ProductDetailModal } from './components/ProductDetailModal';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse, PriceZonesMap
@@ -75,6 +76,8 @@ export const App: React.FC = () => {
   const [isCashlogyLogsOpen, setIsCashlogyLogsOpen] = useState(false);
   const [isHousekeepingOpen, setIsHousekeepingOpen] = useState(false);
   const [isDeadProductsOpen, setIsDeadProductsOpen] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<ProductItem | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
@@ -83,6 +86,17 @@ export const App: React.FC = () => {
   const [previewData, setPreviewData] = useState<BulkEditPreviewResponse | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleOpenDetail = (product: ProductItem) => {
+    setDetailProduct(product);
+    setIsDetailOpen(true);
+  };
+
+  const handleProductSaved = (updated: ProductItem) => {
+    setProducts(prev => prev.map(p => p.codigo === updated.codigo ? updated : p));
+    setDetailProduct(updated);
+    setNotification({ type: 'success', text: `Ficha do artigo #${updated.codigo} atualizada com sucesso no SQL Server.` });
+  };
 
   // Fetch Connection Config & Aux Lists
   const fetchConfig = async () => {
@@ -524,6 +538,7 @@ export const App: React.FC = () => {
           totalCount={totalProducts}
           onPageChange={(page) => handleFilterChange({ page })}
           onPageSizeChange={(newSize) => handleFilterChange({ page_size: newSize, page: 1 })}
+          onOpenDetail={handleOpenDetail}
         />
 
         {/* Right Bulk Edit Form Panel */}
@@ -668,6 +683,20 @@ export const App: React.FC = () => {
           setNotification({ type: 'success', text: 'Artigos mortos inativados com sucesso!' });
         }}
       />
+
+      <ProductDetailModal
+        product={detailProduct}
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        onSaveSuccess={handleProductSaved}
+        families={families}
+        subfamilies={subfamilies}
+        vats={vats}
+        motivosIsencao={motivosIsencao}
+        productionCenters={productionCenters}
+        priceZones={priceZones}
+      />
+
 
     </div>
   );

@@ -13,7 +13,7 @@ from backend.models import (
     ProductFilter, ProductItem, BulkEditRequest, BulkEditPreviewResponse,
     ProductDiff, FieldDiff, BackupItem, DetailedFamilyItem, BulkFamilyColorUpdateRequest,
     ImportRow, ImportPreviewResponse,
-    ProductionCenterItem, PrinterItem
+    ProductionCenterItem, PrinterItem, SingleProductUpdateRequest
 )
 from backend.db import (
     db_manager, hex_to_int_color, int_color_to_hex, is_valid_hex_color,
@@ -1897,6 +1897,211 @@ def apply_bulk_edit(req: BulkEditRequest) -> Tuple[bool, str, int]:
         if blocked_total:
             msg += f" {blocked_total} alteração(ões) bloqueada(s) não foram aplicadas."
         return True, msg, affected
+    finally:
+        conn.close()
+
+
+def update_single_product(codigo: int, req: SingleProductUpdateRequest) -> Tuple[bool, str, Optional[ProductItem]]:
+    """
+    Atualiza diretamente os dados da ficha de um artigo com validação de histórico de vendas,
+    cópia de segurança prévia, histórico de preços e transação atómica.
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        prods = _fetch_products_by_codes(cursor, [codigo])
+        if not prods:
+            return False, f"Artigo #{codigo} não encontrado.", None
+        
+        cur = prods[0]
+        
+        # Validação Regra 1: Descrição bloqueada se tiver vendas
+        if req.descricao is not None:
+            new_desc = req.descricao.strip()
+            if new_desc != cur.descricao and cur.has_sales:
+                return False, f"Não é permitido alterar a descrição do artigo #{codigo} porque já existem vendas registadas no histórico (exigência fiscal SAF-T).", None
+
+        # Validação Regra 2: Código de barras duplicado (se preenchido)
+        if req.codbarras is not None:
+            new_bc = req.codbarras.strip()
+            if new_bc and new_bc != cur.codbarras:
+                cursor.execute("SELECT codigo, descricao FROM dbo.produtos WHERE codbarras = ? AND codigo <> ?", (new_bc, codigo))
+                dup = cursor.fetchone()
+                if dup:
+                    return False, f"O código de barras '{new_bc}' já se encontra associado ao artigo #{dup[0]} ({dup[1]}).", None
+
+        # Validação Regra 3: Cópia de segurança obrigatória antes de gravar
+        try:
+            create_backup_snapshot([cur], f"Edição individual da ficha do artigo #{codigo} ({cur.descricao})")
+        except Exception as e:
+            return False, f"Falha ao criar cópia de segurança antes de gravar: {e}", None
+
+        # Construir conjuntos de campos a alterar
+        sets = []
+        params = []
+        p_cols = _prod_cols(schema)
+        
+        if req.descricao is not None and "descricao" in p_cols:
+            sets.append("descricao = ?")
+            params.append(req.descricao.strip()[:_text_limit(schema, "produtos", "descricao", 50)])
+
+        if req.descricaocurta is not None and "descricaocurta" in p_cols:
+            sets.append("descricaocurta = ?")
+            params.append(req.descricaocurta.strip()[:_text_limit(schema, "produtos", "descricaocurta", 20)])
+
+        if req.codbarras is not None and "codbarras" in p_cols:
+            sets.append("codbarras = ?")
+            params.append(req.codbarras.strip()[:_text_limit(schema, "produtos", "codbarras", 30)])
+
+        if req.referencia is not None and "referencia" in p_cols:
+            sets.append("referencia = ?")
+            params.append(req.referencia.strip()[:_text_limit(schema, "produtos", "referencia", 30)])
+
+        if req.plu is not None and "codigo_alf" in p_cols:
+            sets.append("codigo_alf = ?")
+            params.append(int(req.plu))
+
+        if req.familia is not None and "familia" in p_cols:
+            sets.append("familia = ?")
+            params.append(int(req.familia))
+
+        if req.subfamilia is not None and "subfam" in p_cols:
+            sets.append("subfam = ?")
+            params.append(int(req.subfamilia))
+
+        if req.iva is not None and "iva" in p_cols:
+            sets.append("iva = ?")
+            params.append(float(req.iva))
+
+        if req.motivo_isencao is not None and "isencao" in p_cols:
+            sets.append("isencao = ?")
+            params.append(req.motivo_isencao.strip())
+
+        if req.centro_prod is not None and "cozinha" in p_cols:
+            sets.append("cozinha = ?")
+            params.append(int(req.centro_prod))
+
+        # PVPs e histórico de preços
+        history_ok = "historico_precos" in schema
+        pvp_fields = [
+            (1, "precovenda", req.pvp1, cur.pvp1),
+            (2, "pvp2", req.pvp2, cur.pvp2),
+            (3, "pvp3", req.pvp3, cur.pvp3),
+            (4, "pvp4", req.pvp4, cur.pvp4),
+            (5, "pvp5", req.pvp5, cur.pvp5),
+            (6, "pvp6", req.pvp6, cur.pvp6),
+            (7, "pvp7", req.pvp7, cur.pvp7),
+            (8, "pvp8", req.pvp8, cur.pvp8),
+            (9, "pvp9", req.pvp9, cur.pvp9),
+            (10, "pvp10", req.pvp10, cur.pvp10),
+        ]
+        price_changes = []
+        for p_idx, col_name, new_val, cur_val in pvp_fields:
+            if new_val is not None and col_name in p_cols:
+                n_val = round(float(new_val), 4)
+                if abs(n_val - cur_val) > 0.0001:
+                    sets.append(f"{col_name} = ?")
+                    params.append(n_val)
+                    price_changes.append((p_idx, n_val))
+
+        if req.precocompra is not None and "precocompra" in p_cols:
+            sets.append("precocompra = ?")
+            params.append(round(float(req.precocompra), 4))
+
+        if req.bloqueado is not None and "bloqueado" in p_cols:
+            sets.append("bloqueado = ?")
+            params.append(int(req.bloqueado))
+
+        if req.descontinuado is not None and "descontinuado" in p_cols:
+            sets.append("descontinuado = ?")
+            params.append(int(req.descontinuado))
+
+        if req.frontoffice is not None and "topo" in p_cols:
+            sets.append("topo = ?")
+            params.append(int(req.frontoffice))
+
+        if req.posicaofront is not None and "ordem" in p_cols:
+            sets.append("ordem = ?")
+            params.append(int(req.posicaofront))
+
+        if req.fundo_hex is not None and "fundo" in p_cols:
+            sets.append("fundo = ?")
+            params.append(hex_to_int_color(req.fundo_hex))
+
+        if req.letra_hex is not None and "letra" in p_cols:
+            sets.append("letra = ?")
+            params.append(hex_to_int_color(req.letra_hex))
+
+        if req.meiadose is not None and "meiadose" in p_cols:
+            sets.append("meiadose = ?")
+            params.append(int(req.meiadose))
+
+        if req.precomeia is not None and "precomeia" in p_cols:
+            sets.append("precomeia = ?")
+            params.append(round(float(req.precomeia), 4))
+
+        if req.meiadosedesc is not None and "meiadosedesc" in p_cols:
+            sets.append("meiadosedesc = ?")
+            params.append(req.meiadosedesc.strip()[:_text_limit(schema, "produtos", "meiadosedesc", 50)])
+
+        if req.dosedesc is not None and "dosedesc" in p_cols:
+            sets.append("dosedesc = ?")
+            params.append(req.dosedesc.strip()[:_text_limit(schema, "produtos", "dosedesc", 50)])
+
+        if req.vendersemstock is not None and "vendersemstock" in p_cols:
+            sets.append("vendersemstock = ?")
+            params.append(int(req.vendersemstock))
+
+        if req.autoquebra is not None and "autoquebra" in p_cols:
+            sets.append("autoquebra = ?")
+            params.append(int(req.autoquebra))
+
+        if req.tiposaft is not None and "tiposaft" in p_cols:
+            sets.append("tiposaft = ?")
+            params.append(req.tiposaft.strip()[:2])
+
+        if not sets:
+            return True, "Nenhuma alteração a gravar.", cur
+
+        if "sync" in p_cols:
+            sets.append("sync = 1")
+
+        params.append(codigo)
+        sql = f"UPDATE dbo.produtos SET {', '.join(sets)} WHERE codigo = ?"
+        cursor.execute(sql, params)
+
+        # Registar no histórico de preços
+        if history_ok:
+            for p_idx, p_val in price_changes:
+                cursor.execute(
+                    "INSERT INTO dbo.historico_precos (datahora, codigo, pvp, siva, preco) VALUES (GETDATE(), ?, ?, 0, ?)",
+                    (codigo, p_idx, p_val)
+                )
+
+        # Registar no histórico de produtos
+        try:
+            cursor.execute(
+                "INSERT INTO dbo.produtos_historico (codigo, user_alt, op_alt, web_alt, api_alt, datahora, tipo, sync) "
+                "VALUES (?, 1, NULL, NULL, NULL, GETDATE(), 2, 0)",
+                (codigo,)
+            )
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+        except Exception:
+            pass
+
+        conn.commit()
+
+        # Recarregar produto atualizado
+        updated = _fetch_products_by_codes(cursor, [codigo])
+        return True, "Artigo atualizado com sucesso no SQL Server.", updated[0] if updated else cur
+    except Exception as e:
+        conn.rollback()
+        return False, f"Erro ao atualizar artigo: {str(e)}", None
     finally:
         conn.close()
 
