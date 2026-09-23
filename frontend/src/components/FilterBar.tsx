@@ -169,17 +169,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </select>
           </div>
 
-          {/* Blocked Filter */}
-          <div className="relative min-w-[110px]">
+          {/* Descontinuados / Estado Filter */}
+          <div className="relative min-w-[150px]">
             <select
-              value={filters.bloqueado ?? ''}
-              onChange={(e) => onFilterChange({ bloqueado: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
+              value={filters.descontinuado !== undefined ? String(filters.descontinuado) : (filters.bloqueado !== undefined ? String(filters.bloqueado) : '')}
+              onChange={(e) => {
+                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                onFilterChange({ descontinuado: val, bloqueado: undefined, page: 1 });
+              }}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition appearance-none shadow-sm cursor-pointer"
-              title="Filtrar por estado de bloqueio"
+              title="Filtrar por artigos ativos ou descontinuados/bloqueados"
             >
               <option value="">Estado: Todos</option>
-              <option value="0">Ativos</option>
-              <option value="1">Bloqueados</option>
+              <option value="0">✅ Apenas Ativos</option>
+              <option value="1">🚫 Descontinuados / Bloqueados</option>
             </select>
           </div>
 

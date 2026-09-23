@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin, ScrollText } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin, ScrollText, HardDrive, Archive } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -16,6 +16,8 @@ interface HeaderProps {
   onOpenCashlogyLogs: () => void;
   onOpenMenuImport: () => void;
   onOpenCustomers: () => void;
+  onOpenHousekeeping: () => void;
+  onOpenDeadProducts: () => void;
   onRefresh: () => void;
   isRefreshing?: boolean;
 }
@@ -35,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCashlogyLogs,
   onOpenMenuImport,
   onOpenCustomers,
+  onOpenHousekeeping,
+  onOpenDeadProducts,
   onRefresh,
   isRefreshing = false
 }) => {
@@ -46,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
         <div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            MassEdit <span className="text-indigo-700 text-xs px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 font-mono font-bold">POS v1.0</span>
+            MassEdit <span className="text-indigo-700 text-xs px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 font-mono font-bold">POS v1.0.1</span>
           </h1>
           <p className="text-xs text-slate-500 font-medium">Edição em Massa Segura • Validação de Vendas • Sincronização Cloud</p>
         </div>
@@ -154,6 +158,24 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Users className="w-3.5 h-3.5 text-emerald-600" />
           Clientes & NIF
+        </button>
+
+        <button
+          onClick={onOpenDeadProducts}
+          className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 transition shadow-sm"
+          title="Inativação em Lote de Artigos Mortos (Sem Vendas)"
+        >
+          <Archive className="w-3.5 h-3.5 text-amber-600" />
+          Artigos Mortos
+        </button>
+
+        <button
+          onClick={onOpenHousekeeping}
+          className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 transition shadow-sm"
+          title="Manutenção do SQL Server — Redução de Log (Shrink) e Otimização de Índices"
+        >
+          <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
+          Manutenção BD
         </button>
 
         <button

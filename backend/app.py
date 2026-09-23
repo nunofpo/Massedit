@@ -37,8 +37,11 @@ from backend.services.products import (
     get_families, create_family, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
     get_vats, get_motivos_isencao, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
-    get_production_centers, get_printers, get_zonesoft_sync_status
-
+    get_production_centers, get_printers, get_zonesoft_sync_status,
+    get_dead_products_summary, inactivate_dead_products
+)
+from backend.services.housekeeping import (
+    get_db_housekeeping_status, shrink_log_file, optimize_indexes
 )
 from backend.services.reports import run_data_quality_report
 from backend.services.zstheme import analyze_zstheme, transform_zstheme
@@ -67,7 +70,7 @@ from fastapi.responses import HTMLResponse, Response
 
 logger = logging.getLogger("massedit")
 
-app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.0")
+app = FastAPI(title="MassEdit POS API", description="API de Edição em Massa Segura de Artigos", version="1.0.1")
 
 # A interface é servida pelo próprio servidor (mesma origem). CORS só para o servidor de desenvolvimento Vite.
 app.add_middleware(
@@ -914,6 +917,57 @@ def save_structure_translations_endpoint(payload: Dict[str, Any] = Body(...)):
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message}
+
+
+# ----------------------------------------------------------------------
+# Artigos Mortos (Sem Vendas) & Inativação em Lote
+# ----------------------------------------------------------------------
+
+class InactivateDeadProductsRequest(BaseModel):
+    product_codes: Optional[List[int]] = None
+
+
+@app.get("/api/products/dead-products/summary")
+def dead_products_summary_endpoint():
+    """Identifica artigos 'mortos' ativos sem qualquer venda registada."""
+    return get_dead_products_summary()
+
+
+@app.post("/api/products/dead-products/inactivate")
+def inactivate_dead_products_endpoint(payload: InactivateDeadProductsRequest = Body(...)):
+    """Inativa e oculta do POS em lote os artigos especificados (com backup prévio)."""
+    res = inactivate_dead_products(payload.product_codes)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Falha ao inativar artigos."))
+    return res
+
+
+# ----------------------------------------------------------------------
+# Housekeeping e Manutenção do SQL Server
+# ----------------------------------------------------------------------
+
+@app.get("/api/housekeeping/status")
+def housekeeping_status_endpoint():
+    """Obtém diagnóstico de tamanho dos ficheiros .mdf e .ldf, índices e tabelas."""
+    return get_db_housekeeping_status()
+
+
+@app.post("/api/housekeeping/shrink-log")
+def housekeeping_shrink_log_endpoint():
+    """Executa a redução (shrink) do ficheiro de registo de transações (.ldf)."""
+    res = shrink_log_file()
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Falha ao encolher ficheiro de log."))
+    return res
+
+
+@app.post("/api/housekeeping/optimize-indexes")
+def housekeeping_optimize_indexes_endpoint():
+    """Reorganiza índices e atualiza estatísticas nas tabelas principais do ZoneSoft."""
+    res = optimize_indexes()
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Falha ao otimizar índices."))
+    return res
 
 
 # Servir Frontend estático se compilado (Suporte a PyInstaller bundle)

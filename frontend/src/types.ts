@@ -48,6 +48,7 @@ export interface ProductItem {
   pvp9: number;
   pvp10: number;
   bloqueado: number;
+  descontinuado?: number;
   frontoffice: number;
   posicaofront?: number;
   fundo?: number;
@@ -57,6 +58,14 @@ export interface ProductItem {
   cor?: number;
   cor_hex: string;
   sync: number;
+  meiadose?: number;
+  precomeia?: number;
+  meiadosedesc?: string;
+  dosedesc?: string;
+  vendersemstock?: number;
+  autoquebra?: number;
+  tiposaft?: string;
+  precocompra?: number;
   has_sales: boolean;
   sales_check_ok?: boolean;
   can_edit_description: boolean;
@@ -119,12 +128,62 @@ export interface ProductFilter {
   iva?: number;
   centro_prod?: number;
   bloqueado?: number;
+  descontinuado?: number;
   frontoffice?: number;
   has_sales?: boolean;
   sort_by?: string; // "codigo", "plu", "descricao", "precovenda", "posicaofront", "familia"
   sort_order?: string; // "asc", "desc"
   page: number;
   page_size: number;
+}
+
+export interface DeadProductSample {
+  codigo: number;
+  descricao: string;
+  pvp1: number;
+  familia: string;
+}
+
+export interface DeadProductsSummary {
+  available: boolean;
+  message?: string;
+  count: number;
+  codes: number[];
+  sample: DeadProductSample[];
+  families: { familia: string; count: number }[];
+  total_pvp1: number;
+}
+
+export interface HousekeepingFileItem {
+  id: number;
+  type: string;
+  logical_name: string;
+  physical_path: string;
+  size_mb: number;
+  used_mb: number;
+  free_mb: number;
+}
+
+export interface HousekeepingTableItem {
+  name: string;
+  rows: number;
+  total_mb: number;
+  used_mb: number;
+}
+
+export interface HousekeepingStatus {
+  database_name: string;
+  recovery_model: string;
+  data_size_mb: number;
+  data_used_mb: number;
+  data_free_mb: number;
+  log_size_mb: number;
+  log_used_mb: number;
+  log_free_mb: number;
+  log_file_name: string;
+  log_bloated: boolean;
+  files: HousekeepingFileItem[];
+  top_tables: HousekeepingTableItem[];
 }
 
 export interface ProductCodesResponse {
@@ -196,6 +255,24 @@ export interface BulkEditRequest {
   new_referencia?: string;
   colors: ColorUpdate;
   prices: PriceUpdate;
+  apply_precocompra?: boolean;
+  new_precocompra?: number;
+  apply_meiadose?: boolean;
+  new_meiadose?: number;
+  apply_precomeia?: boolean;
+  new_precomeia?: number;
+  precomeia_mode?: 'fixed' | 'percent_pvp1';
+  precomeia_pct_pvp1?: number;
+  apply_meiadosedesc?: boolean;
+  new_meiadosedesc?: string;
+  apply_dosedesc?: boolean;
+  new_dosedesc?: string;
+  apply_vendersemstock?: boolean;
+  new_vendersemstock?: number;
+  apply_autoquebra?: boolean;
+  new_autoquebra?: number;
+  apply_tiposaft?: boolean;
+  new_tiposaft?: string;
   apply_familia: boolean;
   new_familia?: number;
   apply_subfamilia?: boolean;

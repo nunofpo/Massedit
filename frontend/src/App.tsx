@@ -15,6 +15,8 @@ import { EmentaDigitalModal } from './components/EmentaDigitalModal';
 import { CustomersModal } from './components/CustomersModal';
 import { ZSThemeModal } from './components/ZSThemeModal';
 import { CashlogyLogsModal } from './components/CashlogyLogsModal';
+import { HousekeepingModal } from './components/HousekeepingModal';
+import { DeadProductsModal } from './components/DeadProductsModal';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
   BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
@@ -70,6 +72,8 @@ export const App: React.FC = () => {
   const [isCustomersOpen, setIsCustomersOpen] = useState(false);
   const [isZsThemeOpen, setIsZsThemeOpen] = useState(false);
   const [isCashlogyLogsOpen, setIsCashlogyLogsOpen] = useState(false);
+  const [isHousekeepingOpen, setIsHousekeepingOpen] = useState(false);
+  const [isDeadProductsOpen, setIsDeadProductsOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
 
   // Dry-Run & Apply State
@@ -457,6 +461,8 @@ export const App: React.FC = () => {
         onOpenZsTheme={() => setIsZsThemeOpen(true)}
         onOpenCashlogyLogs={() => setIsCashlogyLogsOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
+        onOpenHousekeeping={() => setIsHousekeepingOpen(true)}
+        onOpenDeadProducts={() => setIsDeadProductsOpen(true)}
         onRefresh={() => {
           fetchAuxData();
           loadProducts();
@@ -513,6 +519,7 @@ export const App: React.FC = () => {
           pageSize={filters.page_size}
           totalCount={totalProducts}
           onPageChange={(page) => handleFilterChange({ page })}
+          onPageSizeChange={(newSize) => handleFilterChange({ page_size: newSize, page: 1 })}
         />
 
         {/* Right Bulk Edit Form Panel */}
@@ -640,6 +647,21 @@ export const App: React.FC = () => {
         isOpen={isCashlogyLogsOpen}
         onClose={() => setIsCashlogyLogsOpen(false)}
         onOpenConfig={() => { setIsCashlogyLogsOpen(false); setIsConfigOpen(true); }}
+      />
+
+      <HousekeepingModal
+        isOpen={isHousekeepingOpen}
+        onClose={() => setIsHousekeepingOpen(false)}
+      />
+
+      <DeadProductsModal
+        isOpen={isDeadProductsOpen}
+        onClose={() => setIsDeadProductsOpen(false)}
+        onFilterInMainTable={(codes, label) => handleViewReportArticles(codes, label)}
+        onSuccessInactivate={() => {
+          loadProducts();
+          setNotification({ type: 'success', text: 'Artigos mortos inativados com sucesso!' });
+        }}
       />
 
     </div>

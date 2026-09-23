@@ -35,7 +35,10 @@ SALES_TABLES = ("vendas", "vendasprod", "consumo_doc", "movimentos", "vendas_dev
 
 # Colunas opcionais de dbo.produtos (só usadas se existirem nesta base de dados)
 INT_TYPES = {"int", "bigint", "smallint", "tinyint", "bit"}
-OPTIONAL_PRODUCT_COLUMNS = ("bloqueado", "frontoffice", "cor")
+OPTIONAL_PRODUCT_COLUMNS = (
+    "bloqueado", "frontoffice", "cor", "descontinuado",
+    "meiadose", "vendersemstock", "autoquebra"
+)
 
 PRICE_EPSILON = 0.00005
 
@@ -192,6 +195,14 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         return f"ISNULL(p.{col}, {default})" if _has_optional_int_col(schema, col) else str(default)
 
     isencao_col = "ISNULL(p.isencao, '')" if "isencao" in _prod_cols(schema) else "''"
+    meiadose_col = opt("meiadose", 0)
+    precomeia_col = "ISNULL(p.precomeia, 0)" if "precomeia" in _prod_cols(schema) else "0.0"
+    meiadosedesc_col = "ISNULL(p.meiadosedesc, '')" if "meiadosedesc" in _prod_cols(schema) else "''"
+    dosedesc_col = "ISNULL(p.dosedesc, '')" if "dosedesc" in _prod_cols(schema) else "''"
+    vendersemstock_col = opt("vendersemstock", 1)
+    autoquebra_col = opt("autoquebra", 0)
+    tiposaft_col = "ISNULL(p.tiposaft, 'P')" if "tiposaft" in _prod_cols(schema) else "'P'"
+    precocompra_col = "ISNULL(p.precocompra, 0)" if "precocompra" in _prod_cols(schema) else "0.0"
 
     return f"""
         p.codigo, p.descricao, ISNULL(p.descricaocurta, ''), p.familia, f.descricao,
@@ -202,7 +213,9 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         ISNULL(p.codbarras, ''), ISNULL(p.referencia, ''),
         ISNULL(p.cozinha, 0), cp.descricao,
         {opt('bloqueado', 0)}, {opt('frontoffice', 1)}, {opt('cor', 0)}, {opt('sync', 0)},
-        {isencao_col}
+        {isencao_col}, {opt('descontinuado', 0)},
+        {meiadose_col}, {precomeia_col}, {meiadosedesc_col}, {dosedesc_col},
+        {vendersemstock_col}, {autoquebra_col}, {tiposaft_col}, {precocompra_col}
     """
 
 
@@ -220,6 +233,16 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
     letra = _int_or(r[19], 16777215)
     cor = _int_or(r[28], 0)
     isencao_val = str(r[30] or "") if len(r) > 30 and r[30] is not None else ""
+    descontinuado_val = _int_or(r[31], 0) if len(r) > 31 else 0
+    meiadose_val = _int_or(r[32], 0) if len(r) > 32 else 0
+    precomeia_val = float(r[33] or 0) if len(r) > 33 and r[33] is not None else 0.0
+    meiadosedesc_val = str(r[34] or "") if len(r) > 34 and r[34] is not None else ""
+    dosedesc_val = str(r[35] or "") if len(r) > 35 and r[35] is not None else ""
+    vendersemstock_val = _int_or(r[36], 1) if len(r) > 36 else 1
+    autoquebra_val = _int_or(r[37], 0) if len(r) > 37 else 0
+    tiposaft_val = str(r[38] or "P") if len(r) > 38 and r[38] is not None else "P"
+    precocompra_val = float(r[39] or 0) if len(r) > 39 and r[39] is not None else 0.0
+
     return ProductItem(
         codigo=code,
         descricao=r[1] or "",
@@ -244,11 +267,20 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         centro_prod=r[24] if r[24] else None,
         centro_prod_desc=r[25] or "",
         bloqueado=_int_or(r[26], 0),
+        descontinuado=descontinuado_val,
         frontoffice=_int_or(r[27], 1),
         cor=cor,
         cor_hex=int_color_to_hex(cor),
         sync=_int_or(r[29], 0),
         isencao=isencao_val,
+        meiadose=meiadose_val,
+        precomeia=precomeia_val,
+        meiadosedesc=meiadosedesc_val,
+        dosedesc=dosedesc_val,
+        vendersemstock=vendersemstock_val,
+        autoquebra=autoquebra_val,
+        tiposaft=tiposaft_val,
+        precocompra=precocompra_val,
         has_sales=has_sales,
         sales_check_ok=sales_ok,
         can_edit_description=not has_sales,
@@ -364,6 +396,26 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
             params.append(filters.centro_prod)
             params.append(filters.centro_prod)
 
+    if filters.descontinuado is not None:
+        has_desc = _has_optional_int_col(schema, "descontinuado")
+        has_bloq = _has_optional_int_col(schema, "bloqueado")
+        if int(filters.descontinuado) == 1:
+            if has_desc and has_bloq:
+                where.append("(ISNULL(CAST(p.descontinuado AS INT), 0) = 1 OR ISNULL(CAST(p.bloqueado AS INT), 0) = 1)")
+            elif has_desc:
+                where.append("ISNULL(CAST(p.descontinuado AS INT), 0) = 1")
+            elif has_bloq:
+                where.append("ISNULL(CAST(p.bloqueado AS INT), 0) = 1")
+            else:
+                where.append("1=0")
+        elif int(filters.descontinuado) == 0:
+            if has_desc and has_bloq:
+                where.append("(ISNULL(CAST(p.descontinuado AS INT), 0) = 0 AND ISNULL(CAST(p.bloqueado AS INT), 0) = 0)")
+            elif has_desc:
+                where.append("ISNULL(CAST(p.descontinuado AS INT), 0) = 0")
+            elif has_bloq:
+                where.append("ISNULL(CAST(p.bloqueado AS INT), 0) = 0")
+
     if filters.bloqueado is not None:
         if _has_optional_int_col(schema, "bloqueado"):
             where.append("ISNULL(CAST(p.bloqueado AS INT), 0) = ?")
@@ -393,7 +445,7 @@ def _build_product_where(filters: ProductFilter, schema: SchemaInfo, temp_table:
 def search_products(filters: ProductFilter) -> Tuple[List[ProductItem], int]:
     """Pesquisa artigos no SQL Server com filtros (incluindo vendas/estado) aplicados antes da paginação."""
     page = max(1, int(filters.page or 1))
-    page_size = max(1, min(1000, int(filters.page_size or 50)))
+    page_size = max(1, min(100000, int(filters.page_size or 50)))
 
     conn = db_manager.get_connection()
     try:
@@ -555,6 +607,163 @@ def get_zonesoft_sync_status() -> Dict[str, Any]:
         finished_val = int(row[1]) if row[1] is not None else 1
         pending = sync_val == 1 and finished_val == 0
         return {"available": True, "pending": pending, "sync": sync_val, "finished": finished_val, "message": ""}
+    finally:
+        conn.close()
+
+
+# ======================================================================
+# Artigos Mortos (Sem Vendas) & Inativação em Lote
+# ======================================================================
+
+def get_dead_products_summary() -> Dict[str, Any]:
+    """
+    Identifica artigos 'mortos': artigos atualmente ativos ou visíveis no POS
+    que NUNCA tiveram qualquer venda registada no ZoneSoft.
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        sales_exists = _sales_exists_sql(schema)
+        if sales_exists is None:
+            return {
+                "available": False,
+                "message": "Não foi possível verificar tabelas de vendas na base de dados.",
+                "count": 0,
+                "codes": [],
+                "sample": [],
+                "families": [],
+                "total_pvp1": 0.0
+            }
+
+        has_bloq = _has_optional_int_col(schema, "bloqueado")
+        has_fo = _has_optional_int_col(schema, "frontoffice")
+        has_desc = _has_optional_int_col(schema, "descontinuado")
+
+        active_clauses = []
+        if has_bloq:
+            active_clauses.append("ISNULL(CAST(p.bloqueado AS INT), 0) = 0")
+        if has_desc:
+            active_clauses.append("ISNULL(CAST(p.descontinuado AS INT), 0) = 0")
+        if has_fo:
+            active_clauses.append("ISNULL(CAST(p.frontoffice AS INT), 1) = 1")
+
+        active_sql = (" AND " + " AND ".join(active_clauses)) if active_clauses else ""
+
+        sql = f"""
+            SELECT p.codigo, p.descricao, ISNULL(p.precovenda, 0), p.familia, ISNULL(f.descricao, 'Sem Família')
+            FROM dbo.produtos p
+            LEFT JOIN dbo.familias f ON p.familia = f.codigo
+            WHERE NOT {sales_exists} {active_sql}
+            ORDER BY f.descricao, p.codigo
+        """
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+
+        codes = []
+        families_map: Dict[str, int] = {}
+        total_pvp1 = 0.0
+        sample = []
+
+        for r in rows:
+            c = int(r[0])
+            desc = str(r[1] or "")
+            pvp = float(r[2] or 0.0)
+            fam = str(r[4] or "Sem Família").strip()
+
+            codes.append(c)
+            families_map[fam] = families_map.get(fam, 0) + 1
+            total_pvp1 += pvp
+            if len(sample) < 50:
+                sample.append({"codigo": c, "descricao": desc, "pvp1": pvp, "familia": fam})
+
+        families_summary = [{"familia": k, "count": v} for k, v in sorted(families_map.items(), key=lambda x: x[1], reverse=True)]
+
+        return {
+            "available": True,
+            "message": "",
+            "count": len(codes),
+            "codes": codes,
+            "sample": sample,
+            "families": families_summary,
+            "total_pvp1": round(total_pvp1, 2)
+        }
+    finally:
+        conn.close()
+
+
+def inactivate_dead_products(product_codes: Optional[List[int]] = None) -> Dict[str, Any]:
+    """
+    Inativa em lote os artigos especificados (ou todos os artigos 'mortos' se nenhum código for passado):
+    - Bloqueia o artigo (bloqueado = 1)
+    - Oculta do POS (frontoffice = 0)
+    - Marca para sincronização cloud (sync = 1)
+    - Se a coluna 'descontinuado' existir, marca descontinuado = 1.
+    Gera automaticamente uma cópia de segurança (backup) antes de alterar.
+    """
+    if product_codes is not None and len(product_codes) > 0:
+        target_codes = _unique_codes(product_codes)
+    else:
+        summary = get_dead_products_summary()
+        target_codes = summary.get("codes", [])
+
+    if not target_codes:
+        return {"success": True, "count": 0, "message": "Nenhum artigo para inativar.", "backup_file": None}
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        products = _fetch_products_by_codes(cursor, target_codes, with_sales=False, with_centros=True)
+        if not products:
+            return {"success": False, "count": 0, "message": "Nenhum dos artigos indicados foi encontrado.", "backup_file": None}
+
+        try:
+            backup_name = create_backup_snapshot(products, f"Inativação em lote de {len(products)} artigos mortos")
+        except Exception as e:
+            return {"success": False, "count": 0, "message": f"Falha ao criar backup de segurança ({e}). Nenhuma alteração gravada.", "backup_file": None}
+
+        has_bloq = _has_optional_int_col(schema, "bloqueado")
+        has_fo = _has_optional_int_col(schema, "frontoffice")
+        has_desc = _has_optional_int_col(schema, "descontinuado")
+        has_sync = "sync" in _prod_cols(schema)
+
+        sets = []
+        if has_bloq:
+            sets.append("bloqueado = 1")
+        if has_fo:
+            sets.append("frontoffice = 0")
+        if has_desc:
+            sets.append("descontinuado = 1")
+        if has_sync:
+            sets.append("sync = 1")
+
+        if not sets:
+            return {"success": False, "count": 0, "message": "A tabela dbo.produtos não suporta colunas de bloqueio/ocultação.", "backup_file": None}
+
+        set_clause = ", ".join(sets)
+        affected = 0
+
+        for chunk in _chunks(target_codes, DEFAULT_CHUNK):
+            placeholders = _placeholders(len(chunk))
+            cursor.execute(f"UPDATE dbo.produtos SET {set_clause} WHERE codigo IN ({placeholders})", chunk)
+            affected += cursor.rowcount
+
+        try:
+            cursor.execute("UPDATE dbo.fullsync SET sync = 1, finished = 0")
+        except Exception:
+            pass
+
+        conn.commit()
+        return {
+            "success": True,
+            "count": affected,
+            "message": f"{affected} artigos inativados e ocultados do POS com sucesso!",
+            "backup_file": backup_name
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "count": 0, "message": f"Erro na transação de inativação: {str(e)}", "backup_file": None}
     finally:
         conn.close()
 
@@ -1083,11 +1292,40 @@ def _text_change(schema: SchemaInfo, field_name: str, column: str, label: str,
     new = new if new is not None else ""
     if new == old:
         return None
+    if column not in _prod_cols(schema):
+        return _blocked(field_name, label, old or "(Vazio)", new,
+                        f"A coluna '{column}' não existe na tabela produtos desta base de dados.")
     limit = _text_limit(schema, "produtos", column)
     if limit is not None and len(new) > limit:
         return _blocked(field_name, label, old or "(Vazio)", new,
                         f"O texto tem {len(new)} caracteres e a coluna '{column}' só aceita {limit}.")
     return Change(field_name, label, old or "(Vazio)", new or "(Vazio)", column=column, value=new)
+
+
+def _precomeia_change(schema: SchemaInfo, p: ProductItem, new_val: Optional[float], label: str = "Preço Meia Dose") -> Optional[Change]:
+    if new_val is None:
+        return None
+    old_val = float(getattr(p, "precomeia", 0.0) or 0.0)
+    new_val = round(float(new_val), 2)
+    if _float_eq(old_val, new_val):
+        return None
+    if "precomeia" not in _prod_cols(schema):
+        return _blocked("precomeia", label, f"{old_val:.2f} €", f"{new_val:.2f} €",
+                        "A coluna 'precomeia' não existe na tabela produtos desta base de dados.")
+    return Change("precomeia", label, f"{old_val:.2f} €", f"{new_val:.2f} €", column="precomeia", value=new_val)
+
+
+def _precocompra_change(schema: SchemaInfo, p: ProductItem, new_val: Optional[float]) -> Optional[Change]:
+    if new_val is None:
+        return None
+    old_val = float(getattr(p, "precocompra", 0.0) or 0.0)
+    new_val = round(float(new_val), 2)
+    if _float_eq(old_val, new_val):
+        return None
+    if "precocompra" not in _prod_cols(schema):
+        return _blocked("precocompra", "Preço de Compra / Custo", f"{old_val:.2f} €", f"{new_val:.2f} €",
+                        "A coluna 'precocompra' não existe na tabela produtos desta base de dados.")
+    return Change("precocompra", "Preço de Compra / Custo", f"{old_val:.2f} €", f"{new_val:.2f} €", column="precocompra", value=new_val)
 
 
 def _descricao_change(schema: SchemaInfo, p: ProductItem, new_val: Optional[str], label: str) -> Optional[Change]:
@@ -1294,6 +1532,33 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
                 new_val = calculate_new_price(old_val, mode, float(req.prices.value or 0), req.prices.rounding)
                 changes.append(_price_change(idx, f"Preço PVP {idx}", old_val, new_val))
 
+    # 3.1 Preço de Compra / Custo
+    if req.apply_precocompra and req.new_precocompra is not None:
+        changes.append(_precocompra_change(schema, p, req.new_precocompra))
+
+    # 3.2 Meias Doses (Restaurantes / ZSRest)
+    if req.apply_meiadose:
+        changes.append(_optional_state_change(schema, p, "meiadose", "Meias Doses", req.new_meiadose,
+                                              {0: "Desativado", 1: "Ativado"}))
+
+    if req.apply_precomeia:
+        if req.precomeia_mode == "percent_pvp1":
+            pct = float(req.precomeia_pct_pvp1 if req.precomeia_pct_pvp1 is not None else 50.0)
+            target_price = round(float(p.pvp1) * (pct / 100.0), 2)
+            lbl = f"Preço Meia Dose ({pct:g}% do PVP 1)"
+        else:
+            target_price = req.new_precomeia
+            lbl = "Preço Meia Dose"
+        changes.append(_precomeia_change(schema, p, target_price, label=lbl))
+
+    if req.apply_meiadosedesc and req.new_meiadosedesc is not None:
+        changes.append(_text_change(schema, "meiadosedesc", "meiadosedesc", "Descrição Meia Dose (POS)",
+                                    p.meiadosedesc or "", req.new_meiadosedesc.strip()))
+
+    if req.apply_dosedesc and req.new_dosedesc is not None:
+        changes.append(_text_change(schema, "dosedesc", "dosedesc", "Descrição Dose Inteira (POS)",
+                                    p.dosedesc or "", req.new_dosedesc.strip()))
+
     # 4. Família e subfamília
     target_family = p.familias
     if req.apply_familia and req.new_familia is not None:
@@ -1379,6 +1644,29 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
             else:
                 changes.append(Change("posicaofront", "Posição POS", str(p.posicaofront or 0), str(new_pos),
                                       column="ordem", value=new_pos))
+
+    # 7.1 Comportamento de Stock no POS
+    if req.apply_vendersemstock:
+        changes.append(_optional_state_change(schema, p, "vendersemstock", "Vender sem Stock", req.new_vendersemstock,
+                                              {1: "Permitir (Vender mesmo a zero)", 0: "Bloquear quando stock for zero"}))
+
+    if req.apply_autoquebra:
+        changes.append(_optional_state_change(schema, p, "autoquebra", "Quebra Automática no Fecho", req.new_autoquebra,
+                                              {1: "Ativo (Lançar quebra no fecho)", 0: "Inativo"}))
+
+    # 7.2 Tipo de Artigo SAF-T
+    if req.apply_tiposaft and req.new_tiposaft:
+        saft_labels = {"P": "Produto (Mercadoria)", "S": "Serviço", "O": "Outros"}
+        new_tip = req.new_tiposaft.strip().upper()
+        old_tip = (getattr(p, "tiposaft", "P") or "P").strip().upper()
+        if new_tip != old_tip:
+            if "tiposaft" not in _prod_cols(schema):
+                changes.append(_blocked("tiposaft", "Tipo de Artigo (SAF-T)", saft_labels.get(old_tip, old_tip),
+                                        saft_labels.get(new_tip, new_tip),
+                                        "A coluna 'tiposaft' não existe na tabela produtos desta base de dados."))
+            else:
+                changes.append(Change("tiposaft", "Tipo de Artigo (SAF-T)", saft_labels.get(old_tip, old_tip),
+                                      saft_labels.get(new_tip, new_tip), column="tiposaft", value=new_tip))
 
     return [c for c in changes if c is not None]
 

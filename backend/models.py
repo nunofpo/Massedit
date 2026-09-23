@@ -33,6 +33,7 @@ class ProductFilter(BaseModel):
     iva: Optional[float] = None  # Taxa (factor) de IVA, p.ex. 23
     centro_prod: Optional[int] = None  # Código do Centro de Produção (dbo.centrosprod.codigo)
     bloqueado: Optional[int] = None  # 0=Ativo, 1=Bloqueado, None=Todos
+    descontinuado: Optional[int] = None  # 0=Ativo, 1=Descontinuado/Bloqueado, None=Todos
     frontoffice: Optional[int] = None  # 1=Visível, 0=Oculto, None=Todos
     has_sales: Optional[bool] = None  # True=Com Vendas, False=Sem Vendas, None=Todos
     sort_by: Optional[str] = "codigo"  # "codigo", "descricao", "precovenda", "posicaofront", "familia"
@@ -77,6 +78,7 @@ class ProductItem(BaseModel):
     pvp9: float = 0.0
     pvp10: float = 0.0
     bloqueado: int = 0
+    descontinuado: int = 0
     frontoffice: int = 1
     posicaofront: Optional[int] = 0
     fundo: Optional[int] = 0
@@ -89,6 +91,14 @@ class ProductItem(BaseModel):
     codbarras: Optional[str] = ""
     referencia: Optional[str] = ""
     sync: int = 0
+    meiadose: int = 0
+    precomeia: float = 0.0
+    meiadosedesc: Optional[str] = ""
+    dosedesc: Optional[str] = ""
+    vendersemstock: int = 1
+    autoquebra: int = 0
+    tiposaft: str = "P"
+    precocompra: float = 0.0
     has_sales: bool = False
     sales_check_ok: bool = True  # False = não foi possível verificar vendas (designação protegida por segurança)
     can_edit_description: bool = True
@@ -143,6 +153,32 @@ class BulkEditRequest(BaseModel):
     
     # Preços PVP 1 a 10
     prices: PriceUpdate = Field(default_factory=PriceUpdate)
+
+    # Preço de Compra / Custo
+    apply_precocompra: bool = False
+    new_precocompra: Optional[float] = None
+
+    # Meias Doses (Restaurantes / ZSRest)
+    apply_meiadose: bool = False
+    new_meiadose: Optional[int] = None  # 0 ou 1
+    apply_precomeia: bool = False
+    new_precomeia: Optional[float] = None
+    precomeia_mode: str = "fixed"  # "fixed" ou "percent_pvp1"
+    precomeia_pct_pvp1: Optional[float] = None  # ex: 60.0 para 60% do PVP1
+    apply_meiadosedesc: bool = False
+    new_meiadosedesc: Optional[str] = None
+    apply_dosedesc: bool = False
+    new_dosedesc: Optional[str] = None
+
+    # Comportamento de Stock no POS
+    apply_vendersemstock: bool = False
+    new_vendersemstock: Optional[int] = None  # 1=Permitir, 0=Bloquear quando zero
+    apply_autoquebra: bool = False
+    new_autoquebra: Optional[int] = None  # 1=Sim, 0=Não
+
+    # Tipo SAF-T
+    apply_tiposaft: bool = False
+    new_tiposaft: Optional[str] = None  # 'P', 'S', 'O'
     
     # Categoria / Família & Subfamília
     apply_familia: bool = False

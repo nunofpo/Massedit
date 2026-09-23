@@ -137,6 +137,32 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [applyIva, setApplyIva] = useState(false);
   const [newIva, setNewIva] = useState<number | undefined>(vats[0]?.factor);
 
+  // Form State: Preço de Custo / Compra
+  const [applyPrecocompra, setApplyPrecocompra] = useState(false);
+  const [newPrecocompra, setNewPrecocompra] = useState<number | string>(0.0);
+
+  // Form State: Meias Doses (ZSRest / Restauração)
+  const [applyMeiadose, setApplyMeiadose] = useState(false);
+  const [newMeiadose, setNewMeiadose] = useState<number>(1);
+  const [applyPrecomeia, setApplyPrecomeia] = useState(false);
+  const [precomeiaMode, setPrecomeiaMode] = useState<'fixed' | 'percent_pvp1'>('percent_pvp1');
+  const [newPrecomeia, setNewPrecomeia] = useState<number | string>(0.0);
+  const [precomeiaPctPvp1, setPrecomeiaPctPvp1] = useState<number | string>(60.0);
+  const [applyMeiadosedesc, setApplyMeiadosedesc] = useState(false);
+  const [newMeiadosedesc, setNewMeiadosedesc] = useState('1/2 Dose');
+  const [applyDosedesc, setApplyDosedesc] = useState(false);
+  const [newDosedesc, setNewDosedesc] = useState('1 Dose');
+
+  // Form State: Comportamento de Stock & SAF-T
+  const [applyVendersemstock, setApplyVendersemstock] = useState(false);
+  const [newVendersemstock, setNewVendersemstock] = useState<number>(1);
+
+  const [applyAutoquebra, setApplyAutoquebra] = useState(false);
+  const [newAutoquebra, setNewAutoquebra] = useState<number>(0);
+
+  const [applyTiposaft, setApplyTiposaft] = useState(false);
+  const [newTiposaft, setNewTiposaft] = useState<string>('P');
+
   // Form State: Estrutura (Família & Subfamília)
   const [applyFamilia, setApplyFamilia] = useState(false);
   const [newFamilia, setNewFamilia] = useState<number | undefined>(families[0]?.codigo);
@@ -179,12 +205,14 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
   // Compute Active Change Badges per Sector
   const namesCount = (applyDescricao && !allHaveSales ? 1 : 0) + (applyDescricaocurta ? 1 : 0);
-  const pricesCount = (applyPrice ? 1 : 0) + (applyIva ? 1 : 0);
+  const pricesCount = (applyPrice ? 1 : 0) + (applyIva ? 1 : 0) + (applyPrecocompra ? 1 : 0) +
+    (applyMeiadose ? 1 : 0) + (applyPrecomeia ? 1 : 0) + (applyMeiadosedesc ? 1 : 0) + (applyDosedesc ? 1 : 0);
   const colorsCount = (applyFundo ? 1 : 0) + (applyLetra ? 1 : 0) + (applyCor ? 1 : 0);
   const categoriesCount = (applyFamilia ? 1 : 0) + (applySubfamilia ? 1 : 0);
   const codesCount = (applyPlu ? 1 : 0) + (applyCodbarras ? 1 : 0) + (applyReferencia ? 1 : 0);
   const productionCount = (applyCentroPrimario ? 1 : 0) + (applyCentrosSecundarios ? 1 : 0) + (applyCentrosInformativos ? 1 : 0);
-  const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0) + (applyPosicaofront ? 1 : 0);
+  const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0) + (applyPosicaofront ? 1 : 0) +
+    (applyVendersemstock ? 1 : 0) + (applyAutoquebra ? 1 : 0) + (applyTiposaft ? 1 : 0);
 
   const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + productionCount + statusCount;
 
@@ -223,6 +251,24 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         source_pvp: sourcePvp,
         rounding: priceRounding
       },
+      apply_precocompra: applyPrecocompra,
+      new_precocompra: typeof newPrecocompra === 'number' ? newPrecocompra : (parseFloat(String(newPrecocompra).replace(',', '.')) || 0),
+      apply_meiadose: applyMeiadose,
+      new_meiadose: newMeiadose,
+      apply_precomeia: applyPrecomeia,
+      new_precomeia: typeof newPrecomeia === 'number' ? newPrecomeia : (parseFloat(String(newPrecomeia).replace(',', '.')) || 0),
+      precomeia_mode: precomeiaMode,
+      precomeia_pct_pvp1: typeof precomeiaPctPvp1 === 'number' ? precomeiaPctPvp1 : (parseFloat(String(precomeiaPctPvp1).replace(',', '.')) || 50),
+      apply_meiadosedesc: applyMeiadosedesc,
+      new_meiadosedesc: newMeiadosedesc,
+      apply_dosedesc: applyDosedesc,
+      new_dosedesc: newDosedesc,
+      apply_vendersemstock: applyVendersemstock,
+      new_vendersemstock: newVendersemstock,
+      apply_autoquebra: applyAutoquebra,
+      new_autoquebra: newAutoquebra,
+      apply_tiposaft: applyTiposaft,
+      new_tiposaft: newTiposaft,
       apply_familia: applyFamilia,
       new_familia: newFamilia,
       apply_subfamilia: applySubfamilia,
@@ -917,6 +963,218 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                 </select>
               )}
             </div>
+
+            {/* Preço de Custo / Compra */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+              <label className="flex items-center gap-2 text-xs text-slate-800 font-bold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyPrecocompra}
+                  onChange={(e) => setApplyPrecocompra(e.target.checked)}
+                  className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                />
+                <DollarSign className="w-4 h-4 text-slate-600" />
+                <span>Preço de Compra / Custo s/ IVA (`precocompra`)</span>
+              </label>
+
+              {applyPrecocompra && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={newPrecocompra}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(',', '.');
+                        const parts = val.split('.');
+                        if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                        if (val === '' || val === '.' || !isNaN(Number(val))) setNewPrecocompra(val);
+                      }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono font-bold focus:bg-white focus:border-indigo-600"
+                      placeholder="0.00"
+                    />
+                    <span className="text-xs font-bold text-slate-500">€</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Preço de compra unitário fornecedor (base para cálculo de margens de lucro no ZoneSoft).
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Meias Doses (ZSRest / Restauração) */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                  <Utensils className="w-4 h-4 text-amber-600" />
+                  Meias Doses (ZSRest / Restauração)
+                </h3>
+              </div>
+
+              {/* Ativação de Meia Dose */}
+              <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={applyMeiadose}
+                    onChange={(e) => setApplyMeiadose(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Ativar Opção de Meia Dose (`meiadose`)</span>
+                </span>
+                {applyMeiadose && (
+                  <select
+                    value={newMeiadose}
+                    onChange={(e) => setNewMeiadose(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
+                  >
+                    <option value={1}>Ativado (Permitir 1/2 Dose)</option>
+                    <option value={0}>Desativado (Apenas Inteira)</option>
+                  </select>
+                )}
+              </label>
+
+              {/* Preço de Meia Dose */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <label className="flex items-center gap-2 text-xs text-slate-800 font-bold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyPrecomeia}
+                    onChange={(e) => setApplyPrecomeia(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Definir Preço da Meia Dose (`precomeia`)</span>
+                </label>
+
+                {applyPrecomeia && (
+                  <div className="space-y-2 pl-6">
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setPrecomeiaMode('percent_pvp1')}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
+                          precomeiaMode === 'percent_pvp1'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        % do PVP 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrecomeiaMode('fixed')}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
+                          precomeiaMode === 'fixed'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        Valor Fixo (€)
+                      </button>
+                    </div>
+
+                    {precomeiaMode === 'percent_pvp1' ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={precomeiaPctPvp1}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              let val = e.target.value.replace(',', '.');
+                              const parts = val.split('.');
+                              if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                              if (val === '' || val === '.' || !isNaN(Number(val))) setPrecomeiaPctPvp1(val);
+                            }}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono font-bold focus:bg-white focus:border-indigo-600"
+                            placeholder="60"
+                          />
+                          <span className="text-xs font-bold text-amber-700">%</span>
+                        </div>
+                        <div className="flex gap-1 pt-1">
+                          {[50, 60, 65, 70, 75].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setPrecomeiaPctPvp1(pct)}
+                              className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded text-[10px] font-bold"
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Ex: Com 60%, um prato com PVP1 de 10.00€ terá a meia dose calculada a 6.00€.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={newPrecomeia}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            let val = e.target.value.replace(',', '.');
+                            const parts = val.split('.');
+                            if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                            if (val === '' || val === '.' || !isNaN(Number(val))) setNewPrecomeia(val);
+                          }}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono font-bold focus:bg-white focus:border-indigo-600"
+                          placeholder="0.00"
+                        />
+                        <span className="text-xs font-bold text-slate-500">€</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Descrições Dose e Meia Dose no POS */}
+              <div className="pt-2 border-t border-slate-100 space-y-2.5">
+                <label className="flex items-center gap-2 text-xs text-slate-800 font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyMeiadosedesc}
+                    onChange={(e) => setApplyMeiadosedesc(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Texto do Botão Meia Dose (`meiadosedesc`)</span>
+                </label>
+                {applyMeiadosedesc && (
+                  <input
+                    type="text"
+                    value={newMeiadosedesc}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewMeiadosedesc(e.target.value)}
+                    placeholder="Ex: 1/2 Dose"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-indigo-600"
+                  />
+                )}
+
+                <label className="flex items-center gap-2 text-xs text-slate-800 font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyDosedesc}
+                    onChange={(e) => setApplyDosedesc(e.target.checked)}
+                    className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Texto do Botão Dose Inteira (`dosedesc`)</span>
+                </label>
+                {applyDosedesc && (
+                  <input
+                    type="text"
+                    value={newDosedesc}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewDosedesc(e.target.value)}
+                    placeholder="Ex: 1 Dose"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-indigo-600"
+                  />
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1515,6 +1773,88 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   />
                 )}
               </label>
+
+              {/* Comportamento de Stock no POS */}
+              <div className="pt-3 border-t border-slate-100 space-y-3">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Comportamento de Stock & Fecho de Dia
+                </h4>
+
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyVendersemstock}
+                      onChange={(e) => setApplyVendersemstock(e.target.checked)}
+                      className="rounded border-slate-300 bg-white text-indigo-600"
+                    />
+                    <span>Vender sem Stock (`vendersemstock`)</span>
+                  </span>
+                  {applyVendersemstock && (
+                    <select
+                      value={newVendersemstock}
+                      onChange={(e) => setNewVendersemstock(Number(e.target.value))}
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
+                    >
+                      <option value={1}>Permitir (Vender mesmo a zero)</option>
+                      <option value={0}>Bloquear quando stock for zero</option>
+                    </select>
+                  )}
+                </label>
+
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyAutoquebra}
+                      onChange={(e) => setApplyAutoquebra(e.target.checked)}
+                      className="rounded border-slate-300 bg-white text-indigo-600"
+                    />
+                    <span>Quebra Automática no Fecho (`autoquebra`)</span>
+                  </span>
+                  {applyAutoquebra && (
+                    <select
+                      value={newAutoquebra}
+                      onChange={(e) => setNewAutoquebra(Number(e.target.value))}
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
+                    >
+                      <option value={1}>Ativo (Registar quebra no fecho)</option>
+                      <option value={0}>Inativo</option>
+                    </select>
+                  )}
+                </label>
+              </div>
+
+              {/* Classificação SAF-T */}
+              <div className="pt-3 border-t border-slate-100 space-y-3">
+                <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Classificação Fiscal (SAF-T PT)
+                </h4>
+
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer font-semibold">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyTiposaft}
+                      onChange={(e) => setApplyTiposaft(e.target.checked)}
+                      className="rounded border-slate-300 bg-white text-indigo-600"
+                    />
+                    <span>Tipo de Artigo SAF-T (`tiposaft`)</span>
+                  </span>
+                  {applyTiposaft && (
+                    <select
+                      value={newTiposaft}
+                      onChange={(e) => setNewTiposaft(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-semibold focus:bg-white focus:border-indigo-600"
+                    >
+                      <option value="P">P - Produto / Mercadoria</option>
+                      <option value="S">S - Serviço</option>
+                      <option value="O">O - Outros (Trabalhos/Adiantamentos)</option>
+                    </select>
+                  )}
+                </label>
+              </div>
+
               <p className="text-[10px] text-slate-500 leading-relaxed">
                 Se a base de dados não tiver as colunas <code>bloqueado</code>/<code>frontoffice</code>, a simulação indica-o e essas alterações não são gravadas.
               </p>

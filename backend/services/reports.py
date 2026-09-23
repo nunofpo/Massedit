@@ -438,6 +438,16 @@ def check_whitespace_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
 def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
     return [
         DataQualityCheck(
+            id="missing_vat_exemption_reason",
+            title="Isenção de IVA sem motivo legal (Erro SAF-T)",
+            description="Artigos com taxa de IVA 0% (ou nula) que não têm código de motivo de isenção (M01-M99) válido. Rejeitado pela AT no SAF-T.",
+            severity="error",
+            count=0,
+            codes=[],
+            available=True,
+            truncated=False
+        ),
+        DataQualityCheck(
             id="duplicate_barcode",
             title="Códigos de barras repetidos",
             description="O mesmo código de barras está atribuído a mais do que um artigo.",
@@ -536,6 +546,69 @@ def check_image_border_issues(cursor, schema: SchemaInfo) -> DataQualityCheck:
     )
 
 
+def check_missing_vat_exemption_reason(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "missing_vat_exemption_reason"
+    title = "Isenção de IVA sem motivo legal (Erro SAF-T)"
+    desc = "Artigos com taxa de IVA 0% (ou nula) que não têm código de motivo de isenção (M01-M99) válido. Rejeitado pela AT no SAF-T."
+    if not _has_col(schema, "produtos", "iva"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="error",
+            count=0, codes=[], available=False,
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos."
+        )
+
+    has_isencao = _has_col(schema, "produtos", "isencao")
+    if not has_isencao:
+        sql = """
+            SELECT p.codigo, ISNULL(f.descricao, 'Sem Família') AS fam_desc
+            FROM dbo.produtos p
+            LEFT JOIN dbo.familias f ON p.familia = f.codigo
+            WHERE p.iva IS NULL OR p.iva = 0
+            ORDER BY f.descricao, p.codigo
+        """
+    else:
+        has_motivos_table = _has_table(schema, "motivos_isencao") and _has_col(schema, "motivos_isencao", "codigo")
+        if has_motivos_table:
+            sql = """
+                SELECT p.codigo, ISNULL(f.descricao, 'Sem Família') AS fam_desc
+                FROM dbo.produtos p
+                LEFT JOIN dbo.familias f ON p.familia = f.codigo
+                WHERE (p.iva IS NULL OR p.iva = 0)
+                  AND (
+                      p.isencao IS NULL 
+                      OR LTRIM(RTRIM(p.isencao)) = '' 
+                      OR NOT EXISTS (SELECT 1 FROM dbo.motivos_isencao mi WHERE mi.codigo = p.isencao)
+                  )
+                ORDER BY f.descricao, p.codigo
+            """
+        else:
+            sql = """
+                SELECT p.codigo, ISNULL(f.descricao, 'Sem Família') AS fam_desc
+                FROM dbo.produtos p
+                LEFT JOIN dbo.familias f ON p.familia = f.codigo
+                WHERE (p.iva IS NULL OR p.iva = 0)
+                  AND (p.isencao IS NULL OR LTRIM(RTRIM(p.isencao)) = '')
+                ORDER BY f.descricao, p.codigo
+            """
+
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    groups_dict: Dict[str, List[int]] = {}
+    all_codes: List[int] = []
+    for code_raw, fam_raw in rows:
+        code = int(code_raw)
+        key = str(fam_raw or "Sem Família").strip()
+        groups_dict.setdefault(key, []).append(code)
+        all_codes.append(code)
+
+    capped, truncated = _cap_codes(all_codes)
+    groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="error",
+        count=len(all_codes), codes=capped, groups=groups, available=True, truncated=truncated
+    )
+
+
 def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
     """Executa todas as verificações de qualidade de dados sobre a base de dados SQL Server."""
     if db_manager.use_mock:
@@ -550,6 +623,7 @@ def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
         schema = db_manager.get_schema(cursor)
 
         checks = [
+            check_missing_vat_exemption_reason(cursor, schema),
             check_duplicate_barcode(cursor, schema),
             check_duplicate_plu(cursor, schema),
             check_missing_family(cursor, schema),
