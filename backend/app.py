@@ -36,7 +36,7 @@ from backend.services.products import (
     search_products, get_filtered_product_codes, get_selection_summary,
     get_families, create_family, get_families_detailed, update_family_colors,
     get_subfamilies, generate_csv_export, generate_shelf_labels_html,
-    get_vats, get_motivos_isencao, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
+    get_vats, get_motivos_isencao, get_price_zones_mapping, preview_bulk_edit, apply_bulk_edit, list_backups, restore_backup,
     get_production_centers, get_printers, get_zonesoft_sync_status,
     get_dead_products_summary, inactivate_dead_products
 )
@@ -508,6 +508,11 @@ def list_vats_endpoint():
 def list_motivos_isencao_endpoint():
     """Lista motivos de isenção de IVA disponíveis em dbo.motivos_isencao."""
     return get_motivos_isencao()
+
+@app.get("/api/price-zones")
+def list_price_zones_endpoint():
+    """Retorna o mapeamento das tabelas de preços (PVP 1 a 10) para as zonas de consumo configuradas no ZoneSoft."""
+    return get_price_zones_mapping()
 
 
 @app.get("/api/reports/data-quality", response_model=List[DataQualityCheck])

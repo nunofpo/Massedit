@@ -942,6 +942,80 @@ def get_motivos_isencao() -> List[Dict[str, Any]]:
         ]
 
 
+def format_zones_display(zones: List[str]) -> str:
+    """Formata lista de zonas agrupando sequências de prefixos numéricos amigavelmente."""
+    if not zones:
+        return ""
+    if len(zones) <= 2:
+        return ", ".join(zones)
+    grouped = []
+    i = 0
+    while i < len(zones):
+        z = zones[i]
+        m = re.match(r"^(.*?)\s*(\d+)$", z)
+        if m:
+            prefix, num_str = m.group(1), int(m.group(2))
+            start_num = num_str
+            end_num = num_str
+            j = i + 1
+            while j < len(zones):
+                m_next = re.match(r"^(.*?)\s*(\d+)$", zones[j])
+                if m_next and m_next.group(1) == prefix and int(m_next.group(2)) == end_num + 1:
+                    end_num = int(m_next.group(2))
+                    j += 1
+                else:
+                    break
+            if end_num > start_num:
+                grouped.append(f"{prefix} ({start_num} a {end_num})")
+                i = j
+                continue
+        grouped.append(z)
+        i += 1
+    return ", ".join(grouped)
+
+
+def get_price_zones_mapping() -> Dict[str, Any]:
+    """
+    Retorna o mapeamento de cada tabela de preços (PVP 1 a 10) para as zonas de consumo configuradas no ZoneSoft (dbo.zonas).
+    dbo.zonas.precozona:
+      0 -> PVP 1
+      1 -> PVP 2
+      ...
+      9 -> PVP 10
+    """
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = _schema(cursor)
+        mapping: Dict[str, Dict[str, Any]] = {
+            str(i): {
+                "pvp_index": i,
+                "label": f"PVP {i}",
+                "zones": [],
+                "display": ""
+            }
+            for i in range(1, 11)
+        }
+        if "zonas" in schema:
+            z_cols = schema["zonas"]
+            has_precozona = "precozona" in z_cols
+            has_desc = "descricao" in z_cols
+            if has_precozona and has_desc:
+                cursor.execute("SELECT codigo, descricao, ISNULL(precozona, 0) FROM dbo.zonas ORDER BY precozona, codigo")
+                rows = cursor.fetchall()
+                for r in rows:
+                    z_desc = str(r[1] or "").strip()
+                    pz = int(r[2]) if r[2] is not None else 0
+                    pvp_idx = pz + 1
+                    if 1 <= pvp_idx <= 10 and z_desc:
+                        mapping[str(pvp_idx)]["zones"].append(z_desc)
+                
+                for k, data in mapping.items():
+                    data["display"] = format_zones_display(data["zones"])
+        return mapping
+    finally:
+        conn.close()
+
 
 def get_subfamilies(familia: Optional[int] = None) -> List[Dict[str, Any]]:
     """Obtém lista de subfamílias diretamente do SQL Server."""

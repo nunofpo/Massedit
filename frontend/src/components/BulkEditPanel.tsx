@@ -3,7 +3,7 @@ import {
   Palette, DollarSign, FolderTree, Percent, Lock, Eye, Cloud, Play,
   ShieldAlert, Sparkles, Copy, Barcode, Hash, Tag, CheckCircle2, Layers, Utensils
 } from 'lucide-react';
-import { Family, Subfamily, Vat, BulkEditRequest, ProductionCenterItem, SelectionSummaryResponse } from '../types';
+import { Family, Subfamily, Vat, BulkEditRequest, ProductionCenterItem, SelectionSummaryResponse, PriceZonesMap } from '../types';
 
 interface BulkEditPanelProps {
   selectedCodes: number[];
@@ -12,6 +12,7 @@ interface BulkEditPanelProps {
   subfamilies: Subfamily[];
   vats: Vat[];
   productionCenters?: ProductionCenterItem[];
+  priceZones?: PriceZonesMap;
   onPreview: (request: BulkEditRequest) => void;
   onOpenFamilyColors?: () => void;
 }
@@ -46,6 +47,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   subfamilies,
   vats,
   productionCenters = [],
+  priceZones,
   onPreview,
   onOpenFamilyColors
 }) => {
@@ -752,16 +754,36 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                       onChange={(e) => setTargetPvp(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
                     >
-                      <option value="pvp1">PVP 1 (Preço Principal de Venda)</option>
-                      <option value="pvp2">PVP 2 (Preço 2 / Esplanada / Cartão)</option>
-                      <option value="pvp3">PVP 3</option>
-                      <option value="pvp4">PVP 4</option>
-                      <option value="pvp5">PVP 5</option>
-                      <option value="pvp6">PVP 6</option>
-                      <option value="pvp7">PVP 7</option>
-                      <option value="pvp8">PVP 8</option>
-                      <option value="pvp9">PVP 9</option>
-                      <option value="pvp10">PVP 10</option>
+                      <option value="pvp1">
+                        PVP 1 {priceZones?.['1']?.display ? `(${priceZones['1'].display})` : '(Preço Principal)'}
+                      </option>
+                      <option value="pvp2">
+                        PVP 2 {priceZones?.['2']?.display ? `(${priceZones['2'].display})` : '(Preço 2 / Esplanada)'}
+                      </option>
+                      <option value="pvp3">
+                        PVP 3 {priceZones?.['3']?.display ? `(${priceZones['3'].display})` : ''}
+                      </option>
+                      <option value="pvp4">
+                        PVP 4 {priceZones?.['4']?.display ? `(${priceZones['4'].display})` : ''}
+                      </option>
+                      <option value="pvp5">
+                        PVP 5 {priceZones?.['5']?.display ? `(${priceZones['5'].display})` : ''}
+                      </option>
+                      <option value="pvp6">
+                        PVP 6 {priceZones?.['6']?.display ? `(${priceZones['6'].display})` : ''}
+                      </option>
+                      <option value="pvp7">
+                        PVP 7 {priceZones?.['7']?.display ? `(${priceZones['7'].display})` : ''}
+                      </option>
+                      <option value="pvp8">
+                        PVP 8 {priceZones?.['8']?.display ? `(${priceZones['8'].display})` : ''}
+                      </option>
+                      <option value="pvp9">
+                        PVP 9 {priceZones?.['9']?.display ? `(${priceZones['9'].display})` : ''}
+                      </option>
+                      <option value="pvp10">
+                        PVP 10 {priceZones?.['10']?.display ? `(${priceZones['10'].display})` : ''}
+                      </option>
                       <option value="all">Todos os Preços (PVP 1 ao PVP 10)</option>
                     </select>
                   </div>

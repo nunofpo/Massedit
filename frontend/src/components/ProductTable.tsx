@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ProductItem } from '../types';
+import { ProductItem, PriceZonesMap } from '../types';
 import { ShieldCheck, ShieldAlert, CheckSquare, Square, ChevronLeft, ChevronRight, Eye, EyeOff, Lock, Layers } from 'lucide-react';
 
 interface ProductTableProps {
   products: ProductItem[];
   selectedCodes: Set<number>;
+  priceZones?: PriceZonesMap;
   onToggleSelect: (code: number) => void;
   onSelectAllPage: () => void;
   onDeselectAll: () => void;
@@ -23,6 +24,7 @@ interface ProductTableProps {
 export const ProductTable: React.FC<ProductTableProps> = ({
   products,
   selectedCodes,
+  priceZones,
   onToggleSelect,
   onSelectAllPage,
   onDeselectAll,
@@ -310,12 +312,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       {/* Popover PVP 1..10 */}
                       {activePvpPopover === product.codigo && (
                         <div
-                          className="absolute right-0 top-full mt-1 z-30 bg-white border border-slate-300 rounded-xl p-3 shadow-2xl min-w-[210px] text-left text-xs text-slate-900"
+                          className="absolute right-0 top-full mt-1 z-30 bg-white border border-slate-300 rounded-xl p-3 shadow-2xl min-w-[320px] max-w-[420px] text-left text-xs text-slate-900"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="font-bold text-slate-900 border-b border-slate-200 pb-1 mb-2 flex items-center justify-between">
-                            <span>Preços PVP 1 a 10</span>
-                            <span className="text-[10px] text-indigo-700 font-mono font-bold">#{product.codigo}</span>
+                            <span className="flex items-center gap-1.5">
+                              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                              Preços por Zona (PVP 1 a 10)
+                            </span>
+                            <span className="text-[10px] text-indigo-700 font-mono font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">#{product.codigo}</span>
                           </div>
 
                           {((product.precocompra && product.precocompra > 0) || product.meiadose === 1) && (
@@ -336,46 +341,43 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                           )}
 
                           <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
-                            <div className="bg-emerald-50 p-1.5 rounded border border-emerald-200 flex justify-between">
-                              <span className="text-emerald-800 font-bold">PVP 1:</span>
-                              <span className="text-emerald-950 font-black">{product.pvp1.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 2:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp2.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 3:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp3.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 4:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp4.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 5:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp5.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 6:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp6.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 7:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp7.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 8:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp8.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 9:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp9.toFixed(2)} €</span>
-                            </div>
-                            <div className="bg-slate-50 p-1.5 rounded border border-slate-200 flex justify-between">
-                              <span className="text-slate-600 font-medium">PVP 10:</span>
-                              <span className="text-slate-900 font-bold">{product.pvp10.toFixed(2)} €</span>
-                            </div>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((idx) => {
+                              const val = (product as any)[`pvp${idx}`] ?? 0;
+                              const zoneInfo = priceZones ? priceZones[String(idx)] : null;
+                              const hasZones = !!(zoneInfo && zoneInfo.zones && zoneInfo.zones.length > 0);
+                              const isPvp1 = idx === 1;
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`p-1.5 rounded-lg border flex flex-col justify-between transition ${
+                                    isPvp1
+                                      ? 'bg-emerald-50 border-emerald-300'
+                                      : hasZones
+                                      ? 'bg-indigo-50/50 border-indigo-200'
+                                      : 'bg-slate-50 border-slate-200'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center w-full">
+                                    <span className={`font-bold whitespace-nowrap ${isPvp1 ? 'text-emerald-800' : 'text-slate-600'}`}>
+                                      PVP {idx}:
+                                    </span>
+                                    <span className={`font-black whitespace-nowrap ml-1 ${isPvp1 ? 'text-emerald-950 font-bold' : 'text-slate-900'}`}>
+                                      {Number(val).toFixed(2)} €
+                                    </span>
+                                  </div>
+                                  {hasZones && (
+                                    <div
+                                      className="text-[9.5px] font-sans text-indigo-700 truncate mt-0.5 flex items-center gap-1 font-medium"
+                                      title={zoneInfo.display}
+                                    >
+                                      <span className="shrink-0 text-indigo-500">📍</span>
+                                      <span className="truncate">{zoneInfo.display}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

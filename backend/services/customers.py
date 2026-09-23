@@ -157,7 +157,7 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
             )
         
         c_cols = schema["clientes"]
-        has_nif = "nif" in c_cols
+        nif_col = "contribuinte" if "contribuinte" in c_cols else ("nif" if "nif" in c_cols else None)
         has_nome = "nome" in c_cols
         has_morada = "morada" in c_cols
         has_localidade = "localidade" in c_cols
@@ -167,7 +167,7 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         
         cols_select = ["codigo"]
         cols_select.append("nome" if has_nome else "'' AS nome")
-        cols_select.append("nif" if has_nif else "'' AS nif")
+        cols_select.append(f"{nif_col} AS nif" if nif_col else "'' AS nif")
         cols_select.append("morada" if has_morada else "'' AS morada")
         cols_select.append("localidade" if has_localidade else "'' AS localidade")
         cols_select.append("codpostal" if has_codpostal else "'' AS codpostal")
@@ -178,8 +178,12 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         params = []
         if search and search.strip():
             s = f"%{search.strip()}%"
-            where_clauses.append("(nome LIKE ? OR nif LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
-            params.extend([s, s, s])
+            if nif_col:
+                where_clauses.append(f"(nome LIKE ? OR {nif_col} LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
+                params.extend([s, s, s])
+            else:
+                where_clauses.append("(nome LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
+                params.extend([s, s])
             
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         sql = f"SELECT {', '.join(cols_select)} FROM dbo.clientes {where_sql} ORDER BY codigo ASC"
@@ -276,6 +280,7 @@ def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewRe
             )
 
         c_cols = schema["clientes"]
+        nif_col = "contribuinte" if "contribuinte" in c_cols else ("nif" if "nif" in c_cols else None)
         codes = [c.codigo for c in req.customers]
 
         # Ler estado atual dos clientes em chunks
@@ -316,10 +321,10 @@ def preview_customer_update(req: BulkCustomerUpdateRequest) -> BulkEditPreviewRe
             cur_nome = str(cur.get("nome") or "").strip()
 
             # Se NIF for alterado ou fornecido, validar NIF português com validate_pt_nif
-            if cust.nif is not None and "nif" in c_cols:
+            if cust.nif is not None and nif_col:
                 clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
                 is_valid, nif_msg = validate_pt_nif(clean_nif)
-                cur_nif = str(cur.get("nif") or "").strip()
+                cur_nif = str(cur.get(nif_col) or "").strip()
                 if not is_valid and clean_nif != "999999990":
                     is_blocked = True
                     diffs.append(FieldDiff(
@@ -403,6 +408,7 @@ def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int
             return False, "A tabela dbo.clientes não existe na base de dados.", 0
 
         c_cols = schema["clientes"]
+        nif_col = "contribuinte" if "contribuinte" in c_cols else ("nif" if "nif" in c_cols else None)
         has_sync = "sync" in c_cols
         codes = [c.codigo for c in req.customers]
 
@@ -440,14 +446,14 @@ def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int
             params = []
 
             # Validar NIF se fornecido/alterado
-            if "nif" in c_cols and cust.nif is not None:
+            if nif_col and cust.nif is not None:
                 clean_nif = re.sub(r'[^0-9]', '', cust.nif.strip())
                 is_valid, nif_msg = validate_pt_nif(clean_nif)
                 if not is_valid and clean_nif != "999999990":
                     conn.rollback()
                     return False, f"Alteração cancelada: NIF inválido para o cliente #{cust.codigo} ({nif_msg}).", 0
-                if str(prev.get("nif") or "").strip() != clean_nif:
-                    sets.append("nif = ?")
+                if str(prev.get(nif_col) or "").strip() != clean_nif:
+                    sets.append(f"{nif_col} = ?")
                     params.append(clean_nif)
 
             fields = [

@@ -222,6 +222,70 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIn("precocompra", change_map)
         self.assertEqual(change_map["precocompra"].value, 15.00)
 
+    def test_format_zones_display(self):
+        from backend.services.products import format_zones_display
+        self.assertEqual(format_zones_display([]), "")
+        self.assertEqual(format_zones_display(["SALA", "SALABAIXO"]), "SALA, SALABAIXO")
+        self.assertEqual(format_zones_display(["Delivery"]), "Delivery")
+        # Sequential prefixes compressed
+        zones = ["TAKE AWAY 1", "TAKE AWAY 2", "TAKE AWAY 3", "TAKE AWAY 4", "TAKE AWAY 5", "TAKE AWAY 6", "ENCOMENDAS"]
+        self.assertEqual(format_zones_display(zones), "TAKE AWAY (1 a 6), ENCOMENDAS")
+
+    @patch("backend.services.products.db_manager")
+    def test_get_price_zones_mapping(self, mock_db):
+        from backend.services.products import get_price_zones_mapping
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.get_connection.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Mock schema inspection to return zonas table
+        with patch("backend.services.products._schema", return_value={"zonas": {"codigo": None, "descricao": None, "precozona": None}}):
+            mock_cursor.fetchall.return_value = [
+                (2, "SALA", 0),
+                (10, "SALABAIXO", 0),
+                (3, "TAKE AWAY 1", 1),
+                (4, "TAKE AWAY 2", 1),
+                (8, "Delivery", 2),
+                (1, "Uber", 4),
+                (11, "Glovo", 4),
+            ]
+            mapping = get_price_zones_mapping()
+            self.assertEqual(mapping["1"]["display"], "SALA, SALABAIXO")
+            self.assertEqual(mapping["2"]["display"], "TAKE AWAY 1, TAKE AWAY 2")
+            self.assertEqual(mapping["3"]["display"], "Delivery")
+            self.assertEqual(mapping["4"]["display"], "")
+            self.assertEqual(mapping["5"]["display"], "Uber, Glovo")
+
+    @patch("backend.services.customers.db_manager")
+    def test_get_customers_with_contribuinte_column(self, mock_db):
+        from backend.services.customers import get_customers
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.get_connection.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db.get_schema.return_value = {
+            "clientes": {
+                "codigo": None, "nome": None, "contribuinte": None, "morada": None,
+                "localidade": None, "codpostal": None, "telefone": None, "email": None
+            }
+        }
+        # Mock rows: one valid NIF (Consumidor final), one valid corporate NIF, one invalid
+        mock_cursor.fetchall.return_value = [
+            (1, "Cliente A", "999999990", "Rua 1", "Porto", "4000-001", "910000000", "a@test.pt"),
+            (2, "Cliente B", "501234560", "Rua 2", "Lisboa", "1000-001", "920000000", "b@test.pt"),
+            (3, "Cliente C", "123456788", "Rua 3", "Braga", "4700-001", "930000000", "c@test.pt"),
+        ]
+        res = get_customers(limit=10)
+        self.assertEqual(res.total, 3)
+        self.assertEqual(res.valid_count, 2)
+        self.assertEqual(res.invalid_count, 1)
+        self.assertTrue(res.customers[0].is_valid_nif)
+        self.assertEqual(res.customers[0].nif, "999999990")
+        self.assertTrue(res.customers[1].is_valid_nif)
+        self.assertEqual(res.customers[1].nif, "501234560")
+        self.assertFalse(res.customers[2].is_valid_nif)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,7 @@ import { HousekeepingModal } from './components/HousekeepingModal';
 import { DeadProductsModal } from './components/DeadProductsModal';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao, ProductFilter, BulkEditRequest,
-  BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse
+  BulkEditPreviewResponse, DatabaseConfig, ProductionCenterItem, ProductCodesResponse, PriceZonesMap
 } from './types';
 
 
@@ -44,6 +44,7 @@ export const App: React.FC = () => {
   const [vats, setVats] = useState<Vat[]>([]);
   const [motivosIsencao, setMotivosIsencao] = useState<MotivoIsencao[]>([]);
   const [productionCenters, setProductionCenters] = useState<ProductionCenterItem[]>([]);
+  const [priceZones, setPriceZones] = useState<PriceZonesMap>({});
 
 
   // Filter & List State
@@ -106,20 +107,22 @@ export const App: React.FC = () => {
 
   const fetchAuxData = async () => {
     try {
-      const [fRes, sfRes, vRes, pcRes, miRes] = await Promise.all([
+      const [fRes, sfRes, vRes, pcRes, miRes, pzRes] = await Promise.all([
         fetch('/api/families'),
         fetch('/api/subfamilies'),
         fetch('/api/vats'),
         fetch('/api/production-centers'),
-        fetch('/api/motivos-isencao')
+        fetch('/api/motivos-isencao'),
+        fetch('/api/price-zones')
       ]);
       if (fRes.ok) setFamilies(await fRes.json());
       if (sfRes.ok) setSubfamilies(await sfRes.json());
       if (vRes.ok) setVats(await vRes.json());
       if (pcRes.ok) setProductionCenters(await pcRes.json());
       if (miRes && miRes.ok) setMotivosIsencao(await miRes.json());
+      if (pzRes && pzRes.ok) setPriceZones(await pzRes.json());
     } catch (e) {
-      console.error('Erro ao obter famílias, subfamílias, IVAs, centros de produção e motivos de isenção', e);
+      console.error('Erro ao obter famílias, subfamílias, IVAs, centros de produção, motivos de isenção e zonas de preços', e);
     }
   };
 
@@ -507,6 +510,7 @@ export const App: React.FC = () => {
         <ProductTable
           products={products}
           selectedCodes={selectedCodes}
+          priceZones={priceZones}
           onToggleSelect={handleToggleSelect}
           onSelectAllPage={handleSelectAllPage}
           onDeselectAll={handleDeselectAll}
@@ -530,6 +534,7 @@ export const App: React.FC = () => {
           subfamilies={subfamilies}
           vats={vats}
           productionCenters={productionCenters}
+          priceZones={priceZones}
           onPreview={handleOpenPreview}
           onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
         />

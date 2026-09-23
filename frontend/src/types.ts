@@ -587,3 +587,12 @@ export interface NifLookupResponse {
   email?: string;
   atividade?: string;
 }
+
+export interface PriceZoneInfo {
+  pvp_index: number;
+  label: string;
+  zones: string[];
+  display: string;
+}
+
+export type PriceZonesMap = Record<string, PriceZoneInfo>;
