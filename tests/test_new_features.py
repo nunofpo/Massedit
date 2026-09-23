@@ -363,6 +363,83 @@ class TestNewFeatures(unittest.TestCase):
             self.assertFalse(levels[1]["obrigatorio"])
             self.assertEqual(levels[1]["options"][0]["preco"], 0.5)
 
+    def test_vat_data_quality_checks(self):
+        from backend.services.reports import (
+            check_suspect_vat_alcohol,
+            check_suspect_vat_soda,
+            check_suspect_vat_food_at_23,
+            check_null_vat
+        )
+
+        schema = {
+            "produtos": {
+                "codigo": ("int", None),
+                "descricao": ("varchar", 100),
+                "iva": ("money", None),
+                "familia": ("int", None)
+            },
+            "familias": {
+                "codigo": ("int", None),
+                "descricao": ("varchar", 100)
+            }
+        }
+
+        # 1. Test check_suspect_vat_alcohol
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            (10, "Vinho Tinto Alentejano", 13.0, "Vinhos"),
+            (11, "Cerveja Sagres 33cl", 13.0, "Cervejas"),
+            (12, "Caldo Verde Minhoto", 13.0, "Sopas"),          # excluded by food exclusion
+            (13, "Tripas a Moda do Porto", 13.0, "Pratos"),      # excluded by food exclusion
+            (14, "Agua Mineral das Pedras", 13.0, "Aguas")       # non-alcoholic
+        ]
+        res_alc = check_suspect_vat_alcohol(mock_cursor, schema)
+        self.assertEqual(res_alc.id, "suspect_vat_alcohol")
+        self.assertEqual(res_alc.severity, "error")
+        self.assertEqual(res_alc.category, "iva")
+        self.assertEqual(res_alc.count, 2)
+        self.assertEqual(res_alc.codes, [10, 11])
+
+        # 2. Test check_suspect_vat_soda
+        mock_cursor.fetchall.return_value = [
+            (20, "Coca-Cola Zero 33cl", 13.0, "Bebidas"),
+            (21, "Fanta Ananas", 13.0, "Bebidas"),
+            (22, "Agua do Luso", 13.0, "Bebidas")                # not soda
+        ]
+        res_soda = check_suspect_vat_soda(mock_cursor, schema)
+        self.assertEqual(res_soda.id, "suspect_vat_soda")
+        self.assertEqual(res_soda.severity, "error")
+        self.assertEqual(res_soda.category, "iva")
+        self.assertEqual(res_soda.count, 2)
+        self.assertEqual(res_soda.codes, [20, 21])
+
+        # 3. Test check_suspect_vat_food_at_23
+        mock_cursor.fetchall.return_value = [
+            (30, "Bife de Alcatra na Brasa", "Carnes", 11),
+            (31, "Café Expresso Chavena", "Cafetaria", 15),
+            (32, "Super Bock Mini 20cl", "Cervejas", 16),      # alcohol, rightfully 23%
+            (33, "Coca Cola 33cl", "Bebidas", 16)              # soda, rightfully 23%
+        ]
+        res_food = check_suspect_vat_food_at_23(mock_cursor, schema)
+        self.assertEqual(res_food.id, "suspect_vat_food_at_23")
+        self.assertEqual(res_food.severity, "warning")
+        self.assertEqual(res_food.category, "iva")
+        self.assertEqual(res_food.count, 2)
+        self.assertEqual(res_food.codes, [30, 31])
+
+        # 4. Test check_null_vat
+        mock_cursor.fetchall.return_value = [
+            (40, "Sobremesa Sem IVA"),
+            (41, "Artigo Avulso")
+        ]
+        res_null = check_null_vat(mock_cursor, schema)
+        self.assertEqual(res_null.id, "null_vat")
+        self.assertEqual(res_null.severity, "error")
+        self.assertEqual(res_null.category, "iva")
+        self.assertEqual(res_null.count, 2)
+        self.assertEqual(res_null.codes, [40, 41])
+
 
 if __name__ == "__main__":
     unittest.main()
+

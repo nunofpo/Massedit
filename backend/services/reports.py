@@ -1,3 +1,4 @@
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from backend.db import db_manager, SchemaInfo
 from backend.models import DataQualityCheck, DataQualityGroup
@@ -18,7 +19,257 @@ def _cap_codes(codes: List[int], max_codes: int = 5000) -> Tuple[List[int], bool
     return codes, False
 
 
+# ======================================================================
+# Constantes de Auditoria de IVA (CIVA - Restauração e Bebidas em Portugal)
+# ======================================================================
+
+ALCOHOL_REGEX = re.compile(
+    r'\b(vinho|vinhos|tinto|tintos|branco|brancos|reserva|colheita|sangria|'
+    r'cerveja|cervejas|fino|finos|imperial|imperiais|lager|stout|ipa|sagres|superbock|'
+    r'super bock|heineken|carlsberg|corona|sidra|somersby|whisky|whiskeys|whiskey|vodka|'
+    r'gin|gins|rum|licor|licores|amarguinha|macieira|crf|conhaque|aguardente|bagaco|bagaço|'
+    r'espumante|espumantes|cava|champagne|moscatel|favaios|martini|campari|shot|shots|'
+    r'caipirinha|cocktail|aperol)\b',
+    re.IGNORECASE
+)
+
+ALCOHOL_FOOD_EXCLUSIONS = re.compile(
+    r'\b(caldo verde|feijao verde|feijão verde|tripas|tarta|torta|bolo|salada|ananas|ananás|gelado|gelados)\b',
+    re.IGNORECASE
+)
+
+SODA_REGEX = re.compile(
+    r'\b(coca-cola|coca cola|fanta|sprite|7up|7 up|sumol|ice tea|icetea|pepsi|guarana|'
+    r'guaraná|red bull|redbull|monster|tonica|tónica|schweppes|nestea|lipton)\b',
+    re.IGNORECASE
+)
+
+FOOD_REGEX = re.compile(
+    r'\b(bife|bifinhos|frango|carne|vitela|porco|picanha|maminha|secretos|costelinha|entrecosto|'
+    r'polvo|bacalhau|salmao|salmão|dourada|robalo|pescada|lulas|chocos|camarao|camarão|arroz|'
+    r'massa|esparguete|pizza|hamburguer|francesinha|sopa|caldo verde|sobremesa|mousse|pudim|'
+    r'bolo|fruta|cafe|café|descafeinado|carioca|cevada|cha|chá|galao|galão|abatanado|pingo|'
+    r'tosta|sandes|prego|prato)\b',
+    re.IGNORECASE
+)
+
+FOOD_EXCLUSIONS_NONFOOD = re.compile(
+    r'\b(coca|fanta|sprite|7up|sumol|tea|pepsi|guarana|guaraná|red bull|monster|compal|'
+    r'cerveja|somersby|super bock|superbock|lays|lay\'s|ruffles|snack|saco|embalagem|embrulho|encomenda|taxa)\b',
+    re.IGNORECASE
+)
+
+
+# ----------------------------------------------------------------------
+# Verificações de Auditoria de IVA
+# ----------------------------------------------------------------------
+
+def check_suspect_vat_alcohol(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "suspect_vat_alcohol"
+    title = "Bebidas alcoólicas com IVA inferior a 23% (Erro Fiscal CIVA)"
+    desc = (
+        "Segundo o CIVA (verba 3.1 da Lista II), todas as bebidas alcoólicas (vinhos, cervejas, licores, sangrias, "
+        "espumantes, etc.) estão obrigatoriamente sujeitas à taxa normal de 23% no serviço de restauração e bebidas. "
+        "Estes artigos têm taxa intermédia (13%) ou reduzida (6%), incorrendo em risco de infração fiscal e coima perante a AT."
+    )
+    if not _has_col(schema, "produtos", "iva"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="error",
+            count=0, codes=[], available=False,
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos.",
+            category="iva"
+        )
+
+    sql = """
+        SELECT p.codigo, p.descricao, ISNULL(p.iva, 0), ISNULL(f.descricao, 'Sem Família') AS fam_desc
+        FROM dbo.produtos p
+        LEFT JOIN dbo.familias f ON p.familia = f.codigo
+        WHERE ISNULL(p.iva, 0) < 23
+        ORDER BY f.descricao, p.codigo
+    """
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    groups_dict: Dict[str, List[int]] = {}
+    all_codes: List[int] = []
+
+    for code_raw, desc_raw, iva_raw, fam_raw in rows:
+        code = int(code_raw)
+        desc = (desc_raw or "").strip()
+        d_lower = desc.lower()
+        fam = str(fam_raw or "Sem Família").strip()
+        fam_lower = fam.lower()
+
+        is_alc_fam = "vinho" in fam_lower or "cerveja" in fam_lower or "bar" in fam_lower
+        has_alc_word = (
+            bool(ALCOHOL_REGEX.search(d_lower))
+            or ("verde" in d_lower and not ALCOHOL_FOOD_EXCLUSIONS.search(d_lower))
+            or ("porto" in d_lower and not ALCOHOL_FOOD_EXCLUSIONS.search(d_lower) and "moda" not in d_lower)
+        )
+
+        if (is_alc_fam or has_alc_word) and not ALCOHOL_FOOD_EXCLUSIONS.search(d_lower):
+            if not re.search(r'\b(agua|água|cafe|café|cha|chá|cevada|carioca)\b', d_lower):
+                key = f"{fam} (IVA atual: {float(iva_raw):.0f}%)"
+                groups_dict.setdefault(key, []).append(code)
+                all_codes.append(code)
+
+    capped, truncated = _cap_codes(all_codes)
+    groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="error",
+        count=len(all_codes), codes=capped, groups=groups,
+        available=True, truncated=truncated, category="iva"
+    )
+
+
+def check_suspect_vat_soda(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "suspect_vat_soda"
+    title = "Refrigerantes com IVA inferior a 23% (Erro Fiscal CIVA)"
+    desc = (
+        "Refrigerantes com gás ou sumos adicionados de açúcares/edulcorantes (Coca-Cola, Fanta, Sprite, 7Up, Sumol, "
+        "Ice Tea, Pepsi, Guaraná, etc.) devem ter taxa normal de 23% no serviço de restauração "
+        "(apenas águas lisas e sumos 100% naturais sem açúcares adicionados podem usufruir de 13%)."
+    )
+    if not _has_col(schema, "produtos", "iva"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="error",
+            count=0, codes=[], available=False,
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos.",
+            category="iva"
+        )
+
+    sql = """
+        SELECT p.codigo, p.descricao, ISNULL(p.iva, 0), ISNULL(f.descricao, 'Sem Família') AS fam_desc
+        FROM dbo.produtos p
+        LEFT JOIN dbo.familias f ON p.familia = f.codigo
+        WHERE ISNULL(p.iva, 0) < 23
+        ORDER BY p.descricao, p.codigo
+    """
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    groups_dict: Dict[str, List[int]] = {}
+    all_codes: List[int] = []
+
+    for code_raw, desc_raw, iva_raw, fam_raw in rows:
+        code = int(code_raw)
+        desc = (desc_raw or "").strip()
+        d_lower = desc.lower()
+        fam = str(fam_raw or "Sem Família").strip()
+
+        match = SODA_REGEX.search(d_lower)
+        if match:
+            soda_name = match.group(0).title()
+            key = f"{soda_name} ({fam} - IVA atual: {float(iva_raw):.0f}%)"
+            groups_dict.setdefault(key, []).append(code)
+            all_codes.append(code)
+
+    capped, truncated = _cap_codes(all_codes)
+    groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="error",
+        count=len(all_codes), codes=capped, groups=groups,
+        available=True, truncated=truncated, category="iva"
+    )
+
+
+def check_suspect_vat_food_at_23(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "suspect_vat_food_at_23"
+    title = "Alimentação / Cafetaria com IVA a 23% (Sobretributação)"
+    desc = (
+        "Na restauração (CIVA Lista II, verba 3.1), os serviços de alimentação (refeições, pratos, carnes, peixes, "
+        "sopas, sobremesas) e cafetaria (café, chá, leite, água) beneficiam da taxa intermédia de 13%. "
+        "Estes artigos estão configurados a 23%, gerando cobrança e entrega excessiva de imposto."
+    )
+    if not _has_col(schema, "produtos", "iva"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="warning",
+            count=0, codes=[], available=False,
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos.",
+            category="iva"
+        )
+
+    sql = """
+        SELECT p.codigo, p.descricao, ISNULL(f.descricao, 'Sem Família') AS fam_desc, p.familia
+        FROM dbo.produtos p
+        LEFT JOIN dbo.familias f ON p.familia = f.codigo
+        WHERE ABS(ISNULL(p.iva, 0) - 23) < 0.001
+        ORDER BY f.descricao, p.codigo
+    """
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    groups_dict: Dict[str, List[int]] = {}
+    all_codes: List[int] = []
+
+    for code_raw, desc_raw, fam_raw, fam_cod in rows:
+        code = int(code_raw)
+        desc = (desc_raw or "").strip()
+        d_lower = desc.lower()
+        fam = str(fam_raw or "Sem Família").strip()
+        fam_lower = fam.lower()
+
+        is_alc_fam = "vinho" in fam_lower or "cerveja" in fam_lower or "bar" in fam_lower
+        has_alc_word = bool(ALCOHOL_REGEX.search(d_lower))
+        is_nonfood = bool(FOOD_EXCLUSIONS_NONFOOD.search(d_lower))
+
+        if is_alc_fam or has_alc_word or is_nonfood:
+            continue
+
+        is_food_fam = fam_cod in (11, 12, 15, 17, 19) or any(w in fam_lower for w in ["ementa", "prato", "churrasco", "carne", "peixe", "sobremesa", "entrada"])
+        is_food_desc = bool(FOOD_REGEX.search(d_lower))
+
+        if is_food_fam or is_food_desc:
+            groups_dict.setdefault(fam, []).append(code)
+            all_codes.append(code)
+
+    capped, truncated = _cap_codes(all_codes)
+    groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="warning",
+        count=len(all_codes), codes=capped, groups=groups,
+        available=True, truncated=truncated, category="iva"
+    )
+
+
+def check_null_vat(cursor, schema: SchemaInfo) -> DataQualityCheck:
+    check_id = "null_vat"
+    title = "Artigos sem taxa de IVA definida"
+    desc = "Artigos que não têm nenhuma taxa de IVA preenchida (p.iva IS NULL). Causará erro de faturação no POS."
+    if not _has_col(schema, "produtos", "iva"):
+        return DataQualityCheck(
+            id=check_id, title=title, description=desc, severity="error",
+            count=0, codes=[], available=False,
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos.",
+            category="iva"
+        )
+
+    sql = """
+        SELECT p.codigo, ISNULL(f.descricao, 'Sem Família') AS fam_desc
+        FROM dbo.produtos p
+        LEFT JOIN dbo.familias f ON p.familia = f.codigo
+        WHERE p.iva IS NULL
+        ORDER BY f.descricao, p.codigo
+    """
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    groups_dict: Dict[str, List[int]] = {}
+    all_codes: List[int] = []
+    for code_raw, fam_raw in rows:
+        code = int(code_raw)
+        key = str(fam_raw or "Sem Família").strip()
+        groups_dict.setdefault(key, []).append(code)
+        all_codes.append(code)
+
+    capped, truncated = _cap_codes(all_codes)
+    groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
+    return DataQualityCheck(
+        id=check_id, title=title, description=desc, severity="error",
+        count=len(all_codes), codes=capped, groups=groups,
+        available=True, truncated=truncated, category="iva"
+    )
+
+
+# ======================================================================
 # 1. Códigos de barras repetidos
+# ======================================================================
 def check_duplicate_barcode(cursor, schema: SchemaInfo) -> DataQualityCheck:
     check_id = "duplicate_barcode"
     title = "Códigos de barras repetidos"
@@ -27,7 +278,8 @@ def check_duplicate_barcode(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="error",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'codbarras' não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'codbarras' não existe na tabela dbo.produtos.",
+            category="codes"
         )
 
     sql = """
@@ -57,7 +309,7 @@ def check_duplicate_barcode(cursor, schema: SchemaInfo) -> DataQualityCheck:
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="error",
         count=len(all_codes), codes=capped, groups=groups,
-        available=True, truncated=truncated
+        available=True, truncated=truncated, category="codes"
     )
 
 
@@ -70,7 +322,8 @@ def check_duplicate_plu(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="error",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'codigo_alf' (PLU) não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'codigo_alf' (PLU) não existe na tabela dbo.produtos.",
+            category="codes"
         )
 
     sql = """
@@ -100,7 +353,7 @@ def check_duplicate_plu(cursor, schema: SchemaInfo) -> DataQualityCheck:
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="error",
         count=len(all_codes), codes=capped, groups=groups,
-        available=True, truncated=truncated
+        available=True, truncated=truncated, category="codes"
     )
 
 
@@ -113,7 +366,8 @@ def check_missing_family(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="error",
             count=0, codes=[], available=False,
-            unavailable_reason="A tabela dbo.familias ou a coluna 'familia' não existem."
+            unavailable_reason="A tabela dbo.familias ou a coluna 'familia' não existem.",
+            category="structure"
         )
 
     sql = """
@@ -128,7 +382,8 @@ def check_missing_family(cursor, schema: SchemaInfo) -> DataQualityCheck:
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="error",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="structure"
     )
 
 
@@ -141,7 +396,8 @@ def check_missing_subfamily(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="warning",
             count=0, codes=[], available=False,
-            unavailable_reason="A tabela dbo.subfamilias ou a coluna 'subfam' não existem."
+            unavailable_reason="A tabela dbo.subfamilias ou a coluna 'subfam' não existem.",
+            category="structure"
         )
 
     sql = """
@@ -156,7 +412,8 @@ def check_missing_subfamily(cursor, schema: SchemaInfo) -> DataQualityCheck:
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="warning",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="structure"
     )
 
 
@@ -170,7 +427,8 @@ def check_subfamily_wrong_family(cursor, schema: SchemaInfo) -> DataQualityCheck
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="warning",
             count=0, codes=[], available=False,
-            unavailable_reason="Colunas 'familia'/'subfam' ou tabela dbo.subfamilias inexistentes."
+            unavailable_reason="Colunas 'familia'/'subfam' ou tabela dbo.subfamilias inexistentes.",
+            category="structure"
         )
 
     sql = """
@@ -186,7 +444,8 @@ def check_subfamily_wrong_family(cursor, schema: SchemaInfo) -> DataQualityCheck
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="warning",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="structure"
     )
 
 
@@ -199,7 +458,8 @@ def check_invalid_vat(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="error",
             count=0, codes=[], available=False,
-            unavailable_reason="A tabela dbo.iva ou coluna 'factor'/'iva' não existem."
+            unavailable_reason="A tabela dbo.iva ou coluna 'factor'/'iva' não existem.",
+            category="iva"
         )
 
     sql = """
@@ -214,7 +474,8 @@ def check_invalid_vat(cursor, schema: SchemaInfo) -> DataQualityCheck:
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="error",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="iva"
     )
 
 
@@ -227,7 +488,8 @@ def check_no_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
             count=0, codes=[], available=False,
-            unavailable_reason="A tabela dbo.produtoscentrosprod não existe nesta base de dados."
+            unavailable_reason="A tabela dbo.produtoscentrosprod não existe nesta base de dados.",
+            category="structure"
         )
 
     sql = """
@@ -253,7 +515,7 @@ def check_no_production_center(cursor, schema: SchemaInfo) -> DataQualityCheck:
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="info",
         count=len(all_codes), codes=capped, groups=groups,
-        available=True, truncated=truncated
+        available=True, truncated=truncated, category="structure"
     )
 
 
@@ -266,7 +528,8 @@ def check_invalid_production_center(cursor, schema: SchemaInfo) -> DataQualityCh
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="warning",
             count=0, codes=[], available=False,
-            unavailable_reason="Tabelas dbo.produtoscentrosprod ou dbo.centrosprod não existem."
+            unavailable_reason="Tabelas dbo.produtoscentrosprod ou dbo.centrosprod não existem.",
+            category="structure"
         )
 
     sql = """
@@ -286,7 +549,8 @@ def check_invalid_production_center(cursor, schema: SchemaInfo) -> DataQualityCh
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="warning",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="structure"
     )
 
 
@@ -299,7 +563,8 @@ def check_orphan_production_center_rows(cursor, schema: SchemaInfo) -> DataQuali
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
             count=0, codes=[], available=False,
-            unavailable_reason="A tabela dbo.produtoscentrosprod não existe nesta base de dados."
+            unavailable_reason="A tabela dbo.produtoscentrosprod não existe nesta base de dados.",
+            category="structure"
         )
 
     sql = """
@@ -312,7 +577,8 @@ def check_orphan_production_center_rows(cursor, schema: SchemaInfo) -> DataQuali
     count = int(row[0]) if row else 0
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="info",
-        count=count, codes=[], available=True, truncated=False
+        count=count, codes=[], available=True, truncated=False,
+        category="structure"
     )
 
 
@@ -350,7 +616,8 @@ def check_zero_price_visible(cursor, schema: SchemaInfo) -> DataQualityCheck:
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="warning",
         count=len(codes), codes=capped, available=True,
-        unavailable_reason=reason, truncated=truncated
+        unavailable_reason=reason, truncated=truncated,
+        category="prices"
     )
 
 
@@ -363,7 +630,8 @@ def check_empty_short_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'descricaocurta' não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'descricaocurta' não existe na tabela dbo.produtos.",
+            category="text"
         )
 
     sql = """
@@ -377,7 +645,8 @@ def check_empty_short_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="info",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="text"
     )
 
 
@@ -390,7 +659,8 @@ def check_long_short_desc(cursor, schema: SchemaInfo, short_desc_max: int = 20) 
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'descricaocurta' não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'descricaocurta' não existe na tabela dbo.produtos.",
+            category="text"
         )
 
     sql = """
@@ -404,7 +674,8 @@ def check_long_short_desc(cursor, schema: SchemaInfo, short_desc_max: int = 20) 
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="info",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="text"
     )
 
 
@@ -417,7 +688,8 @@ def check_whitespace_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="info",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'descricao' não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'descricao' não existe na tabela dbo.produtos.",
+            category="text"
         )
 
     sql = """
@@ -431,12 +703,47 @@ def check_whitespace_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
     capped, truncated = _cap_codes(codes)
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="info",
-        count=len(codes), codes=capped, available=True, truncated=truncated
+        count=len(codes), codes=capped, available=True, truncated=truncated,
+        category="text"
     )
 
 
 def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
     return [
+        DataQualityCheck(
+            id="suspect_vat_alcohol",
+            title="Bebidas alcoólicas com IVA inferior a 23% (Erro Fiscal CIVA)",
+            description="Segundo o CIVA (verba 3.1 da Lista II), todas as bebidas alcoólicas (vinhos, cervejas, licores, sangrias, etc.) estão obrigatoriamente sujeitas à taxa normal de 23% no serviço de restauração e bebidas. Estes artigos têm taxa intermédia (13%) ou reduzida (6%), incorrendo em risco de infração fiscal e coima perante a AT.",
+            severity="error",
+            count=1,
+            codes=[612],
+            groups=[DataQualityGroup(key="Vinhos (IVA atual: 13%)", codes=[612])],
+            available=True,
+            truncated=False,
+            category="iva"
+        ),
+        DataQualityCheck(
+            id="suspect_vat_soda",
+            title="Refrigerantes com IVA inferior a 23% (Erro Fiscal CIVA)",
+            description="Refrigerantes com gás ou sumos adicionados de açúcares/edulcorantes (Coca-Cola, Fanta, Sprite, 7Up, Sumol, Ice Tea, etc.) devem ter taxa normal de 23% no serviço de restauração.",
+            severity="error",
+            count=0,
+            codes=[],
+            available=True,
+            truncated=False,
+            category="iva"
+        ),
+        DataQualityCheck(
+            id="suspect_vat_food_at_23",
+            title="Alimentação / Cafetaria com IVA a 23% (Sobretributação)",
+            description="Na restauração (CIVA Lista II, verba 3.1), os serviços de alimentação e cafetaria beneficiam da taxa intermédia de 13%. Estes artigos estão configurados a 23%, gerando cobrança e entrega excessiva de imposto.",
+            severity="warning",
+            count=0,
+            codes=[],
+            available=True,
+            truncated=False,
+            category="iva"
+        ),
         DataQualityCheck(
             id="missing_vat_exemption_reason",
             title="Isenção de IVA sem motivo legal (Erro SAF-T)",
@@ -445,7 +752,19 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=0,
             codes=[],
             available=True,
-            truncated=False
+            truncated=False,
+            category="iva"
+        ),
+        DataQualityCheck(
+            id="null_vat",
+            title="Artigos sem taxa de IVA definida",
+            description="Artigos que não têm nenhuma taxa de IVA preenchida (p.iva IS NULL).",
+            severity="error",
+            count=0,
+            codes=[],
+            available=True,
+            truncated=False,
+            category="iva"
         ),
         DataQualityCheck(
             id="duplicate_barcode",
@@ -456,7 +775,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             codes=[3299, 3300],
             groups=[DataQualityGroup(key="1000000032994", codes=[3299, 3300])],
             available=True,
-            truncated=False
+            truncated=False,
+            category="codes"
         ),
         DataQualityCheck(
             id="duplicate_plu",
@@ -466,7 +786,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=0,
             codes=[],
             available=True,
-            truncated=False
+            truncated=False,
+            category="codes"
         ),
         DataQualityCheck(
             id="missing_family",
@@ -476,7 +797,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=1,
             codes=[3308],
             available=True,
-            truncated=False
+            truncated=False,
+            category="structure"
         ),
         DataQualityCheck(
             id="empty_short_desc",
@@ -486,7 +808,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=3,
             codes=[0, 1, 7001],
             available=True,
-            truncated=False
+            truncated=False,
+            category="text"
         ),
         DataQualityCheck(
             id="long_short_desc",
@@ -496,7 +819,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=1,
             codes=[3298],
             available=True,
-            truncated=False
+            truncated=False,
+            category="text"
         ),
         DataQualityCheck(
             id="whitespace_desc",
@@ -506,7 +830,8 @@ def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck
             count=1,
             codes=[7001],
             available=True,
-            truncated=False
+            truncated=False,
+            category="text"
         )
     ]
 
@@ -554,7 +879,8 @@ def check_missing_vat_exemption_reason(cursor, schema: SchemaInfo) -> DataQualit
         return DataQualityCheck(
             id=check_id, title=title, description=desc, severity="error",
             count=0, codes=[], available=False,
-            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos."
+            unavailable_reason="A coluna 'iva' não existe na tabela dbo.produtos.",
+            category="iva"
         )
 
     has_isencao = _has_col(schema, "produtos", "isencao")
@@ -605,7 +931,8 @@ def check_missing_vat_exemption_reason(cursor, schema: SchemaInfo) -> DataQualit
     groups = [DataQualityGroup(key=k, codes=v) for k, v in groups_dict.items()]
     return DataQualityCheck(
         id=check_id, title=title, description=desc, severity="error",
-        count=len(all_codes), codes=capped, groups=groups, available=True, truncated=truncated
+        count=len(all_codes), codes=capped, groups=groups, available=True, truncated=truncated,
+        category="iva"
     )
 
 
@@ -623,13 +950,17 @@ def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
         schema = db_manager.get_schema(cursor)
 
         checks = [
+            check_suspect_vat_alcohol(cursor, schema),
+            check_suspect_vat_soda(cursor, schema),
+            check_suspect_vat_food_at_23(cursor, schema),
             check_missing_vat_exemption_reason(cursor, schema),
+            check_invalid_vat(cursor, schema),
+            check_null_vat(cursor, schema),
             check_duplicate_barcode(cursor, schema),
             check_duplicate_plu(cursor, schema),
             check_missing_family(cursor, schema),
             check_missing_subfamily(cursor, schema),
             check_subfamily_wrong_family(cursor, schema),
-            check_invalid_vat(cursor, schema),
             check_no_production_center(cursor, schema),
             check_invalid_production_center(cursor, schema),
             check_orphan_production_center_rows(cursor, schema),

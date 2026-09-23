@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X, AlertTriangle, AlertCircle, Info, ChevronDown, ChevronRight,
-  Download, Eye, CheckSquare, RefreshCw, Sparkles, Filter
+  Download, Eye, CheckSquare, RefreshCw, Sparkles, Filter, Scale,
+  Tag, Layers, DollarSign, Type
 } from 'lucide-react';
 import { DataQualityCheck } from '../types';
 
@@ -11,6 +12,17 @@ interface DataQualityModalProps {
   onViewArticles: (codes: number[], label: string) => void;
   onSelectArticles: (codes: number[], label: string) => void;
 }
+
+type CategoryFilter = 'all' | 'iva' | 'codes' | 'structure' | 'prices' | 'text';
+
+const CATEGORIES: { id: CategoryFilter; label: string; icon: any }[] = [
+  { id: 'all', label: 'Todos', icon: Filter },
+  { id: 'iva', label: 'Auditoria de IVA', icon: Scale },
+  { id: 'codes', label: 'Códigos & PLUs', icon: Tag },
+  { id: 'structure', label: 'Famílias & Centros', icon: Layers },
+  { id: 'prices', label: 'Preços', icon: DollarSign },
+  { id: 'text', label: 'Textos & POS', icon: Type },
+];
 
 export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   isOpen,
@@ -23,6 +35,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   const [checks, setChecks] = useState<DataQualityCheck[] | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
 
   if (!isOpen) return null;
 
@@ -51,22 +64,23 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
 
   const handleExportCSV = () => {
     if (!checks) return;
-    const rows = ['Verificação;Severidade;Código;Detalhe'];
+    const rows = ['Verificação;Categoria;Severidade;Código;Detalhe'];
 
     checks.forEach(chk => {
       if (!chk.available) return;
+      const cat = chk.category || 'geral';
       if (chk.groups && chk.groups.length > 0) {
         chk.groups.forEach(g => {
           g.codes.forEach(c => {
-            rows.push(`"${chk.title}";"${chk.severity}";${c};"${g.key}"`);
+            rows.push(`"${chk.title}";"${cat}";"${chk.severity}";${c};"${g.key}"`);
           });
         });
       } else if (chk.codes.length > 0) {
         chk.codes.forEach(c => {
-          rows.push(`"${chk.title}";"${chk.severity}";${c};""`);
+          rows.push(`"${chk.title}";"${cat}";"${chk.severity}";${c};""`);
         });
       } else if (chk.count > 0) {
-        rows.push(`"${chk.title}";"${chk.severity}";"N/A";"Contagem: ${chk.count}"`);
+        rows.push(`"${chk.title}";"${cat}";"${chk.severity}";"N/A";"Contagem: ${chk.count}"`);
       }
     });
 
@@ -85,6 +99,56 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   const totalErrors = checks ? checks.filter(c => c.available && c.severity === 'error').reduce((acc, c) => acc + c.count, 0) : 0;
   const totalWarnings = checks ? checks.filter(c => c.available && c.severity === 'warning').reduce((acc, c) => acc + c.count, 0) : 0;
   const totalInfos = checks ? checks.filter(c => c.available && c.severity === 'info').reduce((acc, c) => acc + c.count, 0) : 0;
+
+  // Distinct codes with VAT anomalies
+  const ivaAnomalyCodes = useMemo(() => {
+    if (!checks) return [];
+    const set = new Set<number>();
+    checks
+      .filter(c => c.available && (c.category === 'iva' || c.id.startsWith('suspect_vat') || c.id.includes('vat')) && c.codes.length > 0)
+      .forEach(c => c.codes.forEach(code => set.add(code)));
+    return Array.from(set).sort((a, b) => a - b);
+  }, [checks]);
+
+  // Count issues per category tab
+  const categoryIssuesCount = useMemo(() => {
+    const counts: Record<CategoryFilter, number> = {
+      all: 0,
+      iva: 0,
+      codes: 0,
+      structure: 0,
+      prices: 0,
+      text: 0
+    };
+    if (!checks) return counts;
+
+    checks.forEach(c => {
+      if (!c.available) return;
+      const cat = (c.category || 'geral') as CategoryFilter;
+      const issues = c.count;
+      counts.all += issues;
+      if (counts[cat] !== undefined) {
+        counts[cat] += issues;
+      }
+      // If it's a vat check not categorized as iva
+      if ((c.id.startsWith('suspect_vat') || c.id.includes('vat')) && cat !== 'iva') {
+        counts.iva += issues;
+      }
+    });
+
+    return counts;
+  }, [checks]);
+
+  const filteredChecks = useMemo(() => {
+    if (!checks) return [];
+    if (selectedCategory === 'all') return checks;
+    return checks.filter(c => {
+      if (selectedCategory === 'iva') {
+        return c.category === 'iva' || c.id.startsWith('suspect_vat') || c.id.includes('vat');
+      }
+      return c.category === selectedCategory;
+    });
+  }, [checks, selectedCategory]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -163,6 +227,49 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
           )}
         </div>
 
+        {/* Category Filter Tabs */}
+        {checks && (
+          <div className="px-6 py-2 bg-slate-100/70 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto text-xs">
+            {CATEGORIES.map(cat => {
+              const Icon = cat.icon;
+              const count = categoryIssuesCount[cat.id];
+              const isSelected = selectedCategory === cat.id;
+              const isIva = cat.id === 'iva';
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition whitespace-nowrap shadow-xs cursor-pointer ${
+                    isSelected
+                      ? isIva
+                        ? 'bg-amber-600 text-white shadow-amber-600/20'
+                        : 'bg-indigo-600 text-white shadow-indigo-600/20'
+                      : 'bg-white text-slate-700 hover:bg-slate-200/80 border border-slate-200'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{cat.label}</span>
+                  {count > 0 ? (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : isIva
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-slate-100 text-slate-700 border border-slate-300'
+                    }`}>
+                      {count}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'text-white/80' : 'text-emerald-700 font-bold'}`}>
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
           {errorMsg && (
@@ -177,7 +284,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
               <Sparkles className="w-10 h-10 text-indigo-400 mx-auto" />
               <h3 className="text-sm font-bold text-slate-800">Pronto para Diagnosticar</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Clique em <strong>"Analisar Base de Dados"</strong> para efetuar 13 verificações de consistência (códigos de barras, PLUs, IVA, famílias, centros de produção e textos).
+                Clique em <strong>"Analisar Base de Dados"</strong> para efetuar 16 verificações de consistência (auditoria de IVA/CIVA, códigos de barras, PLUs, famílias, centros de produção e textos).
               </p>
             </div>
           )}
@@ -191,9 +298,49 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
 
           {checks && !isLoading && (
             <div className="space-y-3">
-              {checks.map((chk) => {
-                const isError = chk.severity === 'error';
-                const isWarning = chk.severity === 'warning';
+              {/* Special Fiscal Compliance Banner for IVA */}
+              {(selectedCategory === 'iva' || (selectedCategory === 'all' && ivaAnomalyCodes.length > 0)) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs mb-3">
+                  <div className="space-y-1">
+                    <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                      <Scale className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>Auditoria Fiscal de IVA (CIVA - Lista II, Verba 3.1)</span>
+                    </div>
+                    <p className="text-amber-800 text-[11px] leading-relaxed">
+                      Segundo o Código do IVA (CIVA), as <strong>bebidas alcoólicas</strong> (vinhos, cervejas, sangrias, licores) e os <strong>refrigerantes com gás/açúcares</strong> estão obrigatoriamente sujeitos à taxa normal de <strong>23%</strong> na restauração. Serviços de alimentação e cafetaria beneficiam da taxa intermédia de <strong>13%</strong>.
+                    </p>
+                  </div>
+                  {ivaAnomalyCodes.length > 0 && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => onViewArticles(ivaAnomalyCodes, 'Artigos com Anomalia de IVA')}
+                        className="bg-white hover:bg-amber-100 text-amber-900 font-bold px-3 py-1.5 rounded-lg border border-amber-300 transition flex items-center gap-1 shadow-xs text-xs cursor-pointer"
+                        title="Filtrar e ver todos os artigos com anomalia de IVA na tabela"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Ver todos ({ivaAnomalyCodes.length})
+                      </button>
+                      <button
+                        onClick={() => onSelectArticles(ivaAnomalyCodes, 'Artigos com Anomalia de IVA')}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-xs text-xs cursor-pointer"
+                        title="Selecionar todos os artigos com anomalia fiscal de IVA para alterar a taxa em massa"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        Selecionar todos ({ivaAnomalyCodes.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {filteredChecks.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
+                  Não existem verificações para esta categoria.
+                </div>
+              ) : (
+                filteredChecks.map((chk) => {
+                  const isError = chk.severity === 'error';
+                  const isWarning = chk.severity === 'warning';
                 const hasIssues = chk.count > 0;
                 const isExpanded = !!expandedGroups[chk.id];
 
@@ -300,7 +447,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
                     )}
                   </div>
                 );
-              })}
+              }))}
             </div>
           )}
         </div>

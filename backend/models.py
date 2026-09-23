@@ -297,6 +297,7 @@ class DataQualityCheck(BaseModel):
     available: bool = True
     unavailable_reason: Optional[str] = None
     truncated: bool = False
+    category: Optional[str] = "geral"
 
 class BackupItem(BaseModel):
     filename: str

@@ -236,6 +236,7 @@ export interface DataQualityCheck {
   available: boolean;
   unavailable_reason?: string | null;
   truncated: boolean;
+  category?: 'iva' | 'codes' | 'structure' | 'prices' | 'text' | 'geral';
 }
 
 export interface ColorUpdate {
