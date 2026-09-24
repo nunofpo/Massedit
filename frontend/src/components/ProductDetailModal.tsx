@@ -81,7 +81,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [dosedesc, setDosedesc] = useState('');
 
   // POS appearance
-  const [frontoffice, setFrontoffice] = useState<number>(1);
   const [posicaofront, setPosicaofront] = useState<number>(0);
   const [fundoHex, setFundoHex] = useState('#FFFFFF');
   const [letraHex, setLetraHex] = useState('#000000');
@@ -133,7 +132,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setMeiadosedesc(product.meiadosedesc || '');
       setDosedesc(product.dosedesc || '');
 
-      setFrontoffice(product.frontoffice !== undefined ? product.frontoffice : 1);
       setPosicaofront(product.posicaofront || 0);
       setFundoHex(product.fundo_hex || '#FFFFFF');
       setLetraHex(product.letra_hex || '#000000');
@@ -235,7 +233,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         precomeia: precomeia,
         meiadosedesc: meiadosedesc.trim(),
         dosedesc: dosedesc.trim(),
-        frontoffice: frontoffice,
         posicaofront: posicaofront,
         fundo_hex: fundoHex,
         letra_hex: letraHex,
@@ -973,13 +970,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={frontoffice === 1}
-                        onChange={(e) => setFrontoffice(e.target.checked ? 1 : 0)}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                        checked={descontinuado === 1}
+                        onChange={(e) => setDescontinuado(e.target.checked ? 1 : 0)}
+                        className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
                       />
                       <div>
-                        <div className="text-xs font-bold text-slate-800">Visível no Frontoffice (POS)</div>
-                        <div className="text-[11px] text-slate-500">Apresenta o botão no ecrã de registo de pedidos</div>
+                        <div className="text-xs font-bold text-slate-800">Artigo Descontinuado</div>
+                        <div className="text-[11px] text-slate-500">Oculta o botão do ecrã de registo de pedidos (é este o mecanismo de visibilidade do ZSRest)</div>
                       </div>
                     </label>
                   </div>
@@ -1104,20 +1101,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {activeTab === 'rules' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Descontinuado */}
-                <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={descontinuado === 1}
-                    onChange={(e) => setDescontinuado(e.target.checked ? 1 : 0)}
-                    className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 mt-0.5"
-                  />
-                  <div>
-                    <div className="text-xs font-bold text-slate-800">Artigo Descontinuado</div>
-                    <div className="text-[11px] text-slate-500">Oculta o artigo do sistema para não ser vendido ou faturado</div>
-                  </div>
-                </label>
-
                 {/* Bloqueado no POS */}
                 <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
                   <input

@@ -460,7 +460,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
 
                     {/* FrontOffice POS & Posição */}
                     <td className="p-3 text-center">
-                      {product.frontoffice === 1 ? (
+                      {product.descontinuado !== 1 ? (
                         <div className="flex flex-col items-center">
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs">
                             <Eye className="w-3 h-3 text-emerald-400" />

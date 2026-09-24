@@ -314,8 +314,8 @@ export interface BulkEditRequest {
   new_iva2?: number;
   apply_bloqueado: boolean;
   new_bloqueado?: number;
-  apply_frontoffice: boolean;
-  new_frontoffice?: number;
+  apply_descontinuado: boolean;
+  new_descontinuado?: number;
   apply_posicaofront?: boolean;
   new_posicaofront?: number;
   mark_cloud_sync: boolean;

@@ -183,7 +183,7 @@ export const DeadProductsModal: React.FC<DeadProductsModalProps> = ({
                         Ação: Bloquear e Ocultar do POS
                       </p>
                       <p className="text-amber-800">
-                        Marca <code className="font-mono font-semibold">bloqueado = 1</code> e <code className="font-mono font-semibold">frontoffice = 0</code> para não poluir o ecrã de venda nem as pesquisas.
+                        Marca <code className="font-mono font-semibold">bloqueado = 1</code> e <code className="font-mono font-semibold">descontinuado = 1</code> para não poluir o ecrã de venda nem as pesquisas.
                       </p>
                     </div>
 

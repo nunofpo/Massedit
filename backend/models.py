@@ -215,8 +215,11 @@ class BulkEditRequest(BaseModel):
     apply_bloqueado: bool = False
     new_bloqueado: Optional[int] = None  # 0 ou 1
     
-    apply_frontoffice: bool = False
-    new_frontoffice: Optional[int] = None  # 0 ou 1
+    # No ZoneSoft ZSRest a visibilidade de um artigo no ecrã de vendas é `descontinuado`
+    # (0 = ativo/visível, 1 = descontinuado/oculto). A coluna `frontoffice` existe em
+    # dbo.familias, não em dbo.produtos, pelo que não serve para esconder artigos.
+    apply_descontinuado: bool = False
+    new_descontinuado: Optional[int] = None  # 0 = Ativo (visível no POS), 1 = Descontinuado (oculto)
 
     apply_posicaofront: bool = False
     new_posicaofront: Optional[int] = None  # número inteiro

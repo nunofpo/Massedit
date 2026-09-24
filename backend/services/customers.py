@@ -199,12 +199,14 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         params = []
         if search and search.strip():
             s = f"%{search.strip()}%"
+            # Só se pesquisa nas colunas que existem mesmo nesta base de dados (tal como no SELECT acima).
+            search_cols = ["nome"] if "nome" in c_cols else []
             if nif_col:
-                where_clauses.append(f"(nome LIKE ? OR {nif_col} LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ? OR telefone LIKE ? OR telemovel LIKE ?)")
-                params.extend([s, s, s, s, s])
-            else:
-                where_clauses.append("(nome LIKE ? OR CAST(codigo AS VARCHAR(20)) LIKE ?)")
-                params.extend([s, s])
+                search_cols.append(nif_col)
+            search_cols.extend(c for c in ("telefone", "telemovel", "email") if c in c_cols)
+            like_parts = [f"{c} LIKE ?" for c in search_cols] + ["CAST(codigo AS VARCHAR(20)) LIKE ?"]
+            where_clauses.append("(" + " OR ".join(like_parts) + ")")
+            params.extend([s] * len(like_parts))
             
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         sql = f"SELECT {', '.join(cols_select)} FROM dbo.clientes {where_sql} ORDER BY codigo ASC"

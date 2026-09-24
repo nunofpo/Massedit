@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Palette, DollarSign, FolderTree, Percent, Lock, Eye, Cloud, Play,
+  Palette, DollarSign, FolderTree, Percent, Lock, Eye, EyeOff, Cloud, Play,
   ShieldAlert, Sparkles, Copy, Barcode, Hash, Tag, CheckCircle2, Layers, Utensils
 } from 'lucide-react';
 import { Family, Subfamily, Vat, BulkEditRequest, ProductionCenterItem, SelectionSummaryResponse, PriceZonesMap } from '../types';
@@ -193,8 +193,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
   const [applyBloqueado, setApplyBloqueado] = useState(false);
   const [newBloqueado, setNewBloqueado] = useState<number>(0);
 
-  const [applyFrontoffice, setApplyFrontoffice] = useState(false);
-  const [newFrontoffice, setNewFrontoffice] = useState<number>(1);
+  const [applyDescontinuado, setApplyDescontinuado] = useState(false);
+  const [newDescontinuado, setNewDescontinuado] = useState<number>(1);
 
   const [applyPosicaofront, setApplyPosicaofront] = useState(false);
   const [newPosicaofront, setNewPosicaofront] = useState<number>(0);
@@ -209,13 +209,13 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
   // Compute Active Change Badges per Sector
   const namesCount = (applyDescricao && !allHaveSales ? 1 : 0) + (applyDescricaocurta ? 1 : 0);
-  const pricesCount = (applyPrice ? 1 : 0) + (applyIva ? 1 : 0) + (applyPrecocompra ? 1 : 0) +
+  const pricesCount = (applyPrice ? 1 : 0) + (applyIva ? 1 : 0) + (applyIva2 ? 1 : 0) + (applyPrecocompra ? 1 : 0) +
     (applyMeiadose ? 1 : 0) + (applyPrecomeia ? 1 : 0) + (applyMeiadosedesc ? 1 : 0) + (applyDosedesc ? 1 : 0);
   const colorsCount = (applyFundo ? 1 : 0) + (applyLetra ? 1 : 0) + (applyCor ? 1 : 0);
   const categoriesCount = (applyFamilia ? 1 : 0) + (applySubfamilia ? 1 : 0);
   const codesCount = (applyPlu ? 1 : 0) + (applyCodbarras ? 1 : 0) + (applyReferencia ? 1 : 0);
   const productionCount = (applyCentroPrimario ? 1 : 0) + (applyCentrosSecundarios ? 1 : 0) + (applyCentrosInformativos ? 1 : 0);
-  const statusCount = (applyBloqueado ? 1 : 0) + (applyFrontoffice ? 1 : 0) + (applyPosicaofront ? 1 : 0) +
+  const statusCount = (applyBloqueado ? 1 : 0) + (applyDescontinuado ? 1 : 0) + (applyPosicaofront ? 1 : 0) +
     (applyVendersemstock ? 1 : 0) + (applyAutoquebra ? 1 : 0) + (applyTiposaft ? 1 : 0);
 
   const totalActiveEdits = namesCount + pricesCount + colorsCount + categoriesCount + codesCount + productionCount + statusCount;
@@ -289,8 +289,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       new_iva2: newIva2,
       apply_bloqueado: applyBloqueado,
       new_bloqueado: newBloqueado,
-      apply_frontoffice: applyFrontoffice,
-      new_frontoffice: newFrontoffice,
+      apply_descontinuado: applyDescontinuado,
+      new_descontinuado: newDescontinuado,
       apply_posicaofront: applyPosicaofront,
       new_posicaofront: newPosicaofront,
       mark_cloud_sync: markCloudSync
@@ -1780,21 +1780,21 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                 <span className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={applyFrontoffice}
-                    onChange={(e) => setApplyFrontoffice(e.target.checked)}
+                    checked={applyDescontinuado}
+                    onChange={(e) => setApplyDescontinuado(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-950 text-indigo-500"
                   />
-                  <Eye className="w-4 h-4 text-slate-400" />
-                  <span>Visibilidade FrontOffice (Botões POS)</span>
+                  <EyeOff className="w-4 h-4 text-slate-400" />
+                  <span>Artigo Descontinuado (visibilidade no POS)</span>
                 </span>
-                {applyFrontoffice && (
+                {applyDescontinuado && (
                   <select
-                    value={newFrontoffice}
-                    onChange={(e) => setNewFrontoffice(Number(e.target.value))}
+                    value={newDescontinuado}
+                    onChange={(e) => setNewDescontinuado(Number(e.target.value))}
                     className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-100 font-semibold focus:bg-slate-950 focus:border-indigo-500"
                   >
-                    <option value={1}>Visível no POS</option>
-                    <option value={0}>Oculto no POS</option>
+                    <option value={1}>Descontinuado (oculto no POS)</option>
+                    <option value={0}>Ativo (visível no POS)</option>
                   </select>
                 )}
               </label>
@@ -1904,7 +1904,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               </div>
 
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                Se a base de dados não tiver as colunas <code>bloqueado</code>/<code>frontoffice</code>, a simulação indica-o e essas alterações não são gravadas.
+                Se a base de dados não tiver as colunas <code>bloqueado</code>/<code>descontinuado</code>, a simulação indica-o e essas alterações não são gravadas.
               </p>
 
               {/* Cloud Sync Flag */}

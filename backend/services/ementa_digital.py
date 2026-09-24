@@ -181,10 +181,10 @@ def get_ementa_digital_structure() -> Dict[str, Any]:
                 sections.append({
                     "codigo": int(r[0]),
                     "descricao": r[1] or "",
-                    "visivel": int(r[2] or 1),
+                    "visivel": int(r[2]) if r[2] is not None else 1,
                     "posicao": int(r[3] or 0),
                     "image_url": r[4] or "",
-                    "ementa": int(r[5] or 1)
+                    "ementa": int(r[5]) if r[5] is not None else 1
                 })
 
         families = []
@@ -199,7 +199,7 @@ def get_ementa_digital_structure() -> Dict[str, Any]:
                 "codigo": int(r[0]),
                 "seccao": int(r[1]),
                 "descricao": r[2] or "",
-                "visivel": int(r[3] or 1),
+                "visivel": int(r[3]) if r[3] is not None else 1,
                 "posicao": int(r[4] or 0),
                 "dose": r[5] or "",
                 "meiadose": r[6] or ""
@@ -1317,17 +1317,29 @@ def update_single_ementa_product(cod_produto: int, update_data: Any) -> Tuple[bo
             if fam is None:
                 fam = pos_info[0] if pos_info else 0
 
-            p_name = update_data.produto or (pos_info[1] or "")[:250]
-            p_desc = update_data.descricao if update_data.descricao is not None else (pos_info[2] or "")
+            # Os valores escolhidos pelo utilizador têm de entrar já no INSERT: antes o registo
+            # nascia sempre com visivel=1 e todos os alergénios a 0, descartando o que foi pedido.
+            def _flag(field: str, default: int) -> int:
+                val = getattr(update_data, field, None)
+                return default if val is None else int(val)
+
+            p_name = ((update_data.produto or (pos_info[1] if pos_info else "")) or "")[:250]
+            if update_data.descricao is not None:
+                p_desc = update_data.descricao
+            else:
+                p_desc = (pos_info[2] if pos_info else "") or ""
             p_ordem = pos_info[3] if (pos_info and pos_info[3]) else 0
             cursor.execute("""
                 INSERT INTO dbo.ementa_digital_produtos (
                     cod_produto, familia, produto, descricao, imagem, visivel, highlight, image_url, model_url,
                     alergenios, gluten, sal, lactose, picante, dieta, vegetariano, pessoas, calorias, tempo, posicao
                 ) VALUES (
-                    ?, ?, ?, ?, CONVERT(VARBINARY, ''), 1, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, ?
+                    ?, ?, ?, ?, CONVERT(VARBINARY, ''), ?, ?, '', '', 0, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?
                 )
-            """, (cod_produto, fam, p_name, p_desc, p_ordem))
+            """, (cod_produto, fam, p_name, p_desc,
+                  _flag("visivel", 1), _flag("highlight", 0),
+                  _flag("gluten", 0), _flag("sal", 0), _flag("lactose", 0), _flag("picante", 0),
+                  _flag("vegetariano", 0), _flag("calorias", 1), _flag("tempo", 1), p_ordem))
             conn.commit()
             return True, f"Artigo #{cod_produto} criado e guardado na Ementa Digital."
 
@@ -1683,7 +1695,7 @@ def get_product_image_bytes(cod_produto: int) -> Tuple[Optional[bytes], Optional
             return bytes(raw_bytes), mime
 
         if url and "/api/ementa-digital/image-file/" in url:
-            fname = url.split("/api/ementa-digital/image-file/")[-1]
+            fname = os.path.basename(url.split("/api/ementa-digital/image-file/")[-1])
             local_path = os.path.join(IMAGES_DIR, fname)
             if os.path.exists(local_path):
                 with open(local_path, "rb") as f:
@@ -2951,7 +2963,7 @@ def get_ementa_languages() -> List[Dict[str, Any]]:
                     "id": row[0],
                     "name": row[1],
                     "code": row[0].lower(),
-                    "visivel": int(row[2] or 1)
+                    "visivel": int(row[2]) if row[2] is not None else 1
                 })
             if db_langs:
                 return db_langs

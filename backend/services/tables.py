@@ -9,26 +9,6 @@ from backend.models import (
     BulkEditPreviewResponse, ProductDiff, FieldDiff
 )
 
-# Mock tables when DB is disconnected or table does not exist
-MOCK_SALAS = [
-    {"codigo": 1, "descricao": "Sala Principal"},
-    {"codigo": 2, "descricao": "Esplanada"},
-    {"codigo": 3, "descricao": "Zona VIP"}
-]
-
-MOCK_TABLES = [
-    {"codigo": 1, "descricao": "Mesa 1", "sala": 1, "sala_desc": "Sala Principal", "posicao": 1, "bloqueada": 0},
-    {"codigo": 2, "descricao": "Mesa 2", "sala": 1, "sala_desc": "Sala Principal", "posicao": 2, "bloqueada": 0},
-    {"codigo": 3, "descricao": "Mesa 3", "sala": 1, "sala_desc": "Sala Principal", "posicao": 3, "bloqueada": 0},
-    {"codigo": 4, "descricao": "Mesa 4", "sala": 1, "sala_desc": "Sala Principal", "posicao": 4, "bloqueada": 0},
-    {"codigo": 5, "descricao": "Esplanada 101", "sala": 2, "sala_desc": "Esplanada", "posicao": 101, "bloqueada": 0},
-    {"codigo": 6, "descricao": "Esplanada 102", "sala": 2, "sala_desc": "Esplanada", "posicao": 102, "bloqueada": 0},
-    {"codigo": 7, "descricao": "Esplanada 103", "sala": 2, "sala_desc": "Esplanada", "posicao": 103, "bloqueada": 0},
-    {"codigo": 8, "descricao": "Mesa VIP 1", "sala": 3, "sala_desc": "Zona VIP", "posicao": 201, "bloqueada": 0},
-    {"codigo": 9, "descricao": "Mesa VIP 2", "sala": 3, "sala_desc": "Zona VIP", "posicao": 202, "bloqueada": 0},
-]
-
-
 def _get_salas_dict(cursor, schema: SchemaInfo) -> Dict[int, str]:
     salas_map: Dict[int, str] = {}
     if "salas" in schema:
@@ -70,76 +50,53 @@ def _detect_table_config(schema: SchemaInfo) -> Tuple[str, str, str, Optional[st
 def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
     """
     Retorna a lista de mesas e salas da base de dados ZoneSoft (dbo.mapamesas com nomeobjecto, ou dbo.mesas).
-    Se a ligação à BD não estiver disponível ou a tabela não existir, devolve os dados mock.
+    Erros de ligação ou de SQL propagam para o cliente (HTTP 503/500 com mensagem legível):
+    nunca se devolvem mesas fictícias que o utilizador possa confundir com as reais.
     """
     tables_list: List[TableItem] = []
     salas_list: List[Dict[str, Any]] = []
 
+    conn = db_manager.get_connection()
     try:
-        conn = db_manager.get_connection()
-    except Exception:
-        conn = None
+        cursor = conn.cursor()
+        schema = db_manager.get_schema(cursor)
 
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            schema = db_manager.get_schema(cursor)
+        if "mapamesas" not in schema and "mesas" not in schema:
+            return {
+                "tables": [],
+                "salas": [],
+                "total": 0,
+                "available": False,
+                "message": "Esta base de dados não tem a tabela dbo.mapamesas nem dbo.mesas.",
+            }
 
-            if "mapamesas" in schema or "mesas" in schema:
-                salas_map = _get_salas_dict(cursor, schema)
-                for s_code, s_desc in salas_map.items():
-                    salas_list.append({"codigo": s_code, "descricao": s_desc})
+        salas_map = _get_salas_dict(cursor, schema)
+        for s_code, s_desc in salas_map.items():
+            salas_list.append({"codigo": s_code, "descricao": s_desc})
 
-                t_name, code_col, name_col, sala_col, pos_col, bloq_col = _detect_table_config(schema)
+        t_name, code_col, name_col, sala_col, pos_col, bloq_col = _detect_table_config(schema)
 
-                select_cols = [code_col, name_col]
-                if sala_col:
-                    select_cols.append(sala_col)
-                else:
-                    select_cols.append("NULL as sala")
+        select_cols = [code_col, name_col]
+        select_cols.append(sala_col if sala_col else "NULL as sala")
+        select_cols.append(pos_col if pos_col else "0 as posicao")
+        select_cols.append(bloq_col if bloq_col else "0 as bloqueada")
 
-                if pos_col:
-                    select_cols.append(pos_col)
-                else:
-                    select_cols.append("0 as posicao")
+        cursor.execute(f"SELECT {', '.join(select_cols)} FROM dbo.{t_name}")
 
-                if bloq_col:
-                    select_cols.append(bloq_col)
-                else:
-                    select_cols.append("0 as bloqueada")
-
-                query = f"SELECT {', '.join(select_cols)} FROM dbo.{t_name}"
-                cursor.execute(query)
-
-                for r in cursor.fetchall():
-                    if r[0] is None:
-                        continue
-                    code = int(r[0])
-                    desc = str(r[1] or "").strip()
-                    s_id = int(r[2]) if r[2] is not None else None
-                    pos = int(r[3]) if r[3] is not None else 0
-                    bloq = int(r[4]) if r[4] is not None else 0
-
-                    s_desc = salas_map.get(s_id, f"Sala {s_id}") if s_id is not None else ""
-
-                    tables_list.append(TableItem(
-                        codigo=code,
-                        descricao=desc,
-                        sala=s_id,
-                        sala_desc=s_desc,
-                        posicao=pos,
-                        bloqueada=bloq
-                    ))
-        except Exception as e:
-            tables_list = []
-        finally:
-            conn.close()
-
-    # Fallback para dados mock se não obteve mesas da BD
-    if not tables_list:
-        salas_list = MOCK_SALAS
-        for m in MOCK_TABLES:
-            tables_list.append(TableItem(**m))
+        for r in cursor.fetchall():
+            if r[0] is None:
+                continue
+            s_id = int(r[2]) if r[2] is not None else None
+            tables_list.append(TableItem(
+                codigo=int(r[0]),
+                descricao=str(r[1] or "").strip(),
+                sala=s_id,
+                sala_desc=salas_map.get(s_id, f"Sala {s_id}") if s_id is not None else "",
+                posicao=int(r[3]) if r[3] is not None else 0,
+                bloqueada=int(r[4]) if r[4] is not None else 0
+            ))
+    finally:
+        conn.close()
 
     # Filtragem
     if search and search.strip():
@@ -155,7 +112,9 @@ def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
     return {
         "tables": [t.model_dump() for t in tables_list],
         "salas": salas_list,
-        "total": len(tables_list)
+        "total": len(tables_list),
+        "available": True,
+        "message": ""
     }
 
 
@@ -275,26 +234,7 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
             "message": "Nenhuma alteração a aplicar."
         }
 
-    try:
-        conn = db_manager.get_connection()
-    except Exception:
-        conn = None
-
-    if conn is None:
-        # Modo mock / sem ligação à BD
-        for item in updates_to_apply:
-            for m in MOCK_TABLES:
-                if m["codigo"] == item.codigo:
-                    if item.descricao:
-                        m["descricao"] = item.descricao.strip()
-                    if item.sala is not None:
-                        m["sala"] = item.sala
-        return {
-            "success": True,
-            "updated_count": len(updates_to_apply),
-            "message": f"{len(updates_to_apply)} mesa(s) atualizada(s) com sucesso em modo demonstração."
-        }
-
+    conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         schema = db_manager.get_schema(cursor)
