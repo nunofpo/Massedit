@@ -138,6 +138,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
 
   const [applyIva, setApplyIva] = useState(false);
   const [newIva, setNewIva] = useState<number | undefined>(vats[0]?.factor);
+  const [applyIva2, setApplyIva2] = useState(false);
+  const [newIva2, setNewIva2] = useState<number | undefined>(vats[0]?.factor);
 
   // Form State: Preço de Custo / Compra
   const [applyPrecocompra, setApplyPrecocompra] = useState(false);
@@ -283,6 +285,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
       new_centros_informativos: Array.from(newCentrosInformativos),
       apply_iva: applyIva,
       new_iva: newIva,
+      apply_iva2: applyIva2,
+      new_iva2: newIva2,
       apply_bloqueado: applyBloqueado,
       new_bloqueado: newBloqueado,
       apply_frontoffice: applyFrontoffice,
@@ -954,7 +958,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
               )}
             </div>
 
-            {/* IVA */}
+            {/* IVA 1 */}
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm space-y-3">
               <label className="flex items-center gap-2 text-xs text-slate-100 font-bold cursor-pointer">
                 <input
@@ -964,13 +968,40 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
                   className="rounded border-slate-700 bg-slate-950 text-indigo-500"
                 />
                 <Percent className="w-4 h-4 text-amber-400" />
-                <span>Alterar Taxa de IVA (numérico: 23%, 13%, 6%, 0%)</span>
+                <span>Alterar Taxa de IVA 1 Principal (`iva`)</span>
               </label>
               {applyIva && (
                 <select
                   value={newIva ?? ''}
                   onChange={(e) => setNewIva(Number(e.target.value))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:bg-slate-950 focus:border-indigo-500 font-semibold"
+                >
+                  {vats.map((v) => (
+                    <option key={v.codigo} value={v.factor}>
+                      {v.factor % 1 === 0 ? `${Math.floor(v.factor)}%` : `${v.factor}%`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* IVA 2 */}
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-sm space-y-3">
+              <label className="flex items-center gap-2 text-xs text-slate-100 font-bold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyIva2}
+                  onChange={(e) => setApplyIva2(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-950 text-purple-500"
+                />
+                <Percent className="w-4 h-4 text-purple-400" />
+                <span>Alterar Taxa de IVA 2 Secundária (`iva2`)</span>
+              </label>
+              {applyIva2 && (
+                <select
+                  value={newIva2 ?? ''}
+                  onChange={(e) => setNewIva2(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:bg-slate-950 focus:border-purple-500 font-semibold"
                 >
                   {vats.map((v) => (
                     <option key={v.codigo} value={v.factor}>

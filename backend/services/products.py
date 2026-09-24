@@ -204,6 +204,7 @@ def _product_select_sql(schema: SchemaInfo) -> str:
     tiposaft_col = "ISNULL(p.tiposaft, 'P')" if "tiposaft" in _prod_cols(schema) else "'P'"
     precocompra_col = "ISNULL(p.precocompra, 0)" if "precocompra" in _prod_cols(schema) else "0.0"
     composto_col = opt("composto", 0)
+    iva2_col = "p.iva2" if "iva2" in _prod_cols(schema) else "NULL"
 
     return f"""
         p.codigo, p.descricao, ISNULL(p.descricaocurta, ''), p.familia, f.descricao,
@@ -217,7 +218,7 @@ def _product_select_sql(schema: SchemaInfo) -> str:
         {isencao_col}, {opt('descontinuado', 0)},
         {meiadose_col}, {precomeia_col}, {meiadosedesc_col}, {dosedesc_col},
         {vendersemstock_col}, {autoquebra_col}, {tiposaft_col}, {precocompra_col},
-        {composto_col}
+        {composto_col}, {iva2_col}
     """
 
 
@@ -246,6 +247,8 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
     precocompra_val = float(r[39] or 0) if len(r) > 39 and r[39] is not None else 0.0
     composto_val = _int_or(r[40], 0) if len(r) > 40 else 0
     is_menu_val = (composto_val == 2)
+    iva2_val = float(r[41]) if len(r) > 41 and r[41] is not None else None
+    iva2_desc_val = format_iva_num(r[41]) if len(r) > 41 and r[41] is not None else ""
 
     return ProductItem(
         codigo=code,
@@ -257,6 +260,8 @@ def _row_to_product(r, sales_codes: Optional[Set[int]]) -> ProductItem:
         subfamilia_desc=r[6] or "",
         iva=float(r[7]) if r[7] is not None else None,
         iva_desc=format_iva_num(r[7]),
+        iva2=iva2_val,
+        iva2_desc=iva2_desc_val,
         pvp1=float(r[8] or 0), pvp2=float(r[9] or 0), pvp3=float(r[10] or 0), pvp4=float(r[11] or 0),
         pvp5=float(r[12] or 0), pvp6=float(r[13] or 0), pvp7=float(r[14] or 0), pvp8=float(r[15] or 0),
         pvp9=float(r[16] or 0), pvp10=float(r[17] or 0),
@@ -1567,6 +1572,18 @@ def _iva_change(lookups: _Lookups, p: ProductItem, new_iva: Optional[float]) -> 
     return Change("iva", label, format_iva_num(p.iva), format_iva_num(new_iva), column="iva", value=float(new_iva))
 
 
+def _iva2_change(lookups: _Lookups, p: ProductItem, new_iva2: Optional[float]) -> Optional[Change]:
+    if new_iva2 is None:
+        return None
+    if p.iva2 is not None and abs(float(p.iva2) - float(new_iva2)) < 0.001:
+        return None
+    label = "Taxa de IVA 2"
+    if not lookups.vat_exists(new_iva2):
+        return _blocked("iva2", label, format_iva_num(p.iva2), format_iva_num(new_iva2),
+                        f"A taxa {format_iva_num(new_iva2)} não existe na tabela de IVA (dbo.iva).")
+    return Change("iva2", label, format_iva_num(p.iva2), format_iva_num(new_iva2), column="iva2", value=float(new_iva2))
+
+
 def _optional_state_change(schema: SchemaInfo, p: ProductItem, field: str, label: str,
                            new_val: Optional[int], names: Dict[int, str]) -> Optional[Change]:
     if new_val is None:
@@ -1721,7 +1738,7 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
     if req.apply_subfamilia:
         changes.append(_subfamilia_change(lookups, p, req.new_subfamilia, target_family))
 
-    # 5. IVA e Isenção
+    # 5. IVA 1, IVA 2 e Isenção
     if req.apply_iva:
         iva_change = _iva_change(lookups, p, req.new_iva)
         changes.append(iva_change)
@@ -1733,6 +1750,13 @@ def _compute_bulk_changes(p: ProductItem, req: BulkEditRequest, schema: SchemaIn
                 new_isencao = getattr(lookups, "default_isencao", "M07") or "M07"
             if (p.isencao or "") != new_isencao:
                 changes.append(Change("isencao", "Motivo de Isenção", p.isencao or "(Nenhum)", new_isencao or "(Nenhum)", column="isencao", value=new_isencao))
+
+    if req.apply_iva2:
+        if "iva2" in _prod_cols(schema):
+            changes.append(_iva2_change(lookups, p, req.new_iva2))
+        else:
+            changes.append(_blocked("iva2", "Taxa de IVA 2", format_iva_num(p.iva2), format_iva_num(req.new_iva2),
+                                    "A coluna 'iva2' não existe na tabela dbo.produtos."))
 
     # 6. Centro de Produção Primário (dbo.produtos.cozinha)
     if req.apply_centro_primario:
@@ -2051,6 +2075,10 @@ def update_single_product(codigo: int, req: SingleProductUpdateRequest) -> Tuple
         if req.iva is not None and "iva" in p_cols:
             sets.append("iva = ?")
             params.append(float(req.iva))
+
+        if req.iva2 is not None and "iva2" in p_cols:
+            sets.append("iva2 = ?")
+            params.append(float(req.iva2))
 
         if req.motivo_isencao is not None and "isencao" in p_cols:
             sets.append("isencao = ?")

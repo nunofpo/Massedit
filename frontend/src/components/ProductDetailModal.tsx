@@ -64,6 +64,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [familia, setFamilia] = useState<number | ''>('');
   const [subfamilia, setSubfamilia] = useState<number | ''>('');
   const [iva, setIva] = useState<number | ''>('');
+  const [iva2, setIva2] = useState<number | ''>('');
   const [motivoIsencao, setMotivoIsencao] = useState('');
   const [centroProd, setCentroProd] = useState<number | ''>('');
   const [centrosSecundarios, setCentrosSecundarios] = useState<number[]>([]);
@@ -103,6 +104,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setFamilia(product.familias !== undefined && product.familias !== null ? product.familias : '');
       setSubfamilia(product.subfamilia !== undefined && product.subfamilia !== null ? product.subfamilia : '');
       setIva(product.iva !== undefined && product.iva !== null ? product.iva : '');
+      setIva2(product.iva2 !== undefined && product.iva2 !== null ? product.iva2 : '');
       setMotivoIsencao(product.isencao || '');
       setCentroProd(product.centro_prod !== undefined && product.centro_prod !== null ? product.centro_prod : '');
 
@@ -213,6 +215,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         familia: familia === '' ? null : Number(familia),
         subfamilia: subfamilia === '' ? null : Number(subfamilia),
         iva: iva === '' ? 0 : Number(iva),
+        iva2: iva2 === '' ? 0 : Number(iva2),
         motivo_isencao: motivoIsencao.trim(),
         centro_prod: centroProd === '' ? 0 : Number(centroProd),
         centros_prod_secundarios: centrosSecundarios,
@@ -742,23 +745,44 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Percent className="w-3.5 h-3.5 text-slate-500" />
-                    Taxa de IVA:
-                  </label>
-                  <select
-                    value={iva}
-                    onChange={(e) => setIva(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-                  >
-                    <option value="">(Sem Taxa)</option>
-                    {vats.map((v) => (
-                      <option key={v.codigo} value={v.factor}>
-                        {v.descricao} ({v.factor}%)
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Percent className="w-3.5 h-3.5 text-indigo-600" />
+                      Taxa de IVA 1 (Principal):
+                    </label>
+                    <select
+                      value={iva}
+                      onChange={(e) => setIva(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
+                    >
+                      <option value="">(Sem Taxa)</option>
+                      {vats.map((v) => (
+                        <option key={v.codigo} value={v.factor}>
+                          {v.descricao} ({v.factor}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Percent className="w-3.5 h-3.5 text-purple-600" />
+                      Taxa de IVA 2 (Secundário/Takeaway):
+                    </label>
+                    <select
+                      value={iva2}
+                      onChange={(e) => setIva2(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-purple-100 focus:border-purple-600"
+                    >
+                      <option value="">(Sem Taxa 2)</option>
+                      {vats.map((v) => (
+                        <option key={v.codigo} value={v.factor}>
+                          {v.descricao} ({v.factor}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-1">

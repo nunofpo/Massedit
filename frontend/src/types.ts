@@ -35,6 +35,8 @@ export interface ProductItem {
   subfamilia_desc?: string;
   iva?: number;
   iva_desc?: string;
+  iva2?: number;
+  iva2_desc?: string;
   isencao?: string;
   centro_prod?: number;
   centro_prod_desc?: string;
@@ -308,6 +310,8 @@ export interface BulkEditRequest {
   new_centros_informativos?: number[];
   apply_iva: boolean;
   new_iva?: number;
+  apply_iva2?: boolean;
+  new_iva2?: number;
   apply_bloqueado: boolean;
   new_bloqueado?: number;
   apply_frontoffice: boolean;

@@ -65,6 +65,8 @@ class ProductItem(BaseModel):
     subfamilia_desc: Optional[str] = ""
     iva: Optional[float] = None
     iva_desc: Optional[str] = ""
+    iva2: Optional[float] = None
+    iva2_desc: Optional[str] = ""
     isencao: Optional[str] = ""
     centro_prod: Optional[int] = None  # Centro de Produção Primário (dbo.produtos.cozinha)
     centro_prod_desc: Optional[str] = ""
@@ -206,6 +208,8 @@ class BulkEditRequest(BaseModel):
     # Imposto / IVA
     apply_iva: bool = False
     new_iva: Optional[float] = None  # Taxa (factor) de IVA existente em dbo.iva
+    apply_iva2: bool = False
+    new_iva2: Optional[float] = None  # Taxa 2 (factor) de IVA em dbo.produtos.iva2
     
     # Estado / Visibilidade / Posição Frontoffice
     apply_bloqueado: bool = False
@@ -229,6 +233,7 @@ class SingleProductUpdateRequest(BaseModel):
     familia: Optional[int] = None
     subfamilia: Optional[int] = None
     iva: Optional[float] = None
+    iva2: Optional[float] = None
     motivo_isencao: Optional[str] = None
     centro_prod: Optional[int] = None
     pvp1: Optional[float] = None

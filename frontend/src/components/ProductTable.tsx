@@ -186,8 +186,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </td>
 
                     {/* Código Interno */}
-                    <td className="p-3 font-mono font-bold text-slate-100">
-                      <span className="bg-slate-900/90 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-lg shadow-inner">
+                    <td className="p-3 font-mono font-bold text-white">
+                      <span className="bg-slate-900 text-white border border-slate-700 px-2 py-0.5 rounded-lg shadow-sm">
                         #{product.codigo}
                       </span>
                     </td>
@@ -195,55 +195,55 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     {/* PLU (Teclado/Balança) */}
                     <td className="p-3 font-mono text-xs">
                       {product.plu ? (
-                        <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/25 font-bold">
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 font-bold">
                           PLU #{product.plu}
                         </span>
                       ) : (
-                        <span className="text-slate-600 italic">0</span>
+                        <span className="text-slate-400 italic">0</span>
                       )}
                     </td>
 
                     {/* Código de Barras */}
                     <td className="p-3 font-mono text-xs">
                       {product.codbarras ? (
-                        <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/25 font-semibold">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-100 border border-slate-700 font-semibold">
                           {product.codbarras}
                         </span>
                       ) : (
-                        <span className="text-slate-600 italic">Sem Cód.Barras</span>
+                        <span className="text-slate-400 italic">Sem Cód. Barras</span>
                       )}
                     </td>
 
                     {/* Designação + Protection Badge */}
-                    <td className="p-3 font-semibold text-slate-100">
+                    <td className="p-3 font-bold text-white">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span>{product.descricao}</span>
+                          <span className="text-white font-bold">{product.descricao}</span>
                           {product.is_menu && (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-xs"
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-purple-500/30 text-purple-100 border border-purple-500/50 shadow-xs"
                               title="Artigo do tipo Menu / Combo (ZSRest) com níveis e opções configuradas"
                             >
-                              <Utensils className="w-3 h-3 text-purple-400" />
+                              <Utensils className="w-3 h-3 text-purple-300" />
                               Menu
                             </span>
                           )}
                           {product.has_sales ? (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/25 text-amber-200 border border-amber-500/40 shadow-xs"
                               title={product.sales_check_ok === false
                                 ? "Não foi possível verificar as vendas deste artigo. A designação fica protegida por segurança."
                                 : "Artigo com vendas registadas. A designação/nome principal não pode ser alterada."}
                             >
-                              <ShieldAlert className="w-3 h-3 text-amber-400" />
+                              <ShieldAlert className="w-3 h-3 text-amber-300" />
                               {product.sales_check_ok === false ? 'Vendas ?' : 'Com Vendas'}
                             </span>
                           ) : (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-200 border border-emerald-500/40 shadow-xs"
                               title="Artigo sem vendas. Designação editável."
                             >
-                              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                              <ShieldCheck className="w-3 h-3 text-emerald-300" />
                               Sem Vendas
                             </span>
                           )}
@@ -256,7 +256,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                               e.stopPropagation();
                               onOpenDetail(product);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition shrink-0 shadow-xs"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-100 border border-indigo-500/50 transition shrink-0 shadow-xs cursor-pointer"
                             title="Abrir ficha completa deste artigo (duplo clique na linha)"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -264,7 +264,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                         )}
                       </div>
                       {product.descricaocurta && (
-                        <div className="text-[10px] text-indigo-400 font-mono mt-0.5 truncate max-w-[240px]" title={`Descrição Curta: ${product.descricaocurta}`}>
+                        <div className="text-[10px] text-slate-300 font-mono mt-0.5 truncate max-w-[240px]" title={`Descrição Curta: ${product.descricaocurta}`}>
                           Curta: "{product.descricaocurta}"
                         </div>
                       )}
@@ -285,32 +285,39 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </td>
 
                     {/* Família, Subfamília e Centro de Produção */}
-                    <td className="p-3 text-slate-300 truncate max-w-[150px]">
-                      <div className="font-bold text-slate-200">{product.familia_desc || `- (${product.familias})`}</div>
+                    <td className="p-3 text-slate-100 truncate max-w-[150px]">
+                      <div className="font-bold text-white">{product.familia_desc || `- (${product.familias})`}</div>
                       {product.subfamilia_desc && (
-                        <div className="text-[10px] text-slate-400 font-medium truncate">Sub: {product.subfamilia_desc}</div>
+                        <div className="text-[10px] text-slate-300 font-medium truncate">Sub: {product.subfamilia_desc}</div>
                       )}
                       {product.centro_prod_desc && (
                         <div
-                          className="text-[10px] text-amber-300 font-semibold truncate flex items-center gap-1 mt-0.5"
+                          className="text-[10px] text-amber-200 font-semibold truncate flex items-center gap-1 mt-0.5"
                           title={`Centro de Produção Primário: ${product.centro_prod_desc}`}
                         >
-                          <span className="bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded-md border border-amber-500/30 flex items-center gap-1 font-bold">
+                          <span className="bg-amber-500/20 text-amber-200 px-1.5 py-0.5 rounded-md border border-amber-500/40 flex items-center gap-1 font-bold">
                             🍳 {product.centro_prod_desc}
                           </span>
                         </div>
                       )}
                     </td>
 
-                    {/* IVA */}
+                    {/* IVA 1 e IVA 2 */}
                     <td className="p-3 font-mono font-bold text-xs">
-                      {product.iva !== undefined && product.iva !== null ? (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-200 border border-slate-700 font-bold">
-                          {product.iva % 1 === 0 ? `${Math.floor(product.iva)}%` : `${product.iva}%`}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600 italic">-</span>
-                      )}
+                      <div className="flex flex-col gap-1 items-start">
+                        {product.iva !== undefined && product.iva !== null ? (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-950/90 text-indigo-100 border border-indigo-500/50 text-[11px] font-bold shadow-xs" title="Taxa de IVA 1 (Principal)">
+                            {product.iva % 1 === 0 ? `${Math.floor(product.iva)}%` : `${product.iva}%`}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                        {product.iva2 !== undefined && product.iva2 !== null && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-950/90 text-purple-100 border border-purple-500/50 text-[10px] font-bold shadow-xs" title="Taxa de IVA 2 (Secundário/Takeaway)">
+                            IVA 2: {product.iva2 % 1 === 0 ? `${Math.floor(product.iva2)}%` : `${product.iva2}%`}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Preço PVP 1 com popover para PVP 1..10 */}
