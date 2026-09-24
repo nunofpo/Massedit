@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Search, CheckCircle2, AlertCircle, RefreshCw,
   Edit3, Save, AlertTriangle, Filter, Utensils, LayoutGrid,
-  Check, ArrowRight, RotateCcw
+  Check, ArrowRight, RotateCcw, Hash, ListOrdered, CheckSquare,
+  Square, Sparkles, Layers, ArrowUpDown
 } from 'lucide-react';
 import { TableItem, TableDataResponse, BulkEditPreviewResponse, ProductDiff } from '../types';
 
@@ -27,12 +28,29 @@ export const TablesModal: React.FC<TablesModalProps> = ({
 
   // Map of edited table names: codigo -> new description
   const [editedNames, setEditedNames] = useState<Record<number, string>>({});
+
+  // Individual selection state
+  const [selectedCodes, setSelectedCodes] = useState<Set<number>>(new Set());
+  const [rangeFrom, setRangeFrom] = useState<string>('');
+  const [rangeTo, setRangeTo] = useState<string>('');
   
-  // Bulk prefix/replace tool states
-  const [showBulkTool, setShowBulkTool] = useState(false);
+  // Bulk tool tabs & parameters
+  const [showBulkTool, setShowBulkTool] = useState(true);
+  const [bulkMode, setBulkMode] = useState<'sequential' | 'replace' | 'prefix'>('sequential');
+  
+  // Sequential numbering states
+  const [baseName, setBaseName] = useState<string>('Delivery');
+  const [startNum, setStartNum] = useState<number>(1);
+  const [stepNum, setStepNum] = useState<number>(1);
+  const [numberFormat, setNumberFormat] = useState<'normal' | 'pad2' | 'pad3' | 'keep_code'>('normal');
+  const [addSpace, setAddSpace] = useState<boolean>(true);
+  const [sortBy, setSortBy] = useState<'codigo' | 'posicao'>('codigo');
+
+  // Find & Replace tool states
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [prefixText, setPrefixText] = useState('');
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
 
   // Dry-run preview modal state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -69,11 +87,28 @@ export const TablesModal: React.FC<TablesModalProps> = ({
     if (isOpen || embedded) {
       loadTables();
       setEditedNames({});
+      setSelectedCodes(new Set());
       setFindText('');
       setReplaceText('');
       setPrefixText('');
+      setBulkSuccessMsg(null);
     }
   }, [isOpen, embedded, selectedSala]);
+
+  // When selected sala changes, automatically suggest base name if available
+  useEffect(() => {
+    if (selectedSala !== 'all') {
+      const s = salas.find(item => item.codigo === selectedSala);
+      if (s && s.descricao) {
+        setBaseName(s.descricao.trim());
+      }
+    }
+  }, [selectedSala, salas]);
+
+  const currentSalaObj = useMemo(() => {
+    if (selectedSala === 'all') return null;
+    return salas.find(s => s.codigo === selectedSala);
+  }, [selectedSala, salas]);
 
   const filteredTables = useMemo(() => {
     return tables.filter(t => {
@@ -85,6 +120,60 @@ export const TablesModal: React.FC<TablesModalProps> = ({
       return matchSearch && matchSala;
     });
   }, [tables, search, selectedSala]);
+
+  // Target tables for bulk actions (either selected or all filtered)
+  const targetTables = useMemo(() => {
+    let list: TableItem[] = [];
+    if (selectedCodes.size > 0) {
+      list = filteredTables.filter(t => selectedCodes.has(t.codigo));
+    } else {
+      list = filteredTables;
+    }
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'posicao') {
+        return (a.posicao || 0) - (b.posicao || 0) || a.codigo - b.codigo;
+      }
+      return a.codigo - b.codigo;
+    });
+  }, [filteredTables, selectedCodes, sortBy]);
+
+  const formatTableNumber = (index: number, tableCode: number): string => {
+    if (numberFormat === 'keep_code') {
+      return String(tableCode);
+    }
+    const val = startNum + index * stepNum;
+    if (numberFormat === 'pad2') {
+      return String(val).padStart(2, '0');
+    }
+    if (numberFormat === 'pad3') {
+      return String(val).padStart(3, '0');
+    }
+    return String(val);
+  };
+
+  const getNewNameForTable = (index: number, table: TableItem): string => {
+    const numPart = formatTableNumber(index, table.codigo);
+    const trimmedBase = baseName.trim();
+    if (!trimmedBase) return numPart;
+    return addSpace ? `${trimmedBase} ${numPart}` : `${trimmedBase}${numPart}`;
+  };
+
+  const livePreviewSamples = useMemo(() => {
+    if (targetTables.length === 0) return [];
+    if (targetTables.length <= 4) {
+      return targetTables.map((t, idx) => ({
+        codigo: t.codigo,
+        newName: getNewNameForTable(idx, t)
+      }));
+    }
+    return [
+      { codigo: targetTables[0].codigo, newName: getNewNameForTable(0, targetTables[0]) },
+      { codigo: targetTables[1].codigo, newName: getNewNameForTable(1, targetTables[1]) },
+      { isEllipsis: true },
+      { codigo: targetTables[targetTables.length - 1].codigo, newName: getNewNameForTable(targetTables.length - 1, targetTables[targetTables.length - 1]) }
+    ];
+  }, [targetTables, baseName, startNum, stepNum, numberFormat, addSpace, sortBy]);
 
   const modifiedCount = useMemo(() => {
     return Object.entries(editedNames).filter(([codeStr, newDesc]) => {
@@ -102,30 +191,101 @@ export const TablesModal: React.FC<TablesModalProps> = ({
 
   const handleResetEdits = () => {
     setEditedNames({});
+    setBulkSuccessMsg(null);
+  };
+
+  const handleToggleSingleSelect = (codigo: number) => {
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(codigo)) next.delete(codigo);
+      else next.add(codigo);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedCodes.size === filteredTables.length && filteredTables.length > 0) {
+      setSelectedCodes(new Set());
+    } else {
+      setSelectedCodes(new Set(filteredTables.map(t => t.codigo)));
+    }
+  };
+
+  const handleSelectRange = () => {
+    const fromNum = parseInt(rangeFrom, 10);
+    const toNum = parseInt(rangeTo, 10);
+    if (isNaN(fromNum) || isNaN(toNum)) return;
+    const min = Math.min(fromNum, toNum);
+    const max = Math.max(fromNum, toNum);
+
+    const newSelected = new Set(selectedCodes);
+    filteredTables.forEach(t => {
+      if (t.codigo >= min && t.codigo <= max) {
+        newSelected.add(t.codigo);
+      }
+    });
+    setSelectedCodes(newSelected);
+  };
+
+  const handleClearRange = () => {
+    const fromNum = parseInt(rangeFrom, 10);
+    const toNum = parseInt(rangeTo, 10);
+    if (isNaN(fromNum) || isNaN(toNum)) {
+      setSelectedCodes(new Set());
+      return;
+    }
+    const min = Math.min(fromNum, toNum);
+    const max = Math.max(fromNum, toNum);
+
+    setSelectedCodes(prev => {
+      const next = new Set(prev);
+      filteredTables.forEach(t => {
+        if (t.codigo >= min && t.codigo <= max) {
+          next.delete(t.codigo);
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleApplySequential = () => {
+    if (targetTables.length === 0) return;
+    const nextEdited = { ...editedNames };
+    targetTables.forEach((t, idx) => {
+      nextEdited[t.codigo] = getNewNameForTable(idx, t);
+    });
+    setEditedNames(nextEdited);
+    const firstExample = getNewNameForTable(0, targetTables[0]);
+    const lastExample = getNewNameForTable(targetTables.length - 1, targetTables[targetTables.length - 1]);
+    setBulkSuccessMsg(
+      `${targetTables.length} mesas numeradas com sucesso: "${firstExample}" a "${lastExample}". Reveja abaixo e clique em "Pré-visualizar & Gravar".`
+    );
   };
 
   const handleApplyFindReplace = () => {
     if (!findText) return;
     const nextEdited = { ...editedNames };
-    filteredTables.forEach(t => {
+    targetTables.forEach(t => {
       const currentVal = nextEdited[t.codigo] ?? t.descricao;
       if (currentVal.includes(findText)) {
         nextEdited[t.codigo] = currentVal.split(findText).join(replaceText);
       }
     });
     setEditedNames(nextEdited);
+    setBulkSuccessMsg(`Substituição aplicada a ${targetTables.length} mesas.`);
   };
 
   const handleApplyPrefix = () => {
     if (!prefixText) return;
     const nextEdited = { ...editedNames };
-    filteredTables.forEach(t => {
+    targetTables.forEach(t => {
       const currentVal = nextEdited[t.codigo] ?? t.descricao;
       if (!currentVal.startsWith(prefixText)) {
         nextEdited[t.codigo] = `${prefixText}${currentVal}`;
       }
     });
     setEditedNames(nextEdited);
+    setBulkSuccessMsg(`Prefixo "${prefixText}" adicionado a ${targetTables.length} mesas.`);
   };
 
   const handlePrepareUpdates = () => {
@@ -276,14 +436,14 @@ export const TablesModal: React.FC<TablesModalProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowBulkTool(!showBulkTool)}
-              className={`px-3 py-2 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 text-xs font-semibold rounded-lg border transition flex items-center gap-1.5 ${
                 showBulkTool 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
               }`}
             >
-              <Edit3 className="w-3.5 h-3.5" />
-              Substituição em Lote
+              <ListOrdered className="w-3.5 h-3.5 text-emerald-400" />
+              Numeração / Lote
             </button>
 
             {modifiedCount > 0 && (
@@ -298,49 +458,306 @@ export const TablesModal: React.FC<TablesModalProps> = ({
           </div>
         </div>
 
-        {/* Bulk Replace Bar (Expandable) */}
+        {/* Bulk Panel (Expandable) */}
         {showBulkTool && (
-          <div className="p-4 bg-slate-950 border-b border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Procurar texto (ex: Mesa)"
-                value={findText}
-                onChange={e => setFindText(e.target.value)}
-                className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
-              />
-              <input
-                type="text"
-                placeholder="Substituir por (ex: M)"
-                value={replaceText}
-                onChange={e => setReplaceText(e.target.value)}
-                className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
-              />
-              <button
-                onClick={handleApplyFindReplace}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition"
-              >
-                Substituir
-              </button>
+          <div className="p-4 bg-slate-950 border-b border-slate-800 space-y-3">
+            {/* Tabs */}
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkMode('sequential')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 ${
+                    bulkMode === 'sequential'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  1. Numeração Sequencial em Massa (ex: Delivery 1, 2, 3...)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkMode('replace')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 ${
+                    bulkMode === 'replace'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  2. Substituir / Prefixar Texto
+                </button>
+              </div>
+
+              <div className="text-[11px] text-slate-400">
+                Alvo: <span className="text-emerald-400 font-semibold">{targetTables.length} mesas</span>
+                {selectedCodes.size > 0 ? ' (selecionadas)' : selectedSala !== 'all' && currentSalaObj ? ` (zona ${currentSalaObj.descricao})` : ' (todas as visíveis)'}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Prefixar texto (ex: Esp. )"
-                value={prefixText}
-                onChange={e => setPrefixText(e.target.value)}
-                className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
-              />
-              <button
-                onClick={handleApplyPrefix}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition"
-              >
-                Adicionar Prefixo
-              </button>
-            </div>
+            {/* Tab 1: Sequential Numbering */}
+            {bulkMode === 'sequential' && (
+              <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                  {/* Base Name / Prefix */}
+                  <div className="lg:col-span-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-medium text-slate-300">
+                        Nome Base / Prefixo:
+                      </label>
+                      {currentSalaObj && (
+                        <button
+                          type="button"
+                          onClick={() => setBaseName(currentSalaObj.descricao)}
+                          className="text-[10px] text-emerald-400 hover:underline flex items-center gap-1"
+                        >
+                          Usar "{currentSalaObj.descricao}"
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Ex: Delivery, Mesa, Esplanada..."
+                      value={baseName}
+                      onChange={e => setBaseName(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Start Number */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      Número Inicial:
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={startNum}
+                      onChange={e => setStartNum(parseInt(e.target.value, 10) || 1)}
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Increment */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      Passo / Incremento:
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={stepNum}
+                      onChange={e => setStepNum(parseInt(e.target.value, 10) || 1)}
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Number Format */}
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      Formato dos Números:
+                    </label>
+                    <select
+                      value={numberFormat}
+                      onChange={e => setNumberFormat(e.target.value as any)}
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="normal">1, 2, 3... (Padrão)</option>
+                      <option value="pad2">01, 02, 03... (2 dígitos)</option>
+                      <option value="pad3">001, 002, 003... (3 dígitos)</option>
+                      <option value="keep_code">Manter Código da Mesa (#)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-4 text-xs text-slate-400">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={addSpace}
+                        onChange={e => setAddSpace(e.target.checked)}
+                        className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500/20"
+                      />
+                      <span>Espaço entre nome e número (ex: "{baseName.trim() || 'Mesa'} 1")</span>
+                    </label>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <span className="text-[11px]">Ordenar por:</span>
+                      <select
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value as any)}
+                        className="bg-slate-900 border border-slate-700 text-[11px] text-slate-200 rounded px-2 py-0.5"
+                      >
+                        <option value="codigo">Código (#) crescente</option>
+                        <option value="posicao">Posição no mapa</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Live Preview Strip & Apply Button */}
+                <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-300 flex-1 min-w-[280px]">
+                    <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-semibold text-white whitespace-nowrap">Exemplo ao vivo:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {livePreviewSamples.map((s: any, idx: number) => (
+                        s.isEllipsis ? (
+                          <span key={idx} className="text-slate-500 font-bold px-1">...</span>
+                        ) : (
+                          <span key={idx} className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200 text-[11px] font-mono">
+                            #{s.codigo} → <strong className="text-emerald-300">{s.newName}</strong>
+                          </span>
+                        )
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplySequential}
+                    disabled={targetTables.length === 0}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition flex items-center gap-2 shrink-0 ${
+                      targetTables.length > 0
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 cursor-pointer'
+                        : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <ListOrdered className="w-4 h-4" />
+                    Aplicar Numeração a {targetTables.length} Mesas
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Find & Replace / Prefix */}
+            {bulkMode === 'replace' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Procurar texto (ex: Mesa)"
+                    value={findText}
+                    onChange={e => setFindText(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Substituir por (ex: M)"
+                    value={replaceText}
+                    onChange={e => setReplaceText(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
+                  />
+                  <button
+                    onClick={handleApplyFindReplace}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition"
+                  >
+                    Substituir
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Prefixar texto (ex: Esp. )"
+                    value={prefixText}
+                    onChange={e => setPrefixText(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-slate-200"
+                  />
+                  <button
+                    onClick={handleApplyPrefix}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition"
+                  >
+                    Adicionar Prefixo
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Success / Info Notification */}
+        {bulkSuccessMsg && (
+          <div className="mx-4 mt-3 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{bulkSuccessMsg}</span>
+            </div>
+            <button
+              onClick={() => setBulkSuccessMsg(null)}
+              className="text-slate-400 hover:text-white text-xs px-2"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
+
+        {/* Selection & Range Toolbar */}
+        <div className="px-6 py-2.5 bg-slate-950/40 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="flex items-center gap-1.5 text-slate-300 hover:text-white transition font-medium"
+            >
+              {selectedCodes.size === filteredTables.length && filteredTables.length > 0 ? (
+                <CheckSquare className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-500" />
+              )}
+              <span>
+                {selectedCodes.size === filteredTables.length && filteredTables.length > 0
+                  ? 'Desmarcar Todas'
+                  : `Selecionar Todas (${filteredTables.length})`}
+              </span>
+            </button>
+
+            {selectedCodes.size > 0 && (
+              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md font-semibold text-[11px]">
+                {selectedCodes.size} selecionadas
+              </span>
+            )}
+          </div>
+
+          {/* Quick Range Selector */}
+          <div className="flex items-center gap-2 text-slate-400">
+            <span className="text-[11px]">Selecionar intervalo de códigos:</span>
+            <input
+              type="number"
+              placeholder="De (ex: 601)"
+              value={rangeFrom}
+              onChange={e => setRangeFrom(e.target.value)}
+              className="w-24 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+            />
+            <span>até</span>
+            <input
+              type="number"
+              placeholder="Até (ex: 648)"
+              value={rangeTo}
+              onChange={e => setRangeTo(e.target.value)}
+              className="w-24 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="button"
+              onClick={handleSelectRange}
+              disabled={!rangeFrom || !rangeTo}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 text-xs font-medium transition disabled:opacity-40"
+            >
+              Marcar
+            </button>
+            {selectedCodes.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedCodes(new Set())}
+                className="px-2 py-1 text-slate-400 hover:text-slate-200 text-xs hover:underline"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Error Notification */}
         {errorMessage && (
@@ -367,21 +784,37 @@ export const TablesModal: React.FC<TablesModalProps> = ({
               {filteredTables.map(t => {
                 const currentVal = editedNames[t.codigo] ?? t.descricao;
                 const isModified = currentVal !== t.descricao;
+                const isSelected = selectedCodes.has(t.codigo);
 
                 return (
                   <div
                     key={t.codigo}
                     className={`p-4 rounded-xl border transition-all ${
-                      isModified
-                        ? 'bg-emerald-950/20 border-emerald-500/50 shadow-lg shadow-emerald-950/20'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                      isSelected
+                        ? 'ring-2 ring-emerald-500/60 bg-emerald-950/20 border-emerald-500/40'
+                        : isModified
+                          ? 'bg-emerald-950/20 border-emerald-500/50 shadow-lg shadow-emerald-950/20'
+                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                        <Utensils className="w-3.5 h-3.5 text-emerald-400" />
-                        Mesa #{t.codigo}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSingleSelect(t.codigo)}
+                          className="text-slate-400 hover:text-white transition"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-600" />
+                          )}
+                        </button>
+                        <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                          <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+                          Mesa #{t.codigo}
+                        </span>
+                      </div>
                       
                       {t.sala_desc && (
                         <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-800 text-slate-300 rounded-md border border-slate-700">
