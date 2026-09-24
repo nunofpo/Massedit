@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, AlertTriangle, AlertCircle, Info, ChevronDown, ChevronRight,
   Download, Eye, CheckSquare, RefreshCw, Sparkles, Filter, Scale,
@@ -37,8 +37,6 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
 
-  if (!isOpen) return null;
-
   const handleRunAnalysis = async () => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -57,6 +55,12 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && !checks && !isLoading) {
+      handleRunAnalysis();
+    }
+  }, [isOpen]);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => ({ ...prev, [id]: !prev[id] }));
@@ -130,7 +134,6 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
       if (counts[cat] !== undefined) {
         counts[cat] += issues;
       }
-      // If it's a vat check not categorized as iva
       if ((c.id.startsWith('suspect_vat') || c.id.includes('vat')) && cat !== 'iva') {
         counts.iva += issues;
       }
@@ -150,43 +153,46 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
     });
   }, [checks, selectedCategory]);
 
+  // ALWAYS return hooks BEFORE conditional early return
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700/80 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
           <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
               Relatório de Qualidade dos Dados
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5">
               Diagnóstico de inconsistências na base de dados com atalhos para consulta e correção em massa.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Toolbar */}
-        <div className="px-6 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-4 flex-wrap text-xs">
+        <div className="px-6 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-4 flex-wrap text-xs">
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={handleRunAnalysis}
               disabled={isLoading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl transition shadow-xs flex items-center gap-2 disabled:opacity-50"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-xl transition shadow-lg shadow-indigo-950/50 flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               {isLoading ? 'A Analisar...' : (checks ? 'Voltar a Analisar' : 'Analisar Base de Dados')}
             </button>
 
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <label htmlFor="short-desc-max" className="font-semibold">Máx. caracteres descrição curta:</label>
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <label htmlFor="short-desc-max" className="font-medium">Máx. caracteres descrição curta:</label>
               <input
                 id="short-desc-max"
                 type="number"
@@ -194,7 +200,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
                 max="100"
                 value={shortDescMax}
                 onChange={(e) => setShortDescMax(Math.max(5, parseInt(e.target.value) || 20))}
-                className="w-16 px-2 py-1 rounded-lg border border-slate-300 text-center font-bold text-slate-900"
+                className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-center font-bold text-slate-100"
               />
             </div>
           </div>
@@ -202,23 +208,23 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
           {checks && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 font-bold">
-                <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                <span className="bg-rose-500/10 text-rose-300 px-2.5 py-1 rounded-lg border border-rose-500/30 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
                   {totalErrors} erros
                 </span>
-                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                <span className="bg-amber-500/10 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                   {totalWarnings} avisos
                 </span>
-                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                  <Info className="w-3 h-3 text-slate-500" />
+                <span className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1">
+                  <Info className="w-3.5 h-3.5 text-slate-400" />
                   {totalInfos} info
                 </span>
               </div>
 
               <button
                 onClick={handleExportCSV}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl border border-slate-300 transition flex items-center gap-1.5 shadow-xs"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded-xl border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
               >
                 <Download className="w-3.5 h-3.5" />
                 Exportar CSV
@@ -229,7 +235,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
 
         {/* Category Filter Tabs */}
         {checks && (
-          <div className="px-6 py-2 bg-slate-100/70 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto text-xs">
+          <div className="px-6 py-2.5 bg-slate-950/60 border-b border-slate-800 flex items-center gap-2 overflow-x-auto text-xs">
             {CATEGORIES.map(cat => {
               const Icon = cat.icon;
               const count = categoryIssuesCount[cat.id];
@@ -239,28 +245,28 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition whitespace-nowrap shadow-xs cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
                     isSelected
                       ? isIva
-                        ? 'bg-amber-600 text-white shadow-amber-600/20'
-                        : 'bg-indigo-600 text-white shadow-indigo-600/20'
-                      : 'bg-white text-slate-700 hover:bg-slate-200/80 border border-slate-200'
+                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-950/40'
+                        : 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/40'
+                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800 border border-slate-700/60'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{cat.label}</span>
                   {count > 0 ? (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                       isSelected
                         ? 'bg-white/20 text-white'
                         : isIva
-                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                          : 'bg-slate-100 text-slate-700 border border-slate-300'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
                     }`}>
                       {count}
                     </span>
                   ) : (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'text-white/80' : 'text-emerald-700 font-bold'}`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'text-white/80' : 'text-emerald-400 font-bold'}`}>
                       ✓
                     </span>
                   )}
@@ -271,10 +277,10 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
         )}
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-950/40">
           {errorMsg && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-xs text-rose-900 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-xs text-rose-300 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -282,8 +288,8 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
           {!checks && !isLoading && (
             <div className="text-center py-16 space-y-3">
               <Sparkles className="w-10 h-10 text-indigo-400 mx-auto" />
-              <h3 className="text-sm font-bold text-slate-800">Pronto para Diagnosticar</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+              <h3 className="text-sm font-bold text-white">Pronto para Diagnosticar</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
                 Clique em <strong>"Analisar Base de Dados"</strong> para efetuar 16 verificações de consistência (auditoria de IVA/CIVA, códigos de barras, PLUs, famílias, centros de produção e textos).
               </p>
             </div>
@@ -291,8 +297,8 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
 
           {isLoading && (
             <div className="text-center py-16 space-y-3">
-              <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs font-bold text-slate-700">A analisar integridade da base de dados SQL Server...</p>
+              <div className="w-8 h-8 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs font-bold text-slate-300">A analisar integridade da base de dados SQL Server...</p>
             </div>
           )}
 
@@ -300,13 +306,13 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
             <div className="space-y-3">
               {/* Special Fiscal Compliance Banner for IVA */}
               {(selectedCategory === 'iva' || (selectedCategory === 'all' && ivaAnomalyCodes.length > 0)) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs mb-3">
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md mb-3">
                   <div className="space-y-1">
-                    <div className="font-bold text-amber-900 flex items-center gap-1.5">
-                      <Scale className="w-4 h-4 text-amber-700 shrink-0" />
+                    <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <Scale className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>Auditoria Fiscal de IVA (CIVA - Lista II, Verba 3.1)</span>
                     </div>
-                    <p className="text-amber-800 text-[11px] leading-relaxed">
+                    <p className="text-amber-200/80 text-[11px] leading-relaxed">
                       Segundo o Código do IVA (CIVA), as <strong>bebidas alcoólicas</strong> (vinhos, cervejas, sangrias, licores) e os <strong>refrigerantes com gás/açúcares</strong> estão obrigatoriamente sujeitos à taxa normal de <strong>23%</strong> na restauração. Serviços de alimentação e cafetaria beneficiam da taxa intermédia de <strong>13%</strong>.
                     </p>
                   </div>
@@ -314,7 +320,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => onViewArticles(ivaAnomalyCodes, 'Artigos com Anomalia de IVA')}
-                        className="bg-white hover:bg-amber-100 text-amber-900 font-bold px-3 py-1.5 rounded-lg border border-amber-300 transition flex items-center gap-1 shadow-xs text-xs cursor-pointer"
+                        className="bg-slate-900 hover:bg-slate-800 text-amber-300 font-semibold px-3 py-1.5 rounded-xl border border-amber-500/30 transition flex items-center gap-1 text-xs cursor-pointer"
                         title="Filtrar e ver todos os artigos com anomalia de IVA na tabela"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -322,7 +328,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
                       </button>
                       <button
                         onClick={() => onSelectArticles(ivaAnomalyCodes, 'Artigos com Anomalia de IVA')}
-                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-xs text-xs cursor-pointer"
+                        className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-md text-xs cursor-pointer"
                         title="Selecionar todos os artigos com anomalia fiscal de IVA para alterar a taxa em massa"
                       >
                         <CheckSquare className="w-3.5 h-3.5" />
@@ -334,129 +340,126 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
               )}
 
               {filteredChecks.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
                   Não existem verificações para esta categoria.
                 </div>
               ) : (
                 filteredChecks.map((chk) => {
                   const isError = chk.severity === 'error';
                   const isWarning = chk.severity === 'warning';
-                const hasIssues = chk.count > 0;
-                const isExpanded = !!expandedGroups[chk.id];
+                  const hasIssues = chk.count > 0;
+                  const isExpanded = !!expandedGroups[chk.id];
 
-                return (
-                  <div
-                    key={chk.id}
-                    className={`rounded-xl border transition shadow-xs ${
-                      !chk.available
-                        ? 'bg-slate-50 border-slate-200 opacity-60'
-                        : hasIssues
-                          ? isError
-                            ? 'bg-white border-rose-200 hover:border-rose-300'
-                            : isWarning
-                              ? 'bg-white border-amber-200 hover:border-amber-300'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          : 'bg-white border-slate-200'
-                    } p-4`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-slate-900">{chk.title}</span>
-                          
-                          {/* Severity & Count Tag */}
-                          {!chk.available ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                              Indisponível
-                            </span>
-                          ) : hasIssues ? (
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
-                                isError
-                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                                  : isWarning
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
-                              }`}
-                            >
-                              {isError ? <AlertCircle className="w-3 h-3 text-rose-600" /> : isWarning ? <AlertTriangle className="w-3 h-3 text-amber-600" /> : <Info className="w-3 h-3 text-slate-500" />}
-                              {chk.count} artigo(s)
-                              {chk.truncated && ' (truncado a 5.000)'}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              ✓ Tudo em ordem
-                            </span>
+                  return (
+                    <div
+                      key={chk.id}
+                      className={`rounded-xl border transition p-4 ${
+                        !chk.available
+                          ? 'bg-slate-950 border-slate-800 opacity-60'
+                          : hasIssues
+                            ? isError
+                              ? 'bg-slate-900 border-rose-500/30 hover:border-rose-500/50'
+                              : isWarning
+                                ? 'bg-slate-900 border-amber-500/30 hover:border-amber-500/50'
+                                : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                            : 'bg-slate-900 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-slate-100">{chk.title}</span>
+                            
+                            {!chk.available ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                                Indisponível
+                              </span>
+                            ) : hasIssues ? (
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                  isError
+                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                    : isWarning
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                }`}
+                              >
+                                {isError ? <AlertCircle className="w-3 h-3 text-rose-400" /> : isWarning ? <AlertTriangle className="w-3 h-3 text-amber-400" /> : <Info className="w-3 h-3 text-slate-400" />}
+                                {chk.count} artigo(s)
+                                {chk.truncated && ' (truncado a 5.000)'}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                ✓ Tudo em ordem
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-400 leading-relaxed">{chk.description}</p>
+                          {chk.unavailable_reason && (
+                            <p className="text-[11px] text-slate-500 italic mt-0.5">{chk.unavailable_reason}</p>
                           )}
                         </div>
 
-                        <p className="text-xs text-slate-600 leading-relaxed">{chk.description}</p>
-                        {chk.unavailable_reason && (
-                          <p className="text-[11px] text-slate-500 italic mt-0.5">{chk.unavailable_reason}</p>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      {chk.available && hasIssues && chk.codes.length > 0 && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={() => onViewArticles(chk.codes, chk.title)}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-lg border border-indigo-200 transition text-xs flex items-center gap-1 shadow-xs"
-                            title="Ver e filtrar estes artigos na tabela principal"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            Ver artigos
-                          </button>
-                          <button
-                            onClick={() => onSelectArticles(chk.codes, chk.title)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg border border-slate-300 transition text-xs flex items-center gap-1 shadow-xs"
-                            title="Juntar estes artigos à seleção de edição em massa"
-                          >
-                            <CheckSquare className="w-3.5 h-3.5" />
-                            Selecionar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Expandable Group Details */}
-                    {chk.available && chk.groups && chk.groups.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-slate-100">
-                        <button
-                          onClick={() => toggleGroup(chk.id)}
-                          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                        >
-                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                          {isExpanded ? 'Ocultar agrupamentos' : `Ver ${chk.groups.length} grupo(s) de duplicados/famílias`}
-                        </button>
-
-                        {isExpanded && (
-                          <div className="mt-2 space-y-1.5 pl-2 max-h-48 overflow-y-auto">
-                            {chk.groups.map((g, idx) => (
-                              <div key={idx} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs flex items-center justify-between font-mono">
-                                <span className="font-bold text-slate-800">{g.key}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-slate-500 font-sans text-[11px]">{g.codes.length} artigos:</span>
-                                  <span className="text-indigo-700 font-bold">#{g.codes.join(', #')}</span>
-                                </div>
-                              </div>
-                            ))}
+                        {chk.available && hasIssues && chk.codes.length > 0 && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => onViewArticles(chk.codes, chk.title)}
+                              className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 font-semibold px-3 py-1.5 rounded-xl border border-indigo-500/30 transition text-xs flex items-center gap-1"
+                              title="Ver e filtrar estes artigos na tabela principal"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              Ver artigos
+                            </button>
+                            <button
+                              onClick={() => onSelectArticles(chk.codes, chk.title)}
+                              className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded-xl border border-slate-700 transition text-xs flex items-center gap-1"
+                              title="Juntar estes artigos à seleção de edição em massa"
+                            >
+                              <CheckSquare className="w-3.5 h-3.5" />
+                              Selecionar
+                            </button>
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                );
-              }))}
+
+                      {chk.available && chk.groups && chk.groups.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-800">
+                          <button
+                            onClick={() => toggleGroup(chk.id)}
+                            className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                          >
+                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                            {isExpanded ? 'Ocultar agrupamentos' : `Ver ${chk.groups.length} grupo(s) de duplicados/famílias`}
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-2 space-y-1.5 pl-2 max-h-48 overflow-y-auto">
+                              {chk.groups.map((g, idx) => (
+                                <div key={idx} className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-xs flex items-center justify-between font-mono">
+                                  <span className="font-bold text-slate-200">{g.key}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-slate-400 font-sans text-[11px]">{g.codes.length} artigos:</span>
+                                    <span className="text-indigo-400 font-bold">#{g.codes.join(', #')}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }))}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
+        <div className="px-6 py-3 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl transition shadow-xs"
+            className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
           >
             Fechar Relatório
           </button>
