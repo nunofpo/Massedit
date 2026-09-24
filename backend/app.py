@@ -26,11 +26,15 @@ from backend.models import (
     EmentaSuggestDescRequest, EmentaRuleItem,
     PortInfo, PortScanRequest, PortScanResponse,
     CustomerItem, CustomerAuditResponse, NifLookupRequest, NifLookupResponse, BulkCustomerUpdateRequest, CustomerUpdateItem,
-    ZSThemeTransformRequest, SingleProductUpdateRequest
+    ZSThemeTransformRequest, SingleProductUpdateRequest,
+    BulkTableUpdateRequest
 )
 from backend.services.customers import (
     get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif,
     delete_customer
+)
+from backend.services.tables import (
+    get_tables, preview_table_updates, update_tables
 )
 from backend.db import db_manager, describe_db_error
 from backend.services.products import (
@@ -984,6 +988,32 @@ def inactivate_dead_products_endpoint(payload: InactivateDeadProductsRequest = B
     res = inactivate_dead_products(payload.product_codes)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("message", "Falha ao inativar artigos."))
+    return res
+
+
+# ----------------------------------------------------------------------
+# Gestão de Mesas e Salas (ZoneSoft POS)
+# ----------------------------------------------------------------------
+
+@app.get("/api/tables")
+def get_tables_endpoint(search: str = Query("", description="Termo de pesquisa por nome/código/sala"),
+                       sala: Optional[int] = Query(None, description="Filtrar por ID de sala")):
+    """Lista as mesas e salas configuradas no ZoneSoft POS."""
+    return get_tables(search=search, sala=sala)
+
+
+@app.post("/api/tables/preview")
+def preview_tables_endpoint(req: BulkTableUpdateRequest = Body(...)):
+    """Pré-visualiza alterações de nomes de mesas."""
+    return preview_table_updates(req)
+
+
+@app.post("/api/tables/update")
+def update_tables_endpoint(req: BulkTableUpdateRequest = Body(...)):
+    """Aplica alterações de nomes de mesas no SQL Server (dbo.mesas) com sync = 1."""
+    res = update_tables(req)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Falha ao atualizar mesas."))
     return res
 
 

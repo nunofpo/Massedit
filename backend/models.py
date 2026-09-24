@@ -762,6 +762,27 @@ class BulkCustomerUpdateRequest(BaseModel):
 
 
 # ======================================================================
+# Modelos de Gestão de Mesas e Salas (ZoneSoft POS)
+# ======================================================================
+
+class TableItem(BaseModel):
+    codigo: int
+    descricao: str
+    sala: Optional[int] = None
+    sala_desc: Optional[str] = None
+    posicao: Optional[int] = None
+    bloqueada: Optional[int] = 0
+
+class TableUpdateItem(BaseModel):
+    codigo: int
+    descricao: str
+    sala: Optional[int] = None
+
+class BulkTableUpdateRequest(BaseModel):
+    tables: List[TableUpdateItem]
+
+
+# ======================================================================
 # Modelos de Temas ZSRest (.zstheme)
 # ======================================================================
 

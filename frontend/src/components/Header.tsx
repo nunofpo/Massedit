@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin, ScrollText, HardDrive, Archive } from 'lucide-react';
+import { Database, ShieldCheck, History, Settings, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles, Languages, Users, MapPin, ScrollText, HardDrive, Archive, Utensils } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -16,6 +16,7 @@ interface HeaderProps {
   onOpenCashlogyLogs: () => void;
   onOpenMenuImport: () => void;
   onOpenCustomers: () => void;
+  onOpenTables?: () => void;
   onOpenHousekeeping: () => void;
   onOpenDeadProducts: () => void;
   onRefresh: () => void;
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCashlogyLogs,
   onOpenMenuImport,
   onOpenCustomers,
+  onOpenTables,
   onOpenHousekeeping,
   onOpenDeadProducts,
   onRefresh,
@@ -159,6 +161,17 @@ export const Header: React.FC<HeaderProps> = ({
           <Users className="w-3.5 h-3.5 text-emerald-600" />
           Clientes & NIF
         </button>
+
+        {onOpenTables && (
+          <button
+            onClick={onOpenTables}
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition shadow-sm"
+            title="Gestão e Alteração de Nomes de Mesas / Salas (ZoneSoft POS)"
+          >
+            <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+            Mesas POS
+          </button>
+        )}
 
         <button
           onClick={onOpenDeadProducts}

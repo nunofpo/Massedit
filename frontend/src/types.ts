@@ -637,3 +637,29 @@ export interface PriceZoneInfo {
 }
 
 export type PriceZonesMap = Record<string, PriceZoneInfo>;
+
+export interface TableItem {
+  codigo: number;
+  descricao: string;
+  sala?: number | null;
+  sala_desc?: string | null;
+  posicao?: number | null;
+  bloqueada?: number | null;
+}
+
+export interface TableUpdateItem {
+  codigo: number;
+  descricao: string;
+  sala?: number | null;
+}
+
+export interface BulkTableUpdateRequest {
+  tables: TableUpdateItem[];
+}
+
+export interface TableDataResponse {
+  tables: TableItem[];
+  salas: { codigo: number; descricao: string }[];
+  total: number;
+}
+

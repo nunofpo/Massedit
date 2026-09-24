@@ -13,6 +13,7 @@ import { PosLayoutModal } from './components/PosLayoutModal';
 import { MenuImportWizardModal } from './components/MenuImportWizardModal';
 import { EmentaDigitalModal } from './components/EmentaDigitalModal';
 import { CustomersModal } from './components/CustomersModal';
+import { TablesModal } from './components/TablesModal';
 import { ZSThemeModal } from './components/ZSThemeModal';
 import { CashlogyLogsModal } from './components/CashlogyLogsModal';
 import { HousekeepingModal } from './components/HousekeepingModal';
@@ -72,6 +73,7 @@ export const App: React.FC = () => {
   const [isMenuImportOpen, setIsMenuImportOpen] = useState(false);
   const [isEmentaDigitalOpen, setIsEmentaDigitalOpen] = useState(false);
   const [isCustomersOpen, setIsCustomersOpen] = useState(false);
+  const [isTablesOpen, setIsTablesOpen] = useState(false);
   const [isZsThemeOpen, setIsZsThemeOpen] = useState(false);
   const [isCashlogyLogsOpen, setIsCashlogyLogsOpen] = useState(false);
   const [isHousekeepingOpen, setIsHousekeepingOpen] = useState(false);
@@ -475,6 +477,7 @@ export const App: React.FC = () => {
         onOpenEmentaDigital={() => setIsEmentaDigitalOpen(true)}
         onOpenMenuImport={() => setIsMenuImportOpen(true)}
         onOpenCustomers={() => setIsCustomersOpen(true)}
+        onOpenTables={() => setIsTablesOpen(true)}
         onOpenZsTheme={() => setIsZsThemeOpen(true)}
         onOpenCashlogyLogs={() => setIsCashlogyLogsOpen(true)}
         onOpenDataQuality={() => setIsDataQualityOpen(true)}
@@ -650,6 +653,14 @@ export const App: React.FC = () => {
       <CustomersModal
         isOpen={isCustomersOpen}
         onClose={() => setIsCustomersOpen(false)}
+        onSuccess={(msg) => {
+          setNotification({ type: 'success', text: msg });
+        }}
+      />
+
+      <TablesModal
+        isOpen={isTablesOpen}
+        onClose={() => setIsTablesOpen(false)}
         onSuccess={(msg) => {
           setNotification({ type: 'success', text: msg });
         }}
