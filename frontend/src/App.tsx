@@ -90,20 +90,6 @@ export const App: React.FC = () => {
   const [isApplying, setIsApplying] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Theme State: 'beige' (default) or 'dark'
-  const [theme, setTheme] = useState<'beige' | 'dark'>(() => {
-    return (localStorage.getItem('massedit_theme') as 'beige' | 'dark') || 'beige';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('massedit_theme', theme);
-  }, [theme]);
-
-  const handleToggleTheme = () => {
-    setTheme(prev => (prev === 'beige' ? 'dark' : 'beige'));
-  };
-
   const handleOpenDetail = (product: ProductItem) => {
     setDetailProduct(product);
     setIsDetailOpen(true);
@@ -504,8 +490,6 @@ export const App: React.FC = () => {
           fetchAuxData();
           loadProducts();
         }}
-        currentTheme={theme}
-        onToggleTheme={handleToggleTheme}
       />
 
       {/* Global Notification Banner */}

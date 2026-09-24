@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Database, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles,
   Languages, Users, ScrollText, HardDrive, Archive, Utensils,
-  Package, Wrench, ChevronRight, Settings, History, Sun, Moon
+  Package, Wrench, ChevronRight, Settings, History
 } from 'lucide-react';
 
 export type ActiveTabSection = 'artigos' | 'clientes' | 'mesas' | 'ementa' | 'ferramentas';
@@ -29,8 +29,6 @@ interface HeaderProps {
   onOpenDeadProducts: () => void;
   onRefresh: () => void;
   isRefreshing?: boolean;
-  currentTheme?: 'beige' | 'dark';
-  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,9 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHousekeeping,
   onOpenDeadProducts,
   onRefresh,
-  isRefreshing = false,
-  currentTheme = 'beige',
-  onToggleTheme
+  isRefreshing = false
 }) => {
   const sections = [
     { id: 'artigos' as ActiveTabSection, label: 'Artigos', icon: Package, count: null },
@@ -136,28 +132,6 @@ export const Header: React.FC<HeaderProps> = ({
               <RefreshCw className={`w-3 h-3 ${zsSyncStatus.pending ? 'animate-spin text-amber-400' : 'text-emerald-400'}`} />
               {zsSyncStatus.pending ? 'ZoneSoft Syncing' : 'ZoneSoft OK'}
             </div>
-          )}
-
-          {/* Theme Toggle Button */}
-          {onToggleTheme && (
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-semibold border transition bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border-slate-700/80 cursor-pointer shadow-xs"
-              title="Alternar entre Tom Bege e Modo Escuro"
-            >
-              {currentTheme === 'beige' ? (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#d4a373] border border-[#a26839] shadow-[0_0_6px_#d4a373]" />
-                  <span>Tom Bege</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-3 h-3 text-indigo-400" />
-                  <span>Modo Escuro</span>
-                </>
-              )}
-            </button>
           )}
         </div>
       </div>
