@@ -2,25 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+:root,
+[data-theme="beige"] {
+  /* Paleta Tom Bege Quente / Areia / Linho Natural (ZoneSoft Warm Beige) */
+  --color-slate-950: 246 242 234; /* #f6f2ea - Fundo geral / canvas da app */
+  --color-slate-900: 254 252 249; /* #fefcf9 - Superfícies, cabeçalho, cartões */
+  --color-slate-800: 238 230 218; /* #eee6da - Hover, fundos secundários */
+  --color-slate-700: 220 209 193; /* #dcd1c1 - Linhas divisórias e bordas */
+  --color-slate-600: 182 168 148; /* #b6a894 */
+  --color-slate-500: 140 125 106; /* #8c7d6a - Texto muted */
+  --color-slate-400: 108 94 77;   /* #6c5e4d - Texto secundário */
+  --color-slate-300: 68 56 44;    /* #44382c - Texto de leitura */
+  --color-slate-200: 48 38 28;    /* #30261c - Texto de destaque */
+  --color-slate-100: 28 22 15;    /* #1c160f - Títulos em café expresso escuro */
+  --color-slate-50: 16 12 8;      /* #100c08 */
+
+  --scrollbar-track: #f0e8dc;
+  --scrollbar-thumb: #d8cdbe;
+  --scrollbar-thumb-hover: #bcae9c;
 }
 
-/* Custom scrollbar - Clean Light Theme */
+[data-theme="dark"] {
+  /* Paleta Modo Escuro (Slate Dark Premium) */
+  --color-slate-950: 2 6 23;      /* #020617 */
+  --color-slate-900: 15 23 42;    /* #0f172a */
+  --color-slate-800: 30 41 59;    /* #1e293b */
+  --color-slate-700: 51 65 85;    /* #334155 */
+  --color-slate-600: 71 85 105;   /* #475569 */
+  --color-slate-500: 100 116 139; /* #64748b */
+  --color-slate-400: 148 163 184; /* #94a3b8 */
+  --color-slate-300: 203 213 225; /* #cbd5e1 */
+  --color-slate-200: 226 232 240; /* #e2e8f0 */
+  --color-slate-100: 241 245 249; /* #f1f5f9 */
+  --color-slate-50: 248 250 252;  /* #f8fafc */
+
+  --scrollbar-track: #0f172a;
+  --scrollbar-thumb: #334155;
+  --scrollbar-thumb-hover: #475569;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: rgb(var(--color-slate-950));
+  color: rgb(var(--color-slate-200));
+}
+
+/* Scrollbar personalizada */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--scrollbar-thumb-hover);
 }
+
+/* Regras de Contraste e Elegância para o Tom Bege */
+[data-theme="beige"], :root:not([data-theme="dark"]) {
+  /* Títulos em tom expresso */
+  h1, h2, h3, h4 {
+    color: #1c160f !important;
+  }
+
+  /* Textos gerais declarados como text-white que não estejam dentro de botões coloridos */
+  .text-white:not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-violet"]):not([class*="bg-amber"]):not([class*="bg-blue"]):not([class*="bg-red"]):not([class*="bg-purple"]):not(button[class*="bg-"]):not(a[class*="bg-"]):not(.badge-colored) {
+    color: #1c160f;
+  }
+
+  /* Garantir que botões de ação e ícones em botões continuam com texto branco nítido */
+  button[class*="bg-indigo"] .text-white,
+  button[class*="bg-emerald"] .text-white,
+  button[class*="bg-rose"] .text-white,
+  button[class*="bg-violet"] .text-white,
+  button[class*="bg-purple"] .text-white,
+  button[class*="bg-amber"] .text-white,
+  [class*="bg-indigo-600"] > svg,
+  [class*="bg-emerald-600"] > svg,
+  [class*="bg-rose-600"] > svg {
+    color: #ffffff !important;
+  }
+
+  /* Linha selecionada na tabela de artigos em tom bege quente */
+  tr.bg-indigo-950\/40 {
+    background-color: rgba(226, 214, 196, 0.55) !important;
+    color: #1c160f !important;
+  }
+  tr.bg-indigo-950\/40 .text-white {
+    color: #1c160f !important;
+  }
+
+  /* Badges de códigos e etiquetas em bege suave */
+  .bg-slate-900.text-white,
+  .bg-slate-900.text-slate-100 {
+    background-color: #eee4d5 !important;
+    color: #2b2219 !important;
+    border-color: #dcd0be !important;
+  }
+
+  /* Inputs e Caixas de seleção */
+  input, select, textarea {
+    color: #241c14 !important;
+  }
+  input::placeholder, textarea::placeholder {
+    color: #9c8a77 !important;
+  }
+}
+
 
