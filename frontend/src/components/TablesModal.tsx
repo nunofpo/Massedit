@@ -214,7 +214,7 @@ export const TablesModal: React.FC<TablesModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Altere a designação das mesas com sincronização direta aos postos (dbo.mesas, sync = 1)
+                Altere a designação visual das mesas no mapa do POS (dbo.mapamesas → nomeobjecto & dbo.mesas, sync = 1)
               </p>
             </div>
           </div>

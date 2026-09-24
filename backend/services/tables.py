@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from backend.db import db_manager, TEXT_TYPES, SchemaInfo
 from backend.models import (
@@ -42,9 +42,34 @@ def _get_salas_dict(cursor, schema: SchemaInfo) -> Dict[int, str]:
     return salas_map
 
 
+def _detect_table_config(schema: SchemaInfo) -> Tuple[str, str, str, Optional[str], Optional[str], Optional[str]]:
+    """
+    Deteta as tabelas e colunas de mesas do ZoneSoft POS (prioridade a dbo.mapamesas com nomeobjecto).
+    Retorna (table_name, code_col, name_col, sala_col, pos_col, bloq_col).
+    """
+    if "mapamesas" in schema:
+        cols = schema["mapamesas"]
+        t_name = "mapamesas"
+        name_col = "nomeobjecto" if "nomeobjecto" in cols else ("descricao" if "descricao" in cols else "nome")
+        code_col = "codigo" if "codigo" in cols else ("codobjecto" if "codobjecto" in cols else ("objecto" if "objecto" in cols else "codigo"))
+        sala_col = "sala" if "sala" in cols else ("codsala" if "codsala" in cols else None)
+        pos_col = "posicao" if "posicao" in cols else ("ordem" if "ordem" in cols else None)
+        bloq_col = "bloqueada" if "bloqueada" in cols else ("status" if "status" in cols else ("bloqueado" if "bloqueado" in cols else None))
+        return t_name, code_col, name_col, sala_col, pos_col, bloq_col
+    else:
+        cols = schema.get("mesas", {})
+        t_name = "mesas"
+        name_col = "descricao" if "descricao" in cols else ("nomeobjecto" if "nomeobjecto" in cols else "descricao")
+        code_col = "codigo"
+        sala_col = "sala" if "sala" in cols else None
+        pos_col = "posicao" if "posicao" in cols else ("ordem" if "ordem" in cols else None)
+        bloq_col = "bloqueada" if "bloqueada" in cols else ("status" if "status" in cols else ("bloqueado" if "bloqueado" in cols else None))
+        return t_name, code_col, name_col, sala_col, pos_col, bloq_col
+
+
 def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
     """
-    Retorna a lista de mesas e salas da base de dados ZoneSoft (dbo.mesas e dbo.salas).
+    Retorna a lista de mesas e salas da base de dados ZoneSoft (dbo.mapamesas com nomeobjecto, ou dbo.mesas).
     Se a ligação à BD não estiver disponível ou a tabela não existir, devolve os dados mock.
     """
     tables_list: List[TableItem] = []
@@ -60,22 +85,16 @@ def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
             cursor = conn.cursor()
             schema = db_manager.get_schema(cursor)
 
-            if "mesas" in schema:
+            if "mapamesas" in schema or "mesas" in schema:
                 salas_map = _get_salas_dict(cursor, schema)
                 for s_code, s_desc in salas_map.items():
                     salas_list.append({"codigo": s_code, "descricao": s_desc})
 
-                # Verificar colunas existentes em dbo.mesas
-                mesas_cols = schema.get("mesas", {})
-                has_sala = "sala" in mesas_cols
-                has_posicao = "posicao" in mesas_cols or "ordem" in mesas_cols
-                pos_col = "posicao" if "posicao" in mesas_cols else ("ordem" if "ordem" in mesas_cols else None)
-                has_bloqueada = "bloqueada" in mesas_cols or "status" in mesas_cols or "bloqueado" in mesas_cols
-                bloq_col = "bloqueada" if "bloqueada" in mesas_cols else ("status" if "status" in mesas_cols else ("bloqueado" if "bloqueado" in mesas_cols else None))
+                t_name, code_col, name_col, sala_col, pos_col, bloq_col = _detect_table_config(schema)
 
-                select_cols = ["codigo", "descricao"]
-                if has_sala:
-                    select_cols.append("sala")
+                select_cols = [code_col, name_col]
+                if sala_col:
+                    select_cols.append(sala_col)
                 else:
                     select_cols.append("NULL as sala")
 
@@ -89,10 +108,12 @@ def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
                 else:
                     select_cols.append("0 as bloqueada")
 
-                query = f"SELECT {', '.join(select_cols)} FROM dbo.mesas"
+                query = f"SELECT {', '.join(select_cols)} FROM dbo.{t_name}"
                 cursor.execute(query)
 
                 for r in cursor.fetchall():
+                    if r[0] is None:
+                        continue
                     code = int(r[0])
                     desc = str(r[1] or "").strip()
                     s_id = int(r[2]) if r[2] is not None else None
@@ -109,7 +130,7 @@ def get_tables(search: str = "", sala: Optional[int] = None) -> Dict[str, Any]:
                         posicao=pos,
                         bloqueada=bloq
                     ))
-        except Exception:
+        except Exception as e:
             tables_list = []
         finally:
             conn.close()
@@ -177,7 +198,7 @@ def preview_table_updates(req: BulkTableUpdateRequest) -> BulkEditPreviewRespons
             if not new_desc:
                 diffs.append(FieldDiff(
                     field_name="descricao",
-                    field_label="Nome da Mesa",
+                    field_label="Nome da Mesa (nomeobjecto)",
                     old_value=cur_desc,
                     new_value="(Vazio)",
                     blocked=True,
@@ -186,7 +207,7 @@ def preview_table_updates(req: BulkTableUpdateRequest) -> BulkEditPreviewRespons
             elif len(new_desc) > 50:
                 diffs.append(FieldDiff(
                     field_name="descricao",
-                    field_label="Nome da Mesa",
+                    field_label="Nome da Mesa (nomeobjecto)",
                     old_value=cur_desc,
                     new_value=new_desc,
                     blocked=True,
@@ -195,7 +216,7 @@ def preview_table_updates(req: BulkTableUpdateRequest) -> BulkEditPreviewRespons
             else:
                 diffs.append(FieldDiff(
                     field_name="descricao",
-                    field_label="Nome da Mesa",
+                    field_label="Nome da Mesa (nomeobjecto)",
                     old_value=cur_desc,
                     new_value=new_desc,
                     blocked=False
@@ -233,7 +254,7 @@ def preview_table_updates(req: BulkTableUpdateRequest) -> BulkEditPreviewRespons
 
 def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
     """
-    Aplica as alterações de nomes de mesas à base de dados SQL Server (dbo.mesas)
+    Aplica as alterações de nomes de mesas à base de dados SQL Server (dbo.mapamesas -> nomeobjecto e dbo.mesas -> descricao)
     marcando sync = 1 para atualização nos postos POS ZoneSoft.
     """
     preview = preview_table_updates(req)
@@ -277,32 +298,80 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
     try:
         cursor = conn.cursor()
         schema = db_manager.get_schema(cursor)
-        mesas_cols = schema.get("mesas", {})
-        has_sync = "sync" in mesas_cols
-        has_sala = "sala" in mesas_cols
+        
+        has_mapamesas = "mapamesas" in schema
+        has_mesas = "mesas" in schema
 
         updated_count = 0
-        for item in updates_to_apply:
-            sets = ["descricao = ?"]
-            params = [item.descricao.strip()]
 
-            if has_sala and item.sala is not None:
-                sets.append("sala = ?")
-                params.append(item.sala)
+        # 1. Atualizar dbo.mapamesas (nomeobjecto) se a tabela existir
+        if has_mapamesas:
+            cols = schema["mapamesas"]
+            name_col = "nomeobjecto" if "nomeobjecto" in cols else ("descricao" if "descricao" in cols else "nome")
+            code_col = "codigo" if "codigo" in cols else ("codobjecto" if "codobjecto" in cols else "codigo")
+            has_sala = "sala" in cols or "codsala" in cols
+            sala_col = "sala" if "sala" in cols else ("codsala" if "codsala" in cols else None)
+            has_sync = "sync" in cols
 
-            if has_sync:
-                sets.append("sync = 1")
+            for item in updates_to_apply:
+                sets = [f"{name_col} = ?"]
+                params = [item.descricao.strip()]
 
-            params.append(item.codigo)
-            sql = f"UPDATE dbo.mesas SET {', '.join(sets)} WHERE codigo = ?"
-            cursor.execute(sql, params)
-            updated_count += cursor.rowcount
+                if "descricao" in cols and name_col != "descricao":
+                    sets.append("descricao = ?")
+                    params.append(item.descricao.strip())
+
+                if has_sala and sala_col and item.sala is not None:
+                    sets.append(f"{sala_col} = ?")
+                    params.append(item.sala)
+
+                if has_sync:
+                    sets.append("sync = 1")
+
+                params.append(item.codigo)
+                sql = f"UPDATE dbo.mapamesas SET {', '.join(sets)} WHERE {code_col} = ?"
+                cursor.execute(sql, params)
+                updated_count += cursor.rowcount
+
+        # 2. Atualizar também dbo.mesas (descricao e sync = 1) se a tabela existir
+        if has_mesas:
+            cols = schema["mesas"]
+            has_desc = "descricao" in cols
+            has_nomeobj = "nomeobjecto" in cols
+            has_sync = "sync" in cols
+            has_sala = "sala" in cols
+
+            for item in updates_to_apply:
+                sets = []
+                params = []
+
+                if has_desc:
+                    sets.append("descricao = ?")
+                    params.append(item.descricao.strip())
+
+                if has_nomeobj:
+                    sets.append("nomeobjecto = ?")
+                    params.append(item.descricao.strip())
+
+                if has_sala and item.sala is not None:
+                    sets.append("sala = ?")
+                    params.append(item.sala)
+
+                if has_sync:
+                    sets.append("sync = 1")
+
+                if sets:
+                    params.append(item.codigo)
+                    sql = f"UPDATE dbo.mesas SET {', '.join(sets)} WHERE codigo = ?"
+                    cursor.execute(sql, params)
+                    if not has_mapamesas:
+                        updated_count += cursor.rowcount
 
         conn.commit()
         return {
             "success": True,
             "updated_count": updated_count,
-            "message": f"{updated_count} mesa(s) atualizada(s) com sucesso na base de dados ZoneSoft."
+            "message": f"{updated_count} mesa(s) / mapa de mesas atualizado(s) com sucesso na base de dados ZoneSoft (mapamesas.nomeobjecto & mesas.descricao)."
         }
     except Exception as e:
         if conn:
@@ -310,7 +379,7 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
         return {
             "success": False,
             "updated_count": 0,
-            "message": f"Erro ao atualizar mesas no SQL Server: {str(e)}"
+            "message": f"Erro ao atualizar mapa de mesas no SQL Server: {str(e)}"
         }
     finally:
         if conn:
