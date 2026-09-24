@@ -129,7 +129,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
         )}
 
         <table className="w-full text-left text-xs border-collapse">
-          <thead className="sticky top-0 bg-slate-900 text-slate-300 border-b border-slate-800 z-5 font-bold tracking-wider uppercase backdrop-blur-md">
+          <thead className="sticky top-0 bg-slate-900 text-slate-300 border-b border-slate-800 z-20 font-bold tracking-wider uppercase shadow-md">
             <tr>
               <th className="p-3 w-10 text-center">
                 <input
@@ -314,8 +314,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </td>
 
                     {/* Preço PVP 1 com popover para PVP 1..10 */}
-                    <td className="p-3 text-right relative">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="p-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5 relative">
                         <div className="flex flex-col items-end">
                           <span className="font-mono font-extrabold text-emerald-400 text-sm drop-shadow">
                             {product.pvp1.toFixed(2)} €
