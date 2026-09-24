@@ -440,7 +440,8 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(res_null.codes, [40, 41])
 
     @patch("backend.services.customers.db_manager")
-    def test_customer_full_data_and_locked_nif(self, mock_db):
+    @patch("backend.services.customers.create_backup_snapshot")
+    def test_customer_full_data_and_locked_nif(self, mock_backup, mock_db):
         from backend.models import CustomerItem, CustomerUpdateItem, BulkCustomerUpdateRequest
         from backend.services.customers import get_customers, preview_customer_update, update_customer_data
 

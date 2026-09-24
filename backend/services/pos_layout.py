@@ -50,6 +50,7 @@ def get_pos_layout_products(familia: int, include_hidden: bool = False) -> List[
 
         has_bloqueado = "bloqueado" in prod_cols
         has_frontoffice = "frontoffice" in prod_cols
+        has_descontinuado = "descontinuado" in prod_cols
         has_ordem = "ordem" in prod_cols
         has_fundo = "fundo" in prod_cols
         has_letra = "letra" in prod_cols
@@ -57,7 +58,15 @@ def get_pos_layout_products(familia: int, include_hidden: bool = False) -> List[
         has_subfam = "subfam" in prod_cols
 
         bloqueado_col = "ISNULL(p.bloqueado, 0)" if has_bloqueado else "0"
-        frontoffice_col = "ISNULL(p.frontoffice, 1)" if has_frontoffice else "1"
+        # Visibilidade no POS: `frontoffice` quando a coluna existe; senão `descontinuado`
+        # invertido, que é o que esconde o artigo do ecrã de vendas no ZSRest. Sem nenhuma
+        # das duas, todos os artigos contam como visíveis.
+        if has_frontoffice:
+            frontoffice_col = "ISNULL(p.frontoffice, 1)"
+        elif has_descontinuado:
+            frontoffice_col = "CASE WHEN ISNULL(CAST(p.descontinuado AS INT), 0) = 1 THEN 0 ELSE 1 END"
+        else:
+            frontoffice_col = "1"
         ordem_col = "ISNULL(p.ordem, 0)" if has_ordem else "0"
         fundo_col = "ISNULL(p.fundo, 0)" if has_fundo else "0"
         letra_col = "ISNULL(p.letra, 16777215)" if has_letra else "16777215"
@@ -72,6 +81,8 @@ def get_pos_layout_products(familia: int, include_hidden: bool = False) -> List[
                 where_conds.append("ISNULL(p.bloqueado, 0) = 0")
             if has_frontoffice:
                 where_conds.append("ISNULL(p.frontoffice, 1) = 1")
+            elif has_descontinuado:
+                where_conds.append("ISNULL(CAST(p.descontinuado AS INT), 0) = 0")
 
         query = f"""
             SELECT
@@ -109,7 +120,7 @@ def get_pos_layout_products(familia: int, include_hidden: bool = False) -> List[
             ordem=int(r[5] or 0),
             pvp1=float(r[6] or 0.0),
             bloqueado=int(r[7] or 0),
-            frontoffice=int(r[8] or 1),
+            frontoffice=int(r[8]) if r[8] is not None else 1,
             subfamilia=int(r[9]) if r[9] is not None else None,
             subfamilia_desc=r[10] or "",
             low_contrast=is_low_contrast(fundo_h, letra_h)
@@ -294,7 +305,7 @@ def apply_pos_layout(req: PosLayoutApplyRequest) -> Tuple[bool, str, int]:
         try:
             affected_count = 0
             for p, changes in plan:
-                if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync):
+                if _apply_changes(cursor, schema, p.codigo, changes, req.mark_cloud_sync, product=p):
                     affected_count += 1
 
             # Só atualizar configpostos se a opção explícita for ativada e a tabela/colunas existirem

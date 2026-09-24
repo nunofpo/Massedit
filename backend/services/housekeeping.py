@@ -144,14 +144,13 @@ def shrink_log_file() -> Dict[str, Any]:
 
     conn = db_manager.get_connection()
     try:
+        conn.autocommit = True
         cursor = conn.cursor()
         # Forçar checkpoint
         cursor.execute("CHECKPOINT")
         # Encolher ficheiro de log
         cursor.execute(f"DBCC SHRINKFILE ({log_name}, 10)")
-        conn.commit()
     except Exception as e:
-        conn.rollback()
         return {
             "success": False,
             "message": f"Erro ao encolher ficheiro de log: {str(e)}",

@@ -186,20 +186,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </select>
           </div>
 
-          {/* FrontOffice Filter */}
-          <div className="relative min-w-[110px]">
-            <select
-              value={filters.frontoffice ?? ''}
-              onChange={(e) => onFilterChange({ frontoffice: e.target.value === '' ? undefined : Number(e.target.value), page: 1 })}
-              className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition appearance-none shadow-inner cursor-pointer"
-              title="Filtrar por visibilidade no POS"
-            >
-              <option value="">POS: Todos</option>
-              <option value="1">Visíveis no POS</option>
-              <option value="0">Ocultos no POS</option>
-            </select>
-          </div>
-
           {/* Menu / Composto Filter */}
           <div className="relative min-w-[130px]">
             <select

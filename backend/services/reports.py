@@ -708,134 +708,6 @@ def check_whitespace_desc(cursor, schema: SchemaInfo) -> DataQualityCheck:
     )
 
 
-def _mock_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
-    return [
-        DataQualityCheck(
-            id="suspect_vat_alcohol",
-            title="Bebidas alcoólicas com IVA inferior a 23% (Erro Fiscal CIVA)",
-            description="Segundo o CIVA (verba 3.1 da Lista II), todas as bebidas alcoólicas (vinhos, cervejas, licores, sangrias, etc.) estão obrigatoriamente sujeitas à taxa normal de 23% no serviço de restauração e bebidas. Estes artigos têm taxa intermédia (13%) ou reduzida (6%), incorrendo em risco de infração fiscal e coima perante a AT.",
-            severity="error",
-            count=1,
-            codes=[612],
-            groups=[DataQualityGroup(key="Vinhos (IVA atual: 13%)", codes=[612])],
-            available=True,
-            truncated=False,
-            category="iva"
-        ),
-        DataQualityCheck(
-            id="suspect_vat_soda",
-            title="Refrigerantes com IVA inferior a 23% (Erro Fiscal CIVA)",
-            description="Refrigerantes com gás ou sumos adicionados de açúcares/edulcorantes (Coca-Cola, Fanta, Sprite, 7Up, Sumol, Ice Tea, etc.) devem ter taxa normal de 23% no serviço de restauração.",
-            severity="error",
-            count=0,
-            codes=[],
-            available=True,
-            truncated=False,
-            category="iva"
-        ),
-        DataQualityCheck(
-            id="suspect_vat_food_at_23",
-            title="Alimentação / Cafetaria com IVA a 23% (Sobretributação)",
-            description="Na restauração (CIVA Lista II, verba 3.1), os serviços de alimentação e cafetaria beneficiam da taxa intermédia de 13%. Estes artigos estão configurados a 23%, gerando cobrança e entrega excessiva de imposto.",
-            severity="warning",
-            count=0,
-            codes=[],
-            available=True,
-            truncated=False,
-            category="iva"
-        ),
-        DataQualityCheck(
-            id="missing_vat_exemption_reason",
-            title="Isenção de IVA sem motivo legal (Erro SAF-T)",
-            description="Artigos com taxa de IVA 0% (ou nula) que não têm código de motivo de isenção (M01-M99) válido. Rejeitado pela AT no SAF-T.",
-            severity="error",
-            count=0,
-            codes=[],
-            available=True,
-            truncated=False,
-            category="iva"
-        ),
-        DataQualityCheck(
-            id="null_vat",
-            title="Artigos sem taxa de IVA definida",
-            description="Artigos que não têm nenhuma taxa de IVA preenchida (p.iva IS NULL).",
-            severity="error",
-            count=0,
-            codes=[],
-            available=True,
-            truncated=False,
-            category="iva"
-        ),
-        DataQualityCheck(
-            id="duplicate_barcode",
-            title="Códigos de barras repetidos",
-            description="O mesmo código de barras está atribuído a mais do que um artigo.",
-            severity="error",
-            count=2,
-            codes=[3299, 3300],
-            groups=[DataQualityGroup(key="1000000032994", codes=[3299, 3300])],
-            available=True,
-            truncated=False,
-            category="codes"
-        ),
-        DataQualityCheck(
-            id="duplicate_plu",
-            title="PLUs / Códigos Alfa duplicados",
-            description="O mesmo PLU / código de teclado está atribuído a mais do que um artigo.",
-            severity="error",
-            count=0,
-            codes=[],
-            available=True,
-            truncated=False,
-            category="codes"
-        ),
-        DataQualityCheck(
-            id="missing_family",
-            title="Artigos sem família associada",
-            description="Artigos cuja família é nula, zero ou inexistente em dbo.familias.",
-            severity="error",
-            count=1,
-            codes=[3308],
-            available=True,
-            truncated=False,
-            category="structure"
-        ),
-        DataQualityCheck(
-            id="empty_short_desc",
-            title="Descrição curta vazia (sem texto no botão POS)",
-            description="Artigos cuja descrição curta para os botões do POS está em branco.",
-            severity="info",
-            count=3,
-            codes=[0, 1, 7001],
-            available=True,
-            truncated=False,
-            category="text"
-        ),
-        DataQualityCheck(
-            id="long_short_desc",
-            title=f"Descrição curta com mais de {short_desc_max} caracteres",
-            description=f"Artigos cuja descrição curta ultrapassa o tamanho recomendado de {short_desc_max} caracteres.",
-            severity="info",
-            count=1,
-            codes=[3298],
-            available=True,
-            truncated=False,
-            category="text"
-        ),
-        DataQualityCheck(
-            id="whitespace_desc",
-            title="Designações com espaços extra no início, fim ou duplos",
-            description="Artigos com espaços desnecessários corrigíveis pelo modo Ortografia.",
-            severity="info",
-            count=1,
-            codes=[7001],
-            available=True,
-            truncated=False,
-            category="text"
-        )
-    ]
-
-
 def check_image_border_issues(cursor, schema: SchemaInfo) -> DataQualityCheck:
     check_id = "image_border_issues"
     title = "Imagens com bordas cinzentas ou não otimizadas"
@@ -937,14 +809,12 @@ def check_missing_vat_exemption_reason(cursor, schema: SchemaInfo) -> DataQualit
 
 
 def run_data_quality_report(short_desc_max: int = 20) -> List[DataQualityCheck]:
-    """Executa todas as verificações de qualidade de dados sobre a base de dados SQL Server."""
-    if db_manager.use_mock:
-        return _mock_data_quality_report(short_desc_max)
-    try:
-        conn = db_manager.get_connection()
-    except Exception:
-        return _mock_data_quality_report(short_desc_max)
+    """Executa todas as verificações de qualidade de dados sobre a base de dados SQL Server.
 
+    Um erro de ligação propaga para o cliente (HTTP 503 com mensagem legível): um relatório
+    fiscal nunca pode apresentar dados fictícios como se fossem da base de dados do cliente.
+    """
+    conn = db_manager.get_connection()
     try:
         cursor = conn.cursor()
         schema = db_manager.get_schema(cursor)

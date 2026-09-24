@@ -64,6 +64,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [familia, setFamilia] = useState<number | ''>('');
   const [subfamilia, setSubfamilia] = useState<number | ''>('');
   const [iva, setIva] = useState<number | ''>('');
+  const [iva2, setIva2] = useState<number | ''>('');
   const [motivoIsencao, setMotivoIsencao] = useState('');
   const [centroProd, setCentroProd] = useState<number | ''>('');
   const [centrosSecundarios, setCentrosSecundarios] = useState<number[]>([]);
@@ -80,7 +81,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [dosedesc, setDosedesc] = useState('');
 
   // POS appearance
-  const [frontoffice, setFrontoffice] = useState<number>(1);
   const [posicaofront, setPosicaofront] = useState<number>(0);
   const [fundoHex, setFundoHex] = useState('#FFFFFF');
   const [letraHex, setLetraHex] = useState('#000000');
@@ -103,6 +103,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setFamilia(product.familias !== undefined && product.familias !== null ? product.familias : '');
       setSubfamilia(product.subfamilia !== undefined && product.subfamilia !== null ? product.subfamilia : '');
       setIva(product.iva !== undefined && product.iva !== null ? product.iva : '');
+      setIva2(product.iva2 !== undefined && product.iva2 !== null ? product.iva2 : '');
       setMotivoIsencao(product.isencao || '');
       setCentroProd(product.centro_prod !== undefined && product.centro_prod !== null ? product.centro_prod : '');
 
@@ -131,7 +132,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setMeiadosedesc(product.meiadosedesc || '');
       setDosedesc(product.dosedesc || '');
 
-      setFrontoffice(product.frontoffice !== undefined ? product.frontoffice : 1);
       setPosicaofront(product.posicaofront || 0);
       setFundoHex(product.fundo_hex || '#FFFFFF');
       setLetraHex(product.letra_hex || '#000000');
@@ -213,6 +213,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         familia: familia === '' ? null : Number(familia),
         subfamilia: subfamilia === '' ? null : Number(subfamilia),
         iva: iva === '' ? 0 : Number(iva),
+        iva2: iva2 === '' ? 0 : Number(iva2),
         motivo_isencao: motivoIsencao.trim(),
         centro_prod: centroProd === '' ? 0 : Number(centroProd),
         centros_prod_secundarios: centrosSecundarios,
@@ -232,7 +233,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         precomeia: precomeia,
         meiadosedesc: meiadosedesc.trim(),
         dosedesc: dosedesc.trim(),
-        frontoffice: frontoffice,
         posicaofront: posicaofront,
         fundo_hex: fundoHex,
         letra_hex: letraHex,
@@ -742,23 +742,44 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Percent className="w-3.5 h-3.5 text-slate-500" />
-                    Taxa de IVA:
-                  </label>
-                  <select
-                    value={iva}
-                    onChange={(e) => setIva(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-                  >
-                    <option value="">(Sem Taxa)</option>
-                    {vats.map((v) => (
-                      <option key={v.codigo} value={v.factor}>
-                        {v.descricao} ({v.factor}%)
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Percent className="w-3.5 h-3.5 text-indigo-600" />
+                      Taxa de IVA 1 (Principal):
+                    </label>
+                    <select
+                      value={iva}
+                      onChange={(e) => setIva(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
+                    >
+                      <option value="">(Sem Taxa)</option>
+                      {vats.map((v) => (
+                        <option key={v.codigo} value={v.factor}>
+                          {v.descricao} ({v.factor}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Percent className="w-3.5 h-3.5 text-purple-600" />
+                      Taxa de IVA 2 (Secundário/Takeaway):
+                    </label>
+                    <select
+                      value={iva2}
+                      onChange={(e) => setIva2(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-purple-100 focus:border-purple-600"
+                    >
+                      <option value="">(Sem Taxa 2)</option>
+                      {vats.map((v) => (
+                        <option key={v.codigo} value={v.factor}>
+                          {v.descricao} ({v.factor}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -949,13 +970,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={frontoffice === 1}
-                        onChange={(e) => setFrontoffice(e.target.checked ? 1 : 0)}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                        checked={descontinuado === 1}
+                        onChange={(e) => setDescontinuado(e.target.checked ? 1 : 0)}
+                        className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
                       />
                       <div>
-                        <div className="text-xs font-bold text-slate-800">Visível no Frontoffice (POS)</div>
-                        <div className="text-[11px] text-slate-500">Apresenta o botão no ecrã de registo de pedidos</div>
+                        <div className="text-xs font-bold text-slate-800">Artigo Descontinuado</div>
+                        <div className="text-[11px] text-slate-500">Oculta o botão do ecrã de registo de pedidos (é este o mecanismo de visibilidade do ZSRest)</div>
                       </div>
                     </label>
                   </div>
@@ -1080,20 +1101,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {activeTab === 'rules' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Descontinuado */}
-                <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={descontinuado === 1}
-                    onChange={(e) => setDescontinuado(e.target.checked ? 1 : 0)}
-                    className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 mt-0.5"
-                  />
-                  <div>
-                    <div className="text-xs font-bold text-slate-800">Artigo Descontinuado</div>
-                    <div className="text-[11px] text-slate-500">Oculta o artigo do sistema para não ser vendido ou faturado</div>
-                  </div>
-                </label>
-
                 {/* Bloqueado no POS */}
                 <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/70 transition cursor-pointer">
                   <input

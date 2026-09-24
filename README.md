@@ -34,20 +34,21 @@ O MassEdit foi concebido com proteções ativas que tornam impossível danificar
 - **PLUs e Códigos de Barras**: Atribuição direta ou sequencial de códigos.
 - **Seleção Global**: Permite selecionar todos os artigos correspondentes a um filtro de pesquisa, mesmo entre várias páginas de resultados.
 
-### 2. 📱 Editor da Ementa Digital (ZoneSoft QR)
-Gestão direta da tabela `dbo.ementa_digital_produtos` para ementas digitais acedidas por QR Code:
-- **Descrições Detalhadas de Artigos**:
-  - Editor individual com caixa de texto ampla e confortável.
-  - **Assistente de Sugestões Culinárias (Varinha Mágica)**: Gera propostas gastronómicas apelativas com base no tipo de prato (peixes, carnes nobres, francesinhas, sopas, sobremesas).
-  - **Atalhos Rápidos**: Botões de 1 clique para acrescentar notas frequentes (`+ Grelhado na brasa`, `+ Acompanha batata frita e arroz`, `+ Ideal para partilhar`).
-  - Edição e cópia de descrições curtas do POS em massa.
+### 2. 📱 Ementa Digital (ZoneSoft QR) — Imagens e Traduções
+Gestão da tabela `dbo.ementa_digital_produtos` para ementas digitais acedidas por QR Code.
+A interface é dedicada a imagens e traduções (ver secção 3):
 - **Colocação e Gestão de Imagens**:
   - Miniaturas na tabela de artigos.
-  - Upload de imagens do computador (JPG, PNG, WebP) ou indicação de link externo (`image_url`), gravadas de forma otimizada.
-- **Importação do ZoneSoft**:
-  - Sincronização direta de artigos de `dbo.produtos` para `dbo.ementa_digital_produtos` em 1 clique (por família ou artigos selecionados).
-- **Visibilidade, Destaques e Alergénios**:
-  - Toggles rápidos para tornar visível/oculto, marcar destaques e indicar alergénios e dietas (🌾 Glúten, 🥛 Lactose, 🥗 Vegetariano, 🌶️ Picante).
+  - Upload de imagens do computador (JPG, PNG, WebP), gravadas de forma otimizada (máx. 600x600 px).
+  - Editor de imagem com rotação e enquadramento 1:1 sobre fundo branco puro.
+  - **Correção em Lote**: deteta e corrige automaticamente bordas cinzentas, transparências mal compostas e dimensões excessivas.
+- **Pesquisa e Filtragem**: por família da ementa, visibilidade e presença de imagem ou de registo na ementa.
+
+> **Nota**: a edição de descrições, o assistente de sugestões culinárias, os toggles de
+> alergénios e a importação de artigos do POS existem na API REST
+> (`/api/ementa-digital/product/{codigo}`, `/suggest-description`, `/preview`, `/apply`,
+> `/import-from-pos`) mas **não têm interface gráfica** — a Ementa Digital foi focada no
+> assistente de tradução. Utilize-os diretamente por HTTP se necessário.
 
 ### 3. 🌍 Assistente de Tradução Multilíngue de Ementas
 Gestão da tabela `dbo.ementa_digital_traducoes`:

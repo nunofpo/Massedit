@@ -65,6 +65,8 @@ class ProductItem(BaseModel):
     subfamilia_desc: Optional[str] = ""
     iva: Optional[float] = None
     iva_desc: Optional[str] = ""
+    iva2: Optional[float] = None
+    iva2_desc: Optional[str] = ""
     isencao: Optional[str] = ""
     centro_prod: Optional[int] = None  # Centro de Produção Primário (dbo.produtos.cozinha)
     centro_prod_desc: Optional[str] = ""
@@ -206,13 +208,18 @@ class BulkEditRequest(BaseModel):
     # Imposto / IVA
     apply_iva: bool = False
     new_iva: Optional[float] = None  # Taxa (factor) de IVA existente em dbo.iva
+    apply_iva2: bool = False
+    new_iva2: Optional[float] = None  # Taxa 2 (factor) de IVA em dbo.produtos.iva2
     
     # Estado / Visibilidade / Posição Frontoffice
     apply_bloqueado: bool = False
     new_bloqueado: Optional[int] = None  # 0 ou 1
     
-    apply_frontoffice: bool = False
-    new_frontoffice: Optional[int] = None  # 0 ou 1
+    # No ZoneSoft ZSRest a visibilidade de um artigo no ecrã de vendas é `descontinuado`
+    # (0 = ativo/visível, 1 = descontinuado/oculto). A coluna `frontoffice` existe em
+    # dbo.familias, não em dbo.produtos, pelo que não serve para esconder artigos.
+    apply_descontinuado: bool = False
+    new_descontinuado: Optional[int] = None  # 0 = Ativo (visível no POS), 1 = Descontinuado (oculto)
 
     apply_posicaofront: bool = False
     new_posicaofront: Optional[int] = None  # número inteiro
@@ -229,6 +236,7 @@ class SingleProductUpdateRequest(BaseModel):
     familia: Optional[int] = None
     subfamilia: Optional[int] = None
     iva: Optional[float] = None
+    iva2: Optional[float] = None
     motivo_isencao: Optional[str] = None
     centro_prod: Optional[int] = None
     pvp1: Optional[float] = None
