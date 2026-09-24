@@ -5,9 +5,20 @@ import io
 import html
 import json
 import math
-import unicodedata
-from datetime import datetime
+from datetime import datetime, date, time
+from decimal import Decimal
 from typing import List, Dict, Any, Optional, Tuple, Set, Iterable
+
+
+def _backup_json_default(obj: Any) -> Any:
+    """Serializador de recurso para tipos SQL Server (datetime, date, Decimal, bytes)."""
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (bytes, bytearray)):
+        return obj.hex()
+    return str(obj)
 
 from backend.models import (
     ProductFilter, ProductItem, BulkEditRequest, BulkEditPreviewResponse,
@@ -2368,7 +2379,7 @@ def create_backup_snapshot(products: List[ProductItem], description: str,
     os.makedirs(BACKUP_DIR, exist_ok=True)
     tmp_path = filepath + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(snapshot_data, f, indent=2, ensure_ascii=False)
+        json.dump(snapshot_data, f, indent=2, ensure_ascii=False, default=_backup_json_default)
     os.replace(tmp_path, filepath)
     return filename
 

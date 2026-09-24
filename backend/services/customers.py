@@ -668,7 +668,17 @@ def delete_customer(codigo: int) -> Tuple[bool, str]:
             cursor.execute("SELECT * FROM dbo.clientes WHERE codigo = ?", (codigo,))
             col_names = [col[0] for col in cursor.description]
             c_data = cursor.fetchone()
-            backup_dict = dict(zip(col_names, c_data)) if c_data else {"codigo": codigo, "nome": cust_name}
+            if c_data:
+                backup_dict = {}
+                for col_name, val in zip(col_names, c_data):
+                    if hasattr(val, "isoformat"):
+                        backup_dict[col_name] = val.isoformat()
+                    elif isinstance(val, (bytes, bytearray)):
+                        backup_dict[col_name] = val.hex()
+                    else:
+                        backup_dict[col_name] = val
+            else:
+                backup_dict = {"codigo": codigo, "nome": cust_name}
             create_backup_snapshot(
                 products=[],
                 description=f"Eliminação do cliente #{codigo} ({cust_name})",

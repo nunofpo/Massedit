@@ -381,6 +381,45 @@ class TestRegressoes(unittest.TestCase):
         self.assertIn("detail", res.json())
         self.assertNotIsInstance(res.json(), list)
 
+    def test_backup_snapshot_serializa_datetime_decimal_e_bytes(self):
+        """create_backup_snapshot deve serializar datetime, date, Decimal e bytes sem erro de JSON."""
+        from datetime import datetime, date
+        from decimal import Decimal
+        from backend.services.products import create_backup_snapshot, BACKUP_DIR
+        import json
+        import os
+
+        cliente_com_datas = {
+            "codigo": 2524,
+            "nome": "Hellen Torres",
+            "datanascimento": datetime(1990, 5, 20, 14, 30, 0),
+            "dataregisto": date(2023, 1, 15),
+            "saldo": Decimal("125.50"),
+            "foto_bytes": b"\xde\xad\xbe\xef"
+        }
+
+        filename = create_backup_snapshot(
+            products=[],
+            description="Teste de serialização de tipos não standard",
+            clientes=[cliente_com_datas]
+        )
+        self.assertTrue(filename.endswith(".json"))
+
+        filepath = os.path.join(BACKUP_DIR, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.assertEqual(len(data.get("clientes", [])), 1)
+            c = data["clientes"][0]
+            self.assertEqual(c["codigo"], 2524)
+            self.assertEqual(c["datanascimento"], "1990-05-20T14:30:00")
+            self.assertEqual(c["dataregisto"], "2023-01-15")
+            self.assertEqual(c["saldo"], 125.50)
+            self.assertEqual(c["foto_bytes"], "deadbeef")
+        finally:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
 
 if __name__ == "__main__":
     unittest.main()
