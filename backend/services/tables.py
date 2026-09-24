@@ -31,7 +31,15 @@ MOCK_TABLES = [
 
 def _get_salas_dict(cursor, schema: SchemaInfo) -> Dict[int, str]:
     salas_map: Dict[int, str] = {}
-    if "salas" in schema:
+    if "zonas" in schema:
+        try:
+            cursor.execute("SELECT codigo, descricao FROM dbo.zonas")
+            for r in cursor.fetchall():
+                if r[0] is not None:
+                    salas_map[int(r[0])] = str(r[1] or "").strip()
+        except Exception:
+            pass
+    elif "salas" in schema:
         try:
             cursor.execute("SELECT codigo, descricao FROM dbo.salas")
             for r in cursor.fetchall():
@@ -51,17 +59,17 @@ def _detect_table_config(schema: SchemaInfo) -> Tuple[str, str, str, Optional[st
         cols = schema["mapamesas"]
         t_name = "mapamesas"
         name_col = "nomeobjecto" if "nomeobjecto" in cols else ("descricao" if "descricao" in cols else "nome")
-        code_col = "codigo" if "codigo" in cols else ("codobjecto" if "codobjecto" in cols else ("objecto" if "objecto" in cols else "codigo"))
-        sala_col = "sala" if "sala" in cols else ("codsala" if "codsala" in cols else None)
-        pos_col = "posicao" if "posicao" in cols else ("ordem" if "ordem" in cols else None)
+        code_col = "numeroobjecto" if "numeroobjecto" in cols else ("codigo" if "codigo" in cols else ("id" if "id" in cols else ("codobjecto" if "codobjecto" in cols else "codigo")))
+        sala_col = "zona" if "zona" in cols else ("sala" if "sala" in cols else ("codsala" if "codsala" in cols else None))
+        pos_col = "posicao" if "posicao" in cols else ("ordem" if "ordem" in cols else ("numeroobjecto" if "numeroobjecto" in cols else None))
         bloq_col = "bloqueada" if "bloqueada" in cols else ("status" if "status" in cols else ("bloqueado" if "bloqueado" in cols else None))
         return t_name, code_col, name_col, sala_col, pos_col, bloq_col
     else:
         cols = schema.get("mesas", {})
         t_name = "mesas"
-        name_col = "descricao" if "descricao" in cols else ("nomeobjecto" if "nomeobjecto" in cols else "descricao")
-        code_col = "codigo"
-        sala_col = "sala" if "sala" in cols else None
+        name_col = "nomemesa" if "nomemesa" in cols else ("descricao" if "descricao" in cols else ("nomeobjecto" if "nomeobjecto" in cols else "descricao"))
+        code_col = "mesa" if "mesa" in cols else ("codigo" if "codigo" in cols else "id")
+        sala_col = "sala" if "sala" in cols else ("zona" if "zona" in cols else None)
         pos_col = "posicao" if "posicao" in cols else ("ordem" if "ordem" in cols else None)
         bloq_col = "bloqueada" if "bloqueada" in cols else ("status" if "status" in cols else ("bloqueado" if "bloqueado" in cols else None))
         return t_name, code_col, name_col, sala_col, pos_col, bloq_col
@@ -308,9 +316,8 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
         if has_mapamesas:
             cols = schema["mapamesas"]
             name_col = "nomeobjecto" if "nomeobjecto" in cols else ("descricao" if "descricao" in cols else "nome")
-            code_col = "codigo" if "codigo" in cols else ("codobjecto" if "codobjecto" in cols else "codigo")
-            has_sala = "sala" in cols or "codsala" in cols
-            sala_col = "sala" if "sala" in cols else ("codsala" if "codsala" in cols else None)
+            code_col = "numeroobjecto" if "numeroobjecto" in cols else ("codigo" if "codigo" in cols else ("id" if "id" in cols else ("codobjecto" if "codobjecto" in cols else "codigo")))
+            sala_col = "zona" if "zona" in cols else ("sala" if "sala" in cols else ("codsala" if "codsala" in cols else None))
             has_sync = "sync" in cols
 
             for item in updates_to_apply:
@@ -321,7 +328,7 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
                     sets.append("descricao = ?")
                     params.append(item.descricao.strip())
 
-                if has_sala and sala_col and item.sala is not None:
+                if sala_col and item.sala is not None:
                     sets.append(f"{sala_col} = ?")
                     params.append(item.sala)
 
@@ -333,17 +340,23 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
                 cursor.execute(sql, params)
                 updated_count += cursor.rowcount
 
-        # 2. Atualizar também dbo.mesas (descricao e sync = 1) se a tabela existir
+        # 2. Atualizar também dbo.mesas (nomemesa / descricao e sync = 1) se a tabela existir
         if has_mesas:
             cols = schema["mesas"]
             has_desc = "descricao" in cols
+            has_nomemesa = "nomemesa" in cols
             has_nomeobj = "nomeobjecto" in cols
             has_sync = "sync" in cols
-            has_sala = "sala" in cols
+            mesa_sala_col = "sala" if "sala" in cols else ("zona" if "zona" in cols else None)
+            mesa_code_col = "mesa" if "mesa" in cols else ("codigo" if "codigo" in cols else "id")
 
             for item in updates_to_apply:
                 sets = []
                 params = []
+
+                if has_nomemesa:
+                    sets.append("nomemesa = ?")
+                    params.append(item.descricao.strip())
 
                 if has_desc:
                     sets.append("descricao = ?")
@@ -353,8 +366,8 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
                     sets.append("nomeobjecto = ?")
                     params.append(item.descricao.strip())
 
-                if has_sala and item.sala is not None:
-                    sets.append("sala = ?")
+                if mesa_sala_col and item.sala is not None:
+                    sets.append(f"{mesa_sala_col} = ?")
                     params.append(item.sala)
 
                 if has_sync:
@@ -362,7 +375,7 @@ def update_tables(req: BulkTableUpdateRequest) -> Dict[str, Any]:
 
                 if sets:
                     params.append(item.codigo)
-                    sql = f"UPDATE dbo.mesas SET {', '.join(sets)} WHERE codigo = ?"
+                    sql = f"UPDATE dbo.mesas SET {', '.join(sets)} WHERE {mesa_code_col} = ?"
                     cursor.execute(sql, params)
                     if not has_mapamesas:
                         updated_count += cursor.rowcount
