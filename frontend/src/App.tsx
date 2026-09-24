@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Header } from './components/Header';
+import { Header, ActiveTabSection } from './components/Header';
 import { FilterBar } from './components/FilterBar';
 import { ProductTable } from './components/ProductTable';
 import { BulkEditPanel } from './components/BulkEditPanel';
@@ -81,6 +81,7 @@ export const App: React.FC = () => {
   const [detailProduct, setDetailProduct] = useState<ProductItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [activeReportLabel, setActiveReportLabel] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<ActiveTabSection>('artigos');
 
   // Dry-Run & Apply State
   const [currentRequest, setCurrentRequest] = useState<BulkEditRequest | null>(null);
@@ -466,6 +467,8 @@ export const App: React.FC = () => {
       
       {/* Top Navbar */}
       <Header
+        activeSection={activeSection}
+        onSelectSection={(sec) => setActiveSection(sec)}
         isConnected={isConnected}
         useMock={useMock}
         connectionMsg={connectionMsg}
