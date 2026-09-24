@@ -462,7 +462,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-100 text-slate-900 font-sans">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950">
       
       {/* Top Navbar */}
       <Header
@@ -491,14 +491,14 @@ export const App: React.FC = () => {
 
       {/* Global Notification Banner */}
       {notification && (
-        <div className={`px-6 py-2.5 text-xs font-semibold flex items-center justify-between border-b shadow-sm ${
-          notification.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+        <div className={`px-6 py-2.5 text-xs font-semibold flex items-center justify-between border-b shadow-lg backdrop-blur-md transition ${
+          notification.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
         }`}>
           <span className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            <span className={`w-2 h-2 rounded-full ${notification.type === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-rose-400 shadow-[0_0_8px_#f43f5e]'}`} />
             {notification.text}
           </span>
-          <button onClick={() => setNotification(null)} className="text-xs font-bold underline hover:opacity-80">Fechar</button>
+          <button onClick={() => setNotification(null)} className="text-xs font-bold underline hover:text-white transition">Fechar</button>
         </div>
       )}
 
