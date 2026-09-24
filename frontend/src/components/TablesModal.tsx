@@ -10,12 +10,14 @@ interface TablesModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (msg: string) => void;
+  embedded?: boolean;
 }
 
 export const TablesModal: React.FC<TablesModalProps> = ({
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  embedded = false
 }) => {
   const [tables, setTables] = useState<TableItem[]>([]);
   const [salas, setSalas] = useState<{ codigo: number; descricao: string }[]>([]);
@@ -64,14 +66,14 @@ export const TablesModal: React.FC<TablesModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || embedded) {
       loadTables();
       setEditedNames({});
       setFindText('');
       setReplaceText('');
       setPrefixText('');
     }
-  }, [isOpen, selectedSala]);
+  }, [isOpen, embedded, selectedSala]);
 
   const filteredTables = useMemo(() => {
     return tables.filter(t => {
@@ -194,11 +196,13 @@ export const TablesModal: React.FC<TablesModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !embedded) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden text-slate-100">
+  const modalContent = (
+    <>
+      <div className={`bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 ${
+        embedded ? 'w-full h-full border-0 rounded-none bg-slate-950 shadow-none' : 'w-full max-w-5xl max-h-[90vh]'
+      }`}>
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60">
@@ -548,6 +552,16 @@ export const TablesModal: React.FC<TablesModalProps> = ({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return modalContent;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      {modalContent}
     </div>
   );
 };

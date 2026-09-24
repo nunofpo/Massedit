@@ -90,12 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
             return (
               <button
                 key={sec.id}
-                onClick={() => {
-                  onSelectSection(sec.id);
-                  if (sec.id === 'clientes') onOpenCustomers();
-                  if (sec.id === 'mesas' && onOpenTables) onOpenTables();
-                  if (sec.id === 'ementa') onOpenEmentaDigital();
-                }}
+                onClick={() => onSelectSection(sec.id)}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400/30'

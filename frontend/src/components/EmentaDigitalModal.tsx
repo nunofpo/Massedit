@@ -32,6 +32,7 @@ interface EmentaDigitalModalProps {
   families: Family[];
   onOpenPreview?: (preview: BulkEditPreviewResponse, onConfirm: () => Promise<void>) => void;
   onSuccess: (msg: string) => void;
+  embedded?: boolean;
 }
 
 const ALL_SUPPORTED_LANGUAGES: EmentaLanguage[] = [
@@ -48,7 +49,8 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   isOpen,
   onClose,
   families,
-  onSuccess
+  onSuccess,
+  embedded = false
 }) => {
   // Products list & Pagination
   const [products, setProducts] = useState<EmentaProductItem[]>([]);
@@ -252,17 +254,17 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || embedded) {
       fetchLanguages();
       fetchDigitalStructure();
     }
-  }, [isOpen]);
+  }, [isOpen, embedded]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || embedded) {
       fetchProducts();
     }
-  }, [isOpen, page, selectedFamily, selectedEmentaFamily, hasEmentaFilter]);
+  }, [isOpen, embedded, page, selectedFamily, selectedEmentaFamily, hasEmentaFilter]);
 
   // Handle Search submit
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -929,11 +931,13 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !embedded) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 animate-in fade-in">
-      <div className="bg-white w-[98vw] max-w-[98vw] h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+  const modalContent = (
+    <>
+      <div className={`bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 ${
+        embedded ? 'w-full h-full border-0 rounded-none shadow-none bg-slate-950 text-slate-100 border-none' : 'w-[98vw] max-w-[98vw] h-[95vh]'
+      }`}>
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -2176,14 +2180,24 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
         </div>
       )}
 
-      {/* Modal de Edição de Imagem da Ementa Digital */}
-      <ImageEditorModal
-        isOpen={showImageEditor}
-        onClose={() => setShowImageEditor(false)}
-        product={selectedProductForImage}
-        onSaveSuccess={handleImageSaveSuccess}
-        onSuccessMsg={onSuccess}
-      />
+        {/* Modal de Edição de Imagem da Ementa Digital */}
+        <ImageEditorModal
+          isOpen={showImageEditor}
+          onClose={() => setShowImageEditor(false)}
+          product={selectedProductForImage}
+          onSaveSuccess={handleImageSaveSuccess}
+          onSuccessMsg={onSuccess}
+        />
+    </>
+  );
+
+  if (embedded) {
+    return modalContent;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 animate-in fade-in">
+      {modalContent}
     </div>
   );
 };

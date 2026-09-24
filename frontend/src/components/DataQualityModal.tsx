@@ -11,6 +11,7 @@ interface DataQualityModalProps {
   onClose: () => void;
   onViewArticles: (codes: number[], label: string) => void;
   onSelectArticles: (codes: number[], label: string) => void;
+  embedded?: boolean;
 }
 
 type CategoryFilter = 'all' | 'iva' | 'codes' | 'structure' | 'prices' | 'text';
@@ -28,7 +29,8 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   isOpen,
   onClose,
   onViewArticles,
-  onSelectArticles
+  onSelectArticles,
+  embedded = false
 }) => {
   const [shortDescMax, setShortDescMax] = useState<number>(20);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,10 +59,10 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && !checks && !isLoading) {
+    if ((isOpen || embedded) && !checks && !isLoading) {
       handleRunAnalysis();
     }
-  }, [isOpen]);
+  }, [isOpen, embedded]);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => ({ ...prev, [id]: !prev[id] }));
@@ -154,11 +156,12 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
   }, [checks, selectedCategory]);
 
   // ALWAYS return hooks BEFORE conditional early return
-  if (!isOpen) return null;
+  if (!isOpen && !embedded) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700/80 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+  const modalContent = (
+    <div className={`bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 ${
+      embedded ? 'w-full h-full border-0 rounded-none bg-slate-950 shadow-none' : 'w-full max-w-4xl max-h-[90vh]'
+    }`}>
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
@@ -466,6 +469,15 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
         </div>
 
       </div>
+  );
+
+  if (embedded) {
+    return modalContent;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+      {modalContent}
     </div>
   );
 };

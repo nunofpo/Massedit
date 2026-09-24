@@ -505,62 +505,111 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Top Filter Bar */}
-      <FilterBar
-        filters={filters}
-        families={families}
-        subfamilies={subfamilies}
-        vats={vats}
-        productionCenters={productionCenters}
-        activeReportLabel={activeReportLabel}
-        onFilterChange={handleFilterChange}
-        onResetFilters={handleResetFilters}
-        onExportCSV={handleExportCSV}
-        onImportExcel={() => setIsImportOpen(true)}
-        onOpenMenuImport={() => setIsMenuImportOpen(true)}
-        onPrintLabels={handlePrintLabels}
-        totalItems={totalProducts}
-        selectedCount={selectedCodes.size}
-      />
+      {/* Main Workspace Body depending on Active Section */}
+      {activeSection === 'artigos' && (
+        <>
+          <FilterBar
+            filters={filters}
+            families={families}
+            subfamilies={subfamilies}
+            vats={vats}
+            productionCenters={productionCenters}
+            activeReportLabel={activeReportLabel}
+            onFilterChange={handleFilterChange}
+            onResetFilters={handleResetFilters}
+            onExportCSV={handleExportCSV}
+            onImportExcel={() => setIsImportOpen(true)}
+            onOpenMenuImport={() => setIsMenuImportOpen(true)}
+            onPrintLabels={handlePrintLabels}
+            totalItems={totalProducts}
+            selectedCount={selectedCodes.size}
+          />
 
-      {/* Main Workspace Body */}
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        
-        {/* Left Interactive Table */}
-        <ProductTable
-          products={products}
-          selectedCodes={selectedCodes}
-          priceZones={priceZones}
-          onToggleSelect={handleToggleSelect}
-          onSelectAllPage={handleSelectAllPage}
-          onDeselectAll={handleDeselectAll}
-          onInvertSelection={handleInvertSelection}
-          onSelectAllFiltered={handleSelectAllFiltered}
-          isAllFilteredSelected={selectedCodes.size >= totalProducts && totalProducts > 0}
-          isSelectingAllFiltered={isSelectingAllFiltered}
-          isLoading={isLoadingProducts}
-          currentPage={filters.page}
-          pageSize={filters.page_size}
-          totalCount={totalProducts}
-          onPageChange={(page) => handleFilterChange({ page })}
-          onPageSizeChange={(newSize) => handleFilterChange({ page_size: newSize, page: 1 })}
-          onOpenDetail={handleOpenDetail}
-        />
+          <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <ProductTable
+              products={products}
+              selectedCodes={selectedCodes}
+              priceZones={priceZones}
+              onToggleSelect={handleToggleSelect}
+              onSelectAllPage={handleSelectAllPage}
+              onDeselectAll={handleDeselectAll}
+              onInvertSelection={handleInvertSelection}
+              onSelectAllFiltered={handleSelectAllFiltered}
+              isAllFilteredSelected={selectedCodes.size >= totalProducts && totalProducts > 0}
+              isSelectingAllFiltered={isSelectingAllFiltered}
+              isLoading={isLoadingProducts}
+              currentPage={filters.page}
+              pageSize={filters.page_size}
+              totalCount={totalProducts}
+              onPageChange={(page) => handleFilterChange({ page })}
+              onPageSizeChange={(newSize) => handleFilterChange({ page_size: newSize, page: 1 })}
+              onOpenDetail={handleOpenDetail}
+            />
 
-        {/* Right Bulk Edit Form Panel */}
-        <BulkEditPanel
-          selectedCodes={Array.from(selectedCodes)}
-          pageProductCodes={new Set(products.map(p => p.codigo))}
-          families={families}
-          subfamilies={subfamilies}
-          vats={vats}
-          productionCenters={productionCenters}
-          priceZones={priceZones}
-          onPreview={handleOpenPreview}
-          onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
-        />
+            <BulkEditPanel
+              selectedCodes={Array.from(selectedCodes)}
+              pageProductCodes={new Set(products.map(p => p.codigo))}
+              families={families}
+              subfamilies={subfamilies}
+              vats={vats}
+              productionCenters={productionCenters}
+              priceZones={priceZones}
+              onPreview={handleOpenPreview}
+              onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}
+            />
+          </main>
+        </>
+      )}
 
-      </main>
+      {activeSection === 'clientes' && (
+        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+          <CustomersModal
+            isOpen={true}
+            embedded={true}
+            onClose={() => setActiveSection('artigos')}
+            onSuccess={(msg) => setNotification({ type: 'success', text: msg })}
+          />
+        </main>
+      )}
+
+      {activeSection === 'mesas' && (
+        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+          <TablesModal
+            isOpen={true}
+            embedded={true}
+            onClose={() => setActiveSection('artigos')}
+            onSuccess={(msg) => setNotification({ type: 'success', text: msg })}
+          />
+        </main>
+      )}
+
+      {activeSection === 'ementa' && (
+        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+          <EmentaDigitalModal
+            isOpen={true}
+            embedded={true}
+            families={families}
+            onClose={() => setActiveSection('artigos')}
+            onSuccess={(msg) => setNotification({ type: 'success', text: msg })}
+            onOpenPreview={handleOpenCustomPreview}
+          />
+        </main>
+      )}
+
+      {activeSection === 'ferramentas' && (
+        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+          <DataQualityModal
+            isOpen={true}
+            embedded={true}
+            onClose={() => setActiveSection('artigos')}
+            onViewArticles={(codes, label) => {
+              setActiveSection('artigos');
+              handleViewReportArticles(codes, label);
+            }}
+            onSelectArticles={handleSelectReportArticles}
+          />
+        </main>
+      )}
 
       {/* Modals */}
       <PreviewModal

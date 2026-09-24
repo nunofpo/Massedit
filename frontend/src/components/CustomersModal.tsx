@@ -11,6 +11,7 @@ interface CustomersModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (msg: string) => void;
+  embedded?: boolean;
 }
 
 interface CustomerFormData {
@@ -38,7 +39,8 @@ interface CustomerFormData {
 export const CustomersModal: React.FC<CustomersModalProps> = ({
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  embedded = false
 }) => {
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -86,13 +88,13 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || embedded) {
       loadCustomers();
       setSelectedCustomer(null);
       setFormData(null);
       setLookupResult(null);
     }
-  }, [isOpen, onlyInvalid]);
+  }, [isOpen, embedded, onlyInvalid]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,11 +286,13 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
     localStorage.setItem('nif_pt_api_key', val);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !embedded) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-white border border-slate-200 w-full max-w-7xl max-h-[94vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-800">
+  const modalContent = (
+    <>
+      <div className={`bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-800 ${
+        embedded ? 'w-full h-full border-0 rounded-none shadow-none bg-slate-950 text-slate-100' : 'w-full max-w-7xl max-h-[94vh]'
+      }`}>
         
         {/* Header */}
         <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
@@ -1114,6 +1118,16 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
         </div>
       )}
 
+    </>
+  );
+
+  if (embedded) {
+    return modalContent;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      {modalContent}
     </div>
   );
 };
