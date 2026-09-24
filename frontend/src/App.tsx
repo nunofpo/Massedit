@@ -26,6 +26,27 @@ import {
 
 
 export const App: React.FC = () => {
+  // Theme State ('light' | 'dark', default 'light')
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('massedit_theme');
+    return (saved === 'dark' || saved === 'light') ? saved : 'light';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('massedit_theme', theme);
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(theme);
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {
+      console.error('Error saving theme preference', e);
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
   // DB Config State
   const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
     server: 'localhost',
@@ -473,6 +494,8 @@ export const App: React.FC = () => {
         useMock={useMock}
         connectionMsg={connectionMsg}
         zsSyncStatus={zsSyncStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onOpenConfig={() => setIsConfigOpen(true)}
         onOpenBackups={() => setIsBackupsOpen(true)}
         onOpenFamilyColors={() => setIsFamilyColorsOpen(true)}

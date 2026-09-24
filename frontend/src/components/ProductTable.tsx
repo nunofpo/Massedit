@@ -351,7 +351,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       {/* Popover PVP 1..10 */}
                       {activePvpPopover === product.codigo && (
                         <div
-                          className="absolute right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-2xl min-w-[320px] max-w-[420px] text-left text-xs text-slate-100 backdrop-blur-xl"
+                          className="absolute right-0 top-full mt-1 z-30 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-2xl min-w-[360px] max-w-[440px] text-left text-xs text-slate-100 backdrop-blur-xl"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="font-bold text-white border-b border-slate-800 pb-1.5 mb-2 flex items-center justify-between">

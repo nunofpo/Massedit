@@ -2,25 +2,330 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================================
+   BASE FONTS & RESET
+   ========================================================= */
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================================================
+   SHARED: SOLID BUTTON TEXT READABILITY
+   Ensure solid color buttons NEVER lose high-contrast white text
+   ========================================================= */
+button[class*="bg-indigo-6"],
+button[class*="bg-indigo-7"],
+button[class*="bg-emerald-6"],
+button[class*="bg-emerald-7"],
+button[class*="bg-rose-6"],
+button[class*="bg-rose-7"],
+button[class*="bg-purple-6"],
+button[class*="bg-purple-7"],
+button[class*="bg-blue-6"],
+button[class*="bg-blue-7"],
+button[class*="bg-amber-6"],
+button[class*="from-indigo-"] {
+  color: #ffffff !important;
+}
+
+button[class*="bg-indigo-6"] *,
+button[class*="bg-indigo-7"] *,
+button[class*="bg-emerald-6"] *,
+button[class*="bg-emerald-7"] *,
+button[class*="bg-rose-6"] *,
+button[class*="bg-rose-7"] *,
+button[class*="bg-purple-6"] *,
+button[class*="bg-purple-7"] *,
+button[class*="bg-blue-6"] *,
+button[class*="bg-blue-7"] *,
+button[class*="from-indigo-"] * {
+  color: #ffffff !important;
+}
+
+/* =========================================================
+   TOM BRANCO NORMAL (LIGHT THEME - DEFAULT)
+   Crisp, clean white cards, dark slate typography (#0f172a)
+   ========================================================= */
+html.light body,
+html:not(.dark) body {
   background-color: #f8fafc;
   color: #0f172a;
 }
 
-/* Custom scrollbar - Clean Light Theme */
-::-webkit-scrollbar {
+/* App container background reset in Light mode */
+html.light .h-screen.bg-slate-950,
+html:not(.dark) .h-screen.bg-slate-950 {
+  background-color: #f8fafc !important;
+  background-image: none !important;
+  color: #0f172a !important;
+}
+
+/* Surface backgrounds */
+html.light .bg-slate-950,
+html:not(.dark) .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+
+html.light .bg-slate-950\/40,
+html:not(.dark) .bg-slate-950\/40,
+html.light .bg-slate-950\/80,
+html:not(.dark) .bg-slate-950\/80 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-slate-900,
+html:not(.dark) .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+html.light .bg-slate-900\/90,
+html:not(.dark) .bg-slate-900\/90 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+html.light .bg-slate-800,
+html:not(.dark) .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-slate-800\/50,
+html:not(.dark) .bg-slate-800\/50,
+html.light .bg-slate-800\/60,
+html:not(.dark) .bg-slate-800\/60,
+html.light .bg-slate-800\/80,
+html:not(.dark) .bg-slate-800\/80 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-slate-700,
+html:not(.dark) .bg-slate-700 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Borders in Light mode */
+html.light .border-slate-800,
+html.light .border-slate-800\/90,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/60,
+html.light .border-slate-700,
+html.light .border-slate-600,
+html:not(.dark) .border-slate-800,
+html:not(.dark) .border-slate-800\/90,
+html:not(.dark) .border-slate-800\/80,
+html:not(.dark) .border-slate-800\/60,
+html:not(.dark) .border-slate-700,
+html:not(.dark) .border-slate-600 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Typography & Contrast in Light mode */
+html.light .text-slate-100,
+html.light .text-slate-200,
+html:not(.dark) .text-slate-100,
+html:not(.dark) .text-slate-200 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-300,
+html:not(.dark) .text-slate-300 {
+  color: #334155 !important;
+}
+
+html.light .text-slate-400,
+html:not(.dark) .text-slate-400 {
+  color: #64748b !important;
+}
+
+html.light h1.text-white,
+html.light h2.text-white,
+html.light h3.text-white,
+html.light th.text-white,
+html:not(.dark) h1.text-white,
+html:not(.dark) h2.text-white,
+html:not(.dark) h3.text-white,
+html:not(.dark) th.text-white {
+  color: #0f172a !important;
+}
+
+/* Standalone white text outside buttons/solid cards in Light mode */
+html.light .text-white:not(button):not(button *):not([class*="bg-indigo-"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-purple-"]):not([class*="bg-blue-"]):not([class*="bg-amber-"]) {
+  color: #0f172a !important;
+}
+
+/* Badge accents readability in Light mode */
+html.light .text-emerald-300,
+html.light .text-emerald-400,
+html:not(.dark) .text-emerald-300,
+html:not(.dark) .text-emerald-400 {
+  color: #059669 !important;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-400,
+html:not(.dark) .text-amber-300,
+html:not(.dark) .text-amber-400 {
+  color: #d97706 !important;
+}
+
+html.light .text-indigo-300,
+html.light .text-indigo-400,
+html:not(.dark) .text-indigo-300,
+html:not(.dark) .text-indigo-400 {
+  color: #4f46e5 !important;
+}
+
+html.light .text-rose-300,
+html.light .text-rose-400,
+html:not(.dark) .text-rose-300,
+html:not(.dark) .text-rose-400 {
+  color: #e11d48 !important;
+}
+
+/* Table header and row hover */
+html.light thead.bg-slate-900,
+html:not(.dark) thead.bg-slate-900 {
+  background-color: #f1f5f9 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+html.light tr.hover\:bg-slate-900\/60:hover,
+html:not(.dark) tr.hover\:bg-slate-900\/60:hover {
+  background-color: #f1f5f9 !important;
+}
+
+/* Form Inputs & Selects in Light mode */
+html.light input.bg-slate-950,
+html.light input.bg-slate-900,
+html.light select.bg-slate-950,
+html.light select.bg-slate-900,
+html.light textarea.bg-slate-950,
+html.light textarea.bg-slate-900,
+html:not(.dark) input.bg-slate-950,
+html:not(.dark) input.bg-slate-900,
+html:not(.dark) select.bg-slate-950,
+html:not(.dark) select.bg-slate-900,
+html:not(.dark) textarea.bg-slate-950,
+html:not(.dark) textarea.bg-slate-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder,
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Neutral Buttons in Light Mode */
+html.light button.bg-slate-800,
+html.light button.bg-slate-900,
+html.light button.bg-slate-950,
+html:not(.dark) button.bg-slate-800,
+html:not(.dark) button.bg-slate-900,
+html:not(.dark) button.bg-slate-950 {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light button.bg-slate-800:hover,
+html.light button.bg-slate-900:hover,
+html.light button.bg-slate-950:hover,
+html:not(.dark) button.bg-slate-800:hover,
+html:not(.dark) button.bg-slate-900:hover,
+html:not(.dark) button.bg-slate-950:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Light Theme Scrollbars */
+html.light ::-webkit-scrollbar,
+html:not(.dark) ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-::-webkit-scrollbar-track {
+html.light ::-webkit-scrollbar-track,
+html:not(.dark) ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
-::-webkit-scrollbar-thumb {
+html.light ::-webkit-scrollbar-thumb,
+html:not(.dark) ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
+html.light ::-webkit-scrollbar-thumb:hover,
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
+/* =========================================================
+   TOM ESCURO (DARK THEME)
+   Deep slate background, high contrast dark surfaces, crisp text
+   ========================================================= */
+html.dark body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+/* Reset any light modals to dark */
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: #334155 !important;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* Inputs inside light modals in dark mode */
+html.dark input.bg-white,
+html.dark select.bg-white,
+html.dark textarea.bg-white,
+html.dark input.bg-slate-50,
+html.dark select.bg-slate-50 {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+/* Dark Theme Scrollbars */
+html.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

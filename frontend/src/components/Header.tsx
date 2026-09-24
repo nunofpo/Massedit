@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Database, RefreshCw, Palette, ClipboardCheck, LayoutGrid, Sparkles,
   Languages, Users, ScrollText, HardDrive, Archive, Utensils,
-  Package, Wrench, ChevronRight, Settings, History
+  Package, Wrench, ChevronRight, Settings, History, Sun, Moon
 } from 'lucide-react';
 
 export type ActiveTabSection = 'artigos' | 'clientes' | 'mesas' | 'ementa' | 'ferramentas';
@@ -29,6 +29,8 @@ interface HeaderProps {
   onOpenDeadProducts: () => void;
   onRefresh: () => void;
   isRefreshing?: boolean;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -52,7 +54,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHousekeeping,
   onOpenDeadProducts,
   onRefresh,
-  isRefreshing = false
+  isRefreshing = false,
+  theme = 'light',
+  onToggleTheme
 }) => {
   const sections = [
     { id: 'artigos' as ActiveTabSection, label: 'Artigos', icon: Package, count: null },
@@ -104,8 +108,33 @@ export const Header: React.FC<HeaderProps> = ({
           })}
         </nav>
 
-        {/* Status Badges */}
+        {/* Status Badges & Theme Toggle */}
         <div className="flex items-center gap-2">
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition cursor-pointer shadow-xs ${
+                theme === 'light'
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+              }`}
+              title={theme === 'light' ? 'Mudar para Tom Escuro' : 'Mudar para Tom Branco'}
+            >
+              {theme === 'light' ? (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Tom Escuro</span>
+                </>
+              ) : (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Tom Branco</span>
+                </>
+              )}
+            </button>
+          )}
+
           <div
             className={`flex items-center gap-2 px-2.5 py-1 rounded-xl text-[11px] font-semibold border backdrop-blur-md transition ${
               isConnected && !useMock
