@@ -1353,13 +1353,13 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                         type="button"
                         onClick={handleBatchAutoTranslate}
                         disabled={isTranslating}
-                        className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 disabled:opacity-50 font-medium px-3 py-1.5 rounded-lg shadow-2xs transition text-xs cursor-pointer"
                         title={`Traduzir todos os ${selectedCodes.size} artigos selecionados na lista`}
                       >
                         {isTranslating ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-500" />
                         ) : (
-                          <Sparkles className="w-3.5 h-3.5" />
+                          <Sparkles className="w-3.5 h-3.5 text-purple-500" />
                         )}
                         <span>Traduzir {selectedCodes.size} em Lote</span>
                       </button>
@@ -1368,13 +1368,13 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                         type="button"
                         onClick={() => handleBatchFixBorders()}
                         disabled={isFixingBorders}
-                        className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 disabled:opacity-50 font-medium px-3 py-1.5 rounded-lg shadow-2xs transition text-xs cursor-pointer"
                         title={`Recortar bordas cinzentas e otimizar imagens dos ${selectedCodes.size} artigos selecionados`}
                       >
                         {isFixingBorders ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
                         ) : (
-                          <Wand2 className="w-3.5 h-3.5" />
+                          <Wand2 className="w-3.5 h-3.5 text-amber-500" />
                         )}
                         <span>Corrigir Bordas ({selectedCodes.size})</span>
                       </button>
@@ -1385,27 +1385,27 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     type="button"
                     onClick={() => handleBatchFixBorders()}
                     disabled={isFixingBorders}
-                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 disabled:opacity-50 font-medium px-3 py-1.5 rounded-lg shadow-2xs transition text-xs cursor-pointer"
                     title="Analisar e otimizar todas as imagens da ementa (remover bordas cinzentas / fundo branco / máx 600x600 px)"
                   >
                     {isFixingBorders ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
                     ) : (
-                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                      <Wand2 className="w-3.5 h-3.5 text-amber-500" />
                     )}
-                    <span>Otimizar Bordas Imagens</span>
+                    <span>Otimizar Bordas</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleAutoTranslate}
                     disabled={!selectedProductForTranslation || isTranslating}
-                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 disabled:opacity-50 font-medium px-3 py-1.5 rounded-lg shadow-2xs transition text-xs cursor-pointer"
                   >
                     {isTranslating ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
                     ) : (
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
                     )}
                     Traduzir com IA
                   </button>
@@ -1414,7 +1414,7 @@ export const EmentaDigitalModal: React.FC<EmentaDigitalModalProps> = ({
                     type="button"
                     onClick={handleSaveTranslations}
                     disabled={!selectedProductForTranslation || isSavingTranslations}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition text-xs"
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold px-3.5 py-1.5 rounded-lg shadow-xs transition text-xs cursor-pointer"
                   >
                     {isSavingTranslations ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />

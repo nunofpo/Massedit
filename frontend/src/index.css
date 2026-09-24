@@ -3,17 +3,98 @@
 @tailwind utilities;
 
 /* =========================================================
+   DESIGN TOKENS (SISTEMA DE TEMAS)
+   ========================================================= */
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-secondary: #f1f5f9;
+  --surface-hover: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-fg: #ffffff;
+
+  /* Badges de Estado (Alto Contraste) */
+  --badge-success-bg: #ecfdf5;
+  --badge-success-fg: #065f46;
+  --badge-success-border: #a7f3d0;
+
+  --badge-warning-bg: #fffbeb;
+  --badge-warning-fg: #92400e;
+  --badge-warning-border: #fde68a;
+
+  --badge-danger-bg: #fef2f2;
+  --badge-danger-fg: #991b1b;
+  --badge-danger-border: #fecaca;
+
+  --badge-info-bg: #eff6ff;
+  --badge-info-fg: #1e40af;
+  --badge-info-border: #bfdbfe;
+
+  --badge-purple-bg: #f5f3ff;
+  --badge-purple-fg: #5b21b6;
+  --badge-purple-border: #ddd6fe;
+
+  --badge-neutral-bg: #f1f5f9;
+  --badge-neutral-fg: #334155;
+  --badge-neutral-border: #cbd5e1;
+}
+
+html.dark {
+  --bg: #020617;
+  --surface: #0f172a;
+  --surface-secondary: #1e293b;
+  --surface-hover: #334155;
+  --text: #f8fafc;
+  --text-muted: #94a3b8;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-fg: #ffffff;
+
+  --badge-success-bg: rgba(16, 185, 129, 0.15);
+  --badge-success-fg: #34d399;
+  --badge-success-border: rgba(16, 185, 129, 0.35);
+
+  --badge-warning-bg: rgba(245, 158, 11, 0.15);
+  --badge-warning-fg: #fbbf24;
+  --badge-warning-border: rgba(245, 158, 11, 0.35);
+
+  --badge-danger-bg: rgba(244, 63, 94, 0.15);
+  --badge-danger-fg: #fb7185;
+  --badge-danger-border: rgba(244, 63, 94, 0.35);
+
+  --badge-info-bg: rgba(99, 102, 241, 0.15);
+  --badge-info-fg: #a5b4fc;
+  --badge-info-border: rgba(99, 102, 241, 0.35);
+
+  --badge-purple-bg: rgba(168, 85, 247, 0.15);
+  --badge-purple-fg: #c084fc;
+  --badge-purple-border: rgba(168, 85, 247, 0.35);
+
+  --badge-neutral-bg: #1e293b;
+  --badge-neutral-fg: #cbd5e1;
+  --badge-neutral-border: #334155;
+}
+
+/* =========================================================
    BASE FONTS & RESET
    ========================================================= */
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   margin: 0;
   padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
 }
 
 /* =========================================================
    SHARED: SOLID BUTTON TEXT READABILITY
-   Ensure solid color buttons NEVER lose high-contrast white text
    ========================================================= */
 button[class*="bg-indigo-6"],
 button[class*="bg-indigo-7"],
@@ -44,9 +125,14 @@ button[class*="from-indigo-"] * {
   color: #ffffff !important;
 }
 
+/* Disabled buttons styling (1.8) */
+button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
 /* =========================================================
-   TOM BRANCO NORMAL (LIGHT THEME - DEFAULT)
-   Crisp, clean white cards, dark slate typography (#0f172a)
+   TOM BRANCO NORMAL (LIGHT THEME)
    ========================================================= */
 html.light body,
 html:not(.dark) body {
@@ -69,9 +155,15 @@ html:not(.dark) .bg-slate-950 {
 }
 
 html.light .bg-slate-950\/40,
-html:not(.dark) .bg-slate-950\/40,
+html.light .bg-slate-950\/50,
+html.light .bg-slate-950\/60,
 html.light .bg-slate-950\/80,
-html:not(.dark) .bg-slate-950\/80 {
+html.light .bg-slate-900\/50,
+html:not(.dark) .bg-slate-950\/40,
+html:not(.dark) .bg-slate-950\/50,
+html:not(.dark) .bg-slate-950\/60,
+html:not(.dark) .bg-slate-950\/80,
+html:not(.dark) .bg-slate-900\/50 {
   background-color: #f1f5f9 !important;
 }
 
@@ -82,7 +174,7 @@ html:not(.dark) .bg-slate-900 {
 
 html.light .bg-slate-900\/90,
 html:not(.dark) .bg-slate-900\/90 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
 }
 
 html.light .bg-slate-800,
@@ -91,10 +183,10 @@ html:not(.dark) .bg-slate-800 {
 }
 
 html.light .bg-slate-800\/50,
-html:not(.dark) .bg-slate-800\/50,
 html.light .bg-slate-800\/60,
-html:not(.dark) .bg-slate-800\/60,
 html.light .bg-slate-800\/80,
+html:not(.dark) .bg-slate-800\/50,
+html:not(.dark) .bg-slate-800\/60,
 html:not(.dark) .bg-slate-800\/80 {
   background-color: #f1f5f9 !important;
 }
@@ -154,33 +246,71 @@ html.light .text-white:not(button):not(button *):not([class*="bg-indigo-"]):not(
   color: #0f172a !important;
 }
 
-/* Badge accents readability in Light mode */
-html.light .text-emerald-300,
-html.light .text-emerald-400,
-html:not(.dark) .text-emerald-300,
-html:not(.dark) .text-emerald-400 {
-  color: #059669 !important;
+/* =========================================================
+   CORREÇÃO 1.1, 1.2 & BADGES NO MODO CLARO
+   ========================================================= */
+html.light [class*="bg-emerald-500/2"],
+html.light [class*="bg-emerald-500/1"],
+html:not(.dark) [class*="bg-emerald-500/2"],
+html:not(.dark) [class*="bg-emerald-500/1"] {
+  background-color: var(--badge-success-bg) !important;
+  color: var(--badge-success-fg) !important;
+  border-color: var(--badge-success-border) !important;
+}
+html.light [class*="bg-emerald-500/2"] *,
+html.light [class*="bg-emerald-500/1"] *,
+html:not(.dark) [class*="bg-emerald-500/2"] *,
+html:not(.dark) [class*="bg-emerald-500/1"] * {
+  color: var(--badge-success-fg) !important;
 }
 
-html.light .text-amber-300,
-html.light .text-amber-400,
-html:not(.dark) .text-amber-300,
-html:not(.dark) .text-amber-400 {
-  color: #d97706 !important;
+html.light [class*="bg-amber-500/2"],
+html.light [class*="bg-amber-500/1"],
+html:not(.dark) [class*="bg-amber-500/2"],
+html:not(.dark) [class*="bg-amber-500/1"] {
+  background-color: var(--badge-warning-bg) !important;
+  color: var(--badge-warning-fg) !important;
+  border-color: var(--badge-warning-border) !important;
+}
+html.light [class*="bg-amber-500/2"] *,
+html.light [class*="bg-amber-500/1"] *,
+html:not(.dark) [class*="bg-amber-500/2"] *,
+html:not(.dark) [class*="bg-amber-500/1"] * {
+  color: var(--badge-warning-fg) !important;
 }
 
-html.light .text-indigo-300,
-html.light .text-indigo-400,
-html:not(.dark) .text-indigo-300,
-html:not(.dark) .text-indigo-400 {
-  color: #4f46e5 !important;
+html.light [class*="bg-purple-500/2"],
+html.light [class*="bg-purple-500/3"],
+html:not(.dark) [class*="bg-purple-500/2"],
+html:not(.dark) [class*="bg-purple-500/3"] {
+  background-color: var(--badge-purple-bg) !important;
+  color: var(--badge-purple-fg) !important;
+  border-color: var(--badge-purple-border) !important;
+}
+html.light [class*="bg-purple-500/2"] *,
+html.light [class*="bg-purple-500/3"] *,
+html:not(.dark) [class*="bg-purple-500/2"] *,
+html:not(.dark) [class*="bg-purple-500/3"] * {
+  color: var(--badge-purple-fg) !important;
 }
 
-html.light .text-rose-300,
-html.light .text-rose-400,
-html:not(.dark) .text-rose-300,
-html:not(.dark) .text-rose-400 {
-  color: #e11d48 !important;
+/* Correção 1.6: Caixa de Auditoria Fiscal de IVA (CIVA) */
+html.light .bg-amber-950\/30,
+html:not(.dark) .bg-amber-950\/30 {
+  background-color: #fffbeb !important;
+  border-color: #f59e0b !important;
+}
+html.light .bg-amber-950\/30 div,
+html.light .bg-amber-950\/30 p,
+html.light .bg-amber-950\/30 span,
+html:not(.dark) .bg-amber-950\/30 div,
+html:not(.dark) .bg-amber-950\/30 p,
+html:not(.dark) .bg-amber-950\/30 span {
+  color: #78350f !important;
+}
+html.light .bg-amber-950\/30 button,
+html:not(.dark) .bg-amber-950\/30 button {
+  color: inherit;
 }
 
 /* Table header and row hover */
@@ -264,14 +394,13 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 
 /* =========================================================
    TOM ESCURO (DARK THEME)
-   Deep slate background, high contrast dark surfaces, crisp text
    ========================================================= */
 html.dark body {
   background-color: #020617;
   color: #f8fafc;
 }
 
-/* Reset any light modals to dark */
+/* Reset light modal classes to dark mode */
 html.dark .bg-white {
   background-color: #0f172a !important;
 }

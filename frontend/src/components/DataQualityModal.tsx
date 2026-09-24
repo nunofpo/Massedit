@@ -238,7 +238,7 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
 
         {/* Category Filter Tabs */}
         {checks && (
-          <div className="px-6 py-2.5 bg-slate-950/60 border-b border-slate-800 flex items-center gap-2 overflow-x-auto text-xs">
+          <div className="px-6 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center gap-2 overflow-x-auto text-xs">
             {CATEGORIES.map(cat => {
               const Icon = cat.icon;
               const count = categoryIssuesCount[cat.id];
@@ -309,13 +309,13 @@ export const DataQualityModal: React.FC<DataQualityModalProps> = ({
             <div className="space-y-3">
               {/* Special Fiscal Compliance Banner for IVA */}
               {(selectedCategory === 'iva' || (selectedCategory === 'all' && ivaAnomalyCodes.length > 0)) && (
-                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md mb-3">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md mb-3">
                   <div className="space-y-1">
-                    <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                      <Scale className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                      <Scale className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                       <span>Auditoria Fiscal de IVA (CIVA - Lista II, Verba 3.1)</span>
                     </div>
-                    <p className="text-amber-200/80 text-[11px] leading-relaxed">
+                    <p className="text-amber-800 dark:text-amber-200/80 text-[11px] leading-relaxed">
                       Segundo o Código do IVA (CIVA), as <strong>bebidas alcoólicas</strong> (vinhos, cervejas, sangrias, licores) e os <strong>refrigerantes com gás/açúcares</strong> estão obrigatoriamente sujeitos à taxa normal de <strong>23%</strong> na restauração. Serviços de alimentação e cafetaria beneficiam da taxa intermédia de <strong>13%</strong>.
                     </p>
                   </div>

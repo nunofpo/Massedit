@@ -1934,9 +1934,10 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({
         <button
           disabled={selectedCount === 0}
           onClick={handleRunPreview}
-          className="w-full bg-gradient-to-r from-indigo-600 to-amber-600 hover:from-indigo-500 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-indigo-950/50 flex items-center justify-center gap-2 transition cursor-pointer"
+          title={selectedCount === 0 ? "Selecione pelo menos 1 artigo para simular" : `Simular e aplicar alterações a ${selectedCount} artigos selecionados`}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-800 disabled:text-slate-500 disabled:border disabled:border-slate-700/60 disabled:shadow-none disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
         >
-          <Play className="w-4 h-4 fill-white" />
+          <Play className="w-4 h-4 fill-current" />
           Simular & Aplicar Alterações ({selectedCount} Artigos)
         </button>
       </div>

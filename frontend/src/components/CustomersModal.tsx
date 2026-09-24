@@ -395,99 +395,111 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
         {/* Main Content Area: Split View */}
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           
-          {/* Left Table: Customers List */}
-          <div className="flex-1 overflow-auto border-r border-slate-200 bg-white">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase tracking-wider z-5">
-                <tr>
-                  <th className="p-2.5 w-16">Cód.</th>
-                  <th className="p-2.5">Nome / Designação</th>
-                  <th className="p-2.5 w-28">NIF</th>
-                  <th className="p-2.5 w-28">Estado NIF</th>
-                  <th className="p-2.5 w-24 text-center">Vendas</th>
-                  <th className="p-2.5 w-28">Contacto</th>
-                  <th className="p-2.5 w-28">Localidade</th>
-                  <th className="p-2.5 w-20 text-center">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {customers.length === 0 ? (
+          {/* Left Table: Customers List Container */}
+          <div className="flex-1 overflow-hidden flex flex-col bg-white">
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase tracking-wider z-5">
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500">
-                      {isLoading ? 'A carregar clientes...' : 'Nenhum cliente encontrado.'}
-                    </td>
+                    <th className="p-2.5 w-16">Cód.</th>
+                    <th className="p-2.5">Nome / Designação</th>
+                    <th className="p-2.5 w-28">NIF</th>
+                    <th className="p-2.5 w-28">Estado NIF</th>
+                    <th className="p-2.5 w-24 text-center">Vendas</th>
+                    <th className="p-2.5 w-28">Contacto</th>
+                    <th className="p-2.5 w-28">Localidade</th>
+                    <th className="p-2.5 w-20 text-center">Estado</th>
                   </tr>
-                ) : (
-                  customers.map((c) => {
-                    const isSelected = selectedCustomer?.codigo === c.codigo;
-                    const contact = c.telemovel || c.telefone || '-';
-                    const isBlocked = !!c.bloqueado;
-                    const salesCount = c.sales_count ?? 0;
-                    return (
-                      <tr
-                        key={c.codigo}
-                        onClick={() => handleSelectCustomer(c)}
-                        className={`cursor-pointer transition select-none ${
-                          isSelected
-                            ? 'bg-indigo-50/90 font-medium border-l-4 border-indigo-600'
-                            : 'hover:bg-slate-50'
-                        }`}
-                      >
-                        <td className="p-2.5 font-mono font-bold text-slate-700">#{c.codigo}</td>
-                        <td className="p-2.5 font-bold text-slate-900 truncate max-w-[200px]" title={c.nome}>
-                          {c.nome || <span className="text-slate-400 italic">Sem Nome</span>}
-                        </td>
-                        <td className="p-2.5 font-mono font-semibold">
-                          {c.nif || <span className="text-rose-500 italic">Sem NIF</span>}
-                        </td>
-                        <td className="p-2.5">
-                          {c.is_valid_nif ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              {c.nif === '999999990' ? 'Cons. Final' : 'Válido'}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200" title={c.nif_validation_message}>
-                              <AlertCircle className="w-3 h-3 text-rose-600" />
-                              Inválido
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          {salesCount > 0 ? (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200" title={`${salesCount} documento(s) de venda emitidos (SAF-T)`}>
-                              {salesCount} doc{salesCount > 1 ? 's' : ''}
-                            </span>
-                          ) : (
-                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="Sem vendas registadas (pode ser apagado)">
-                              0 vendas
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-slate-600 font-mono text-[11px] truncate max-w-[120px]">{contact}</td>
-                        <td className="p-2.5 text-slate-600 truncate max-w-[120px]">{c.localidade || '-'}</td>
-                        <td className="p-2.5 text-center">
-                          {isBlocked ? (
-                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                              Bloqueado
-                            </span>
-                          ) : (
-                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
-                              Ativo
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {customers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                        {isLoading ? 'A carregar clientes...' : 'Nenhum cliente encontrado.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    customers.map((c) => {
+                      const isSelected = selectedCustomer?.codigo === c.codigo;
+                      const contact = c.telemovel || c.telefone || '-';
+                      const isBlocked = !!c.bloqueado;
+                      const salesCount = c.sales_count ?? 0;
+                      return (
+                        <tr
+                          key={c.codigo}
+                          onClick={() => handleSelectCustomer(c)}
+                          className={`cursor-pointer transition select-none ${
+                            isSelected
+                              ? 'bg-indigo-50/90 font-medium border-l-4 border-indigo-600'
+                              : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="p-2.5 font-mono font-bold text-slate-700">#{c.codigo}</td>
+                          <td className="p-2.5 font-bold text-slate-900 truncate max-w-[200px]" title={c.nome}>
+                            {c.nome || <span className="text-slate-400 italic">Sem Nome</span>}
+                          </td>
+                          <td className="p-2.5 font-mono font-semibold">
+                            {c.nif || <span className="text-rose-500 italic">Sem NIF</span>}
+                          </td>
+                          <td className="p-2.5">
+                            {c.is_valid_nif ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                {c.nif === '999999990' ? 'Cons. Final' : 'Válido'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200" title={c.nif_validation_message}>
+                                <AlertCircle className="w-3 h-3 text-rose-600" />
+                                Inválido
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            {salesCount > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200" title={`${salesCount} documento(s) de venda emitidos (SAF-T)`}>
+                                {salesCount} doc{salesCount > 1 ? 's' : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium" title="Sem vendas registadas (pode ser apagado)">
+                                0 vendas
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-slate-600 font-mono text-[11px] truncate max-w-[120px]">{contact}</td>
+                          <td className="p-2.5 text-slate-600 truncate max-w-[120px]">{c.localidade || '-'}</td>
+                          <td className="p-2.5 text-center">
+                            {isBlocked ? (
+                              <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                                Bloqueado
+                              </span>
+                            ) : (
+                              <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                Ativo
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Global Stats Footer inside table area */}
+            <div className="p-2.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between shrink-0">
+              <div>
+                Total: <strong className="text-slate-800">{totalCount}</strong> • Válidos: <strong className="text-emerald-700">{validCount}</strong> • Inválidos: <strong className="text-rose-700">{invalidCount}</strong>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                🔒 NIF protegido contra edição (SAF-T)
+              </div>
+            </div>
           </div>
 
-          {/* Right Panel: Complete Customer Data & Edit Form */}
-          <div className="w-full md:w-[480px] lg:w-[520px] shrink-0 bg-slate-50 flex flex-col justify-between overflow-hidden border-t md:border-t-0 border-slate-200">
-            {selectedCustomer && formData ? (
+          {/* Right Panel: Complete Customer Data & Edit Form (shown only when selected) */}
+          {selectedCustomer && formData && (
+            <div className="w-full md:w-[480px] lg:w-[520px] shrink-0 bg-slate-50 flex flex-col justify-between overflow-hidden border-t md:border-t-0 md:border-l border-slate-200 shadow-xl animate-in slide-in-from-right-4 duration-150">
               <div className="flex-1 flex flex-col overflow-hidden">
                 
                 {/* Right Panel Header */}
@@ -498,7 +510,7 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
                         <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                           #{formData.codigo}
                         </span>
-                        <h3 className="font-bold text-slate-900 text-sm truncate max-w-[280px]" title={formData.nome}>
+                        <h3 className="font-bold text-slate-900 text-sm truncate max-w-[240px]" title={formData.nome}>
                           {formData.nome || 'Cliente Sem Nome'}
                         </h3>
                       </div>
@@ -513,8 +525,8 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
                           {selectedCustomer.sales_count} Venda(s)
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200" title="Sem vendas registadas no histórico">
-                          0 Vendas
+                        <span className="text-[11px] text-slate-400 font-medium" title="Sem vendas registadas no histórico">
+                          0 vendas
                         </span>
                       )}
                       {formData.bloqueado ? (
@@ -526,6 +538,14 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
                           Ativo no POS
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomer(null)}
+                        className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition ml-1 cursor-pointer"
+                        title="Fechar painel de detalhes"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
@@ -1026,31 +1046,8 @@ export const CustomersModal: React.FC<CustomersModalProps> = ({
                 </div>
 
               </div>
-            ) : (
-              <div className="flex-1 p-8 text-center text-slate-400 flex flex-col items-center justify-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-300 border border-slate-200">
-                  <Users className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-slate-700">Nenhum cliente selecionado</h4>
-                  <p className="text-xs max-w-xs leading-relaxed text-slate-500">
-                    Selecione um cliente na tabela à esquerda para visualizar e editar os dados completos da ficha.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Global Stats Footer */}
-            <div className="p-3 bg-slate-100/90 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
-              <div>
-                Total: <strong>{totalCount}</strong> • Válidos: <strong className="text-emerald-700">{validCount}</strong> • Inválidos: <strong className="text-rose-700">{invalidCount}</strong>
-              </div>
-              <div className="text-[10px] text-slate-400">
-                🔒 NIF protegido contra edição (SAF-T)
-              </div>
             </div>
-
-          </div>
+          )}
         </div>
 
         {/* Footer */}

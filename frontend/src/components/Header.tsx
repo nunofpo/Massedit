@@ -73,13 +73,13 @@ export const Header: React.FC<HeaderProps> = ({
         
         {/* Brand Logo & Name */}
         <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-tr from-indigo-600 to-violet-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+          <div className="bg-gradient-to-tr from-indigo-600 to-indigo-700 p-2 rounded-xl shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
             <Database className="w-5 h-5 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-black text-white tracking-tight flex items-center gap-2">
               MassEdit
-              <span className="text-indigo-400 text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/10 border border-indigo-500/30 font-mono font-semibold">
+              <span className="text-slate-400 text-[10px] px-1.5 py-0.5 rounded bg-slate-800/40 border border-slate-700/50 font-mono font-medium">
                 POS v1.0.1
               </span>
             </h1>
@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => onSelectSection(sec.id)}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400/30'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400/30'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                 }`}
               >
@@ -119,17 +119,17 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
-              title={theme === 'light' ? 'Mudar para Tom Escuro' : 'Mudar para Tom Branco'}
+              title={theme === 'light' ? 'Mudar para Modo Escuro' : 'Mudar para Modo Claro'}
             >
               {theme === 'light' ? (
                 <>
-                  <Moon className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Tom Escuro</span>
+                  <Moon className="w-3.5 h-3.5 text-slate-700" />
+                  <span>Modo Escuro</span>
                 </>
               ) : (
                 <>
                   <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Tom Branco</span>
+                  <span>Modo Claro</span>
                 </>
               )}
             </button>
@@ -177,37 +177,37 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               <button
                 onClick={onRefresh}
-                className="flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 px-3 py-1 rounded-xl border border-slate-700/80 font-medium transition"
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Atualizar lista de artigos da base de dados"
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 Atualizar Artigos
               </button>
 
               <button
                 onClick={onOpenFamilyColors}
-                className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 px-3 py-1 rounded-xl border border-amber-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Gestor de Cores das Famílias"
               >
-                <Palette className="w-3.5 h-3.5 text-amber-400" />
+                <Palette className="w-3.5 h-3.5 text-slate-400" />
                 Cores das Famílias
               </button>
 
               <button
                 onClick={onOpenPosLayout}
-                className="flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-3 py-1 rounded-xl border border-sky-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Pré-visualização e Reordenação dos Botões do POS (ZSRest)"
               >
-                <LayoutGrid className="w-3.5 h-3.5 text-sky-400" />
+                <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
                 Botões do POS
               </button>
 
               <button
                 onClick={onOpenDeadProducts}
-                className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 px-3 py-1 rounded-xl border border-amber-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Inativação em Lote de Artigos Mortos (Sem Vendas)"
               >
-                <Archive className="w-3.5 h-3.5 text-amber-400" />
+                <Archive className="w-3.5 h-3.5 text-slate-400" />
                 Artigos Mortos (Sem Vendas)
               </button>
             </>
@@ -217,9 +217,9 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               <button
                 onClick={onOpenCustomers}
-                className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 px-3.5 py-1 rounded-xl border border-emerald-500/30 font-semibold transition shadow-sm"
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1 rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
               >
-                <Users className="w-3.5 h-3.5 text-emerald-400" />
+                <Users className="w-3.5 h-3.5" />
                 Auditoria de Clientes & Consulta NIF.pt
               </button>
             </>
@@ -230,29 +230,29 @@ export const Header: React.FC<HeaderProps> = ({
               {onOpenTables && (
                 <button
                   onClick={onOpenTables}
-                  className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 px-3.5 py-1 rounded-xl border border-emerald-500/30 font-semibold transition shadow-sm"
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1 rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
                   title="Gestão de Nomes de Mesas (dbo.mapamesas -> nomeobjecto & dbo.mesas)"
                 >
-                  <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+                  <Utensils className="w-3.5 h-3.5" />
                   Gestão de Mesas (mapamesas.nomeobjecto)
                 </button>
               )}
 
               <button
                 onClick={onOpenPosLayout}
-                className="flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-3 py-1 rounded-xl border border-sky-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Reordenação visual dos Botões do POS (ZSRest)"
               >
-                <LayoutGrid className="w-3.5 h-3.5 text-sky-400" />
+                <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
                 Layout Botões POS
               </button>
 
               <button
                 onClick={onOpenZsTheme}
-                className="flex items-center gap-1.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 px-3 py-1 rounded-xl border border-violet-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Editor de Temas ZSRest (.zstheme)"
               >
-                <Palette className="w-3.5 h-3.5 text-violet-400" />
+                <Palette className="w-3.5 h-3.5 text-slate-400" />
                 Editor de Temas ZSRest
               </button>
             </>
@@ -262,19 +262,19 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               <button
                 onClick={onOpenEmentaDigital}
-                className="flex items-center gap-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 px-3.5 py-1 rounded-xl border border-indigo-500/30 font-semibold transition shadow-sm"
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1 rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
                 title="Assistente de Tradução Multilíngue (ZoneSoft POS & Ementa Digital)"
               >
-                <Languages className="w-3.5 h-3.5 text-indigo-400" />
+                <Languages className="w-3.5 h-3.5" />
                 Traduções Multilíngue
               </button>
 
               <button
                 onClick={onOpenMenuImport}
-                className="flex items-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 px-3 py-1 rounded-xl border border-purple-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Importar Ementas (PDF, Fotos, Texto) com Assistente IA"
               >
-                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <Sparkles className="w-3.5 h-3.5 text-slate-400" />
                 Importar Ementa (PDF / Foto)
               </button>
             </>
@@ -284,36 +284,36 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               <button
                 onClick={onOpenDataQuality}
-                className="flex items-center gap-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 px-3 py-1 rounded-xl border border-indigo-500/30 font-semibold transition"
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
                 title="Relatório de Problemas e Qualidade dos Dados"
               >
-                <ClipboardCheck className="w-3.5 h-3.5 text-indigo-400" />
+                <ClipboardCheck className="w-3.5 h-3.5" />
                 Relatório de Qualidade
               </button>
 
               <button
                 onClick={onOpenCashlogyLogs}
-                className="flex items-center gap-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-3 py-1 rounded-xl border border-sky-500/25 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Análise de logs do Cashlogy"
               >
-                <ScrollText className="w-3.5 h-3.5 text-sky-400" />
+                <ScrollText className="w-3.5 h-3.5 text-slate-400" />
                 Logs Cashlogy
               </button>
 
               <button
                 onClick={onOpenHousekeeping}
-                className="flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 px-3 py-1 rounded-xl border border-slate-700/80 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
                 title="Manutenção do SQL Server (Shrink Log e Otimização de Índices)"
               >
-                <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
+                <HardDrive className="w-3.5 h-3.5 text-slate-400" />
                 Manutenção SQL Server
               </button>
 
               <button
                 onClick={onOpenBackups}
-                className="flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 px-3 py-1 rounded-xl border border-slate-700/80 font-semibold transition"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-xl border border-slate-700 text-xs font-semibold transition cursor-pointer shadow-xs"
               >
-                <History className="w-3.5 h-3.5 text-indigo-400" />
+                <History className="w-3.5 h-3.5 text-slate-400" />
                 Backups & Undo
               </button>
             </>

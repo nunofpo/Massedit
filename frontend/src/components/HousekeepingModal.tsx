@@ -223,14 +223,17 @@ export const HousekeepingModal: React.FC<HousekeepingModalProps> = ({ isOpen, on
                     <button
                       onClick={handleShrinkLog}
                       disabled={actionLoading !== null}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-2"
+                      title="Encolhe o ficheiro de log de transações. Requer confirmação."
+                      className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {actionLoading === 'shrink' ? (
                         <>
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" /> A encolher...
                         </>
                       ) : (
-                        'Encolher Log Agora (DBCC SHRINKFILE)'
+                        <>
+                          <ArrowDownCircle className="w-3.5 h-3.5" /> Encolher Log Agora (DBCC SHRINKFILE)
+                        </>
                       )}
                     </button>
                   </div>

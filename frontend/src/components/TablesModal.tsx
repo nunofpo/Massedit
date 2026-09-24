@@ -365,15 +365,15 @@ export const TablesModal: React.FC<TablesModalProps> = ({
       }`}>
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+            <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-500">
               <Utensils className="w-6 h-6" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 Gestão de Mesas e Salas
-                <span className="px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+                <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-full">
                   ZoneSoft POS
                 </span>
               </h2>
@@ -385,14 +385,14 @@ export const TablesModal: React.FC<TablesModalProps> = ({
           
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Toolbar & Filters */}
-        <div className="p-5 border-b border-slate-800 bg-slate-900/50 flex flex-wrap items-center justify-between gap-4">
+        <div className="p-5 border-b border-slate-800 bg-slate-900 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[300px]">
             {/* Search */}
             <div className="relative flex-1 min-w-[220px]">
@@ -402,7 +402,7 @@ export const TablesModal: React.FC<TablesModalProps> = ({
                 placeholder="Pesquisar mesa, número ou sala..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -412,7 +412,7 @@ export const TablesModal: React.FC<TablesModalProps> = ({
               <select
                 value={selectedSala}
                 onChange={e => setSelectedSala(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                className="bg-slate-950 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+                className="bg-slate-950 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
               >
                 <option value="all">Todas as Salas ({salas.length})</option>
                 {salas.map(s => (
@@ -426,23 +426,23 @@ export const TablesModal: React.FC<TablesModalProps> = ({
             <button
               onClick={loadTables}
               disabled={isLoading}
-              className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition"
+              className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition cursor-pointer"
               title="Recarregar mesas"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-400' : ''}`} />
             </button>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowBulkTool(!showBulkTool)}
-              className={`px-3 py-2 text-xs font-semibold rounded-lg border transition flex items-center gap-1.5 ${
+              className={`px-3 py-2 text-xs font-semibold rounded-lg border transition flex items-center gap-1.5 cursor-pointer ${
                 showBulkTool 
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
                   : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
               }`}
             >
-              <ListOrdered className="w-3.5 h-3.5 text-emerald-400" />
+              <ListOrdered className="w-3.5 h-3.5 text-white" />
               Numeração / Lote
             </button>
 
@@ -791,10 +791,10 @@ export const TablesModal: React.FC<TablesModalProps> = ({
                     key={t.codigo}
                     className={`p-4 rounded-xl border transition-all ${
                       isSelected
-                        ? 'ring-2 ring-emerald-500/60 bg-emerald-950/20 border-emerald-500/40'
+                        ? 'ring-2 ring-indigo-500/60 bg-indigo-500/10 border-indigo-500/40'
                         : isModified
-                          ? 'bg-emerald-950/20 border-emerald-500/50 shadow-lg shadow-emerald-950/20'
-                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                          ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
+                          : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -802,22 +802,22 @@ export const TablesModal: React.FC<TablesModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleSingleSelect(t.codigo)}
-                          className="text-slate-400 hover:text-white transition"
+                          className="text-slate-400 hover:text-white transition cursor-pointer"
                         >
                           {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-emerald-400" />
+                            <CheckSquare className="w-4 h-4 text-indigo-500" />
                           ) : (
-                            <Square className="w-4 h-4 text-slate-600" />
+                            <Square className="w-4 h-4 text-slate-400" />
                           )}
                         </button>
-                        <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                          <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <Utensils className="w-3.5 h-3.5 text-indigo-500" />
                           Mesa #{t.codigo}
                         </span>
                       </div>
                       
                       {t.sala_desc && (
-                        <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-800 text-slate-300 rounded-md border border-slate-700">
+                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-slate-800 text-slate-300 rounded-md border border-slate-700">
                           {t.sala_desc}
                         </span>
                       )}
@@ -835,8 +835,8 @@ export const TablesModal: React.FC<TablesModalProps> = ({
                         maxLength={50}
                         className={`w-full px-3 py-2 text-sm rounded-lg border font-medium focus:outline-none transition ${
                           isModified
-                            ? 'bg-emerald-950/40 border-emerald-500 text-emerald-200'
-                            : 'bg-slate-900 border-slate-700 text-slate-100 focus:border-emerald-500'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-300 font-bold focus:border-amber-500'
+                            : 'bg-slate-950 border-slate-700 text-slate-100 focus:border-indigo-500'
                         }`}
                       />
                     </div>
