@@ -5,7 +5,7 @@ from backend.models import (
     PosLayoutProductItem, PosLayoutApplyRequest,
     BulkEditPreviewResponse, ProductDiff, FieldDiff, ProductItem
 )
-from backend.db import db_manager, int_color_to_hex, is_valid_hex_color, SchemaInfo
+from backend.db import db_manager, int_color_to_hex, is_valid_hex_color, hex_to_int_color, SchemaInfo
 from backend.services.products import (
     _schema, _prod_cols, _has_table_cols, _fetch_products_by_codes, _apply_changes,
     create_backup_snapshot, Change, _unique_codes
@@ -150,18 +150,50 @@ def _compute_pos_layout_changes(
     plan: List[Tuple[ProductItem, List[Change]]] = []
     for idx, code in enumerate(codes):
         p = prod_by_code[code]
+        p_changes: List[Change] = []
         new_order = (idx + 1) * req.step
         old_order = int(p.posicaofront or 0)
         if new_order != old_order:
-            ch = Change(
+            p_changes.append(Change(
                 field_name="posicaofront",
                 label="Posição POS",
                 old=old_order,
                 new=new_order,
                 column="ordem",
                 value=new_order
-            )
-            plan.append((p, [ch]))
+            ))
+
+        # Suporte a alteração de cores de fundo e letra dos botões POS
+        if req.colors and (code in req.colors or str(code) in req.colors):
+            c_info = req.colors.get(code) or req.colors.get(str(code))
+            if isinstance(c_info, dict):
+                new_fundo = c_info.get("fundo_hex")
+                new_letra = c_info.get("letra_hex")
+                if new_fundo and is_valid_hex_color(new_fundo):
+                    old_fundo = (p.fundo_hex or "#000000").upper()
+                    if new_fundo.upper() != old_fundo:
+                        p_changes.append(Change(
+                            field_name="fundo_hex",
+                            label="Cor de Fundo",
+                            old=old_fundo,
+                            new=new_fundo.upper(),
+                            column="fundo",
+                            value=hex_to_int_color(new_fundo)
+                        ))
+                if new_letra and is_valid_hex_color(new_letra):
+                    old_letra = (p.letra_hex or "#FFFFFF").upper()
+                    if new_letra.upper() != old_letra:
+                        p_changes.append(Change(
+                            field_name="letra_hex",
+                            label="Cor da Letra",
+                            old=old_letra,
+                            new=new_letra.upper(),
+                            column="letra",
+                            value=hex_to_int_color(new_letra)
+                        ))
+
+        if p_changes:
+            plan.append((p, p_changes))
 
     return plan, fam_desc
 

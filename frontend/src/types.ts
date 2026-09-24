@@ -73,6 +73,7 @@ export interface ProductItem {
   composto?: number;
   is_menu?: boolean;
   menu_levels?: MenuLevelItem[];
+  centros_prod?: { centro: number; informativo: number }[];
 }
 
 export interface MenuOptionItem {
@@ -398,6 +399,7 @@ export interface PosLayoutApplyRequest {
   step?: number;
   mark_cloud_sync?: boolean;
   set_ordem_frontoffice?: boolean;
+  colors?: { [codigo: number]: { fundo_hex: string; letra_hex: string } };
 }
 
 export interface MenuPriceItem {
@@ -602,6 +604,9 @@ export interface CustomerItem {
   datacriacao?: string;
   is_valid_nif: boolean;
   nif_validation_message?: string;
+  sales_count?: number;
+  has_sales?: boolean;
+  can_delete?: boolean;
 }
 
 export interface CustomerAuditResponse {

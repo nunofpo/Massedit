@@ -29,7 +29,8 @@ from backend.models import (
     ZSThemeTransformRequest, SingleProductUpdateRequest
 )
 from backend.services.customers import (
-    get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif
+    get_customers, preview_customer_update, update_customer_data, lookup_nif_pt, validate_pt_nif,
+    delete_customer
 )
 from backend.db import db_manager, describe_db_error
 from backend.services.products import (
@@ -267,6 +268,14 @@ def update_single_customer_endpoint(codigo: int, item: CustomerUpdateItem):
     item.codigo = codigo
     req = BulkCustomerUpdateRequest(customers=[item])
     success, msg, count = update_customer_data(req)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg}
+
+@app.delete("/api/customers/{codigo}")
+def delete_customer_endpoint(codigo: int):
+    """Elimina um cliente no SQL Server se não possuir vendas registadas (com salvaguarda fiscal, backup e sync)."""
+    success, msg = delete_customer(codigo)
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg}

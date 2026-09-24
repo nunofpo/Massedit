@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Save, Tag, Layers, DollarSign, Percent, Palette, Lock, CheckCircle2,
   AlertTriangle, Utensils, Barcode, Hash, ShieldAlert, Eye, Archive,
-  TrendingUp, FolderTree, RefreshCw, Sparkles, Check
+  TrendingUp, FolderTree, RefreshCw, Sparkles, Check, Monitor
 } from 'lucide-react';
 import {
   ProductItem, Family, Subfamily, Vat, MotivoIsencao,
@@ -66,6 +66,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [iva, setIva] = useState<number | ''>('');
   const [motivoIsencao, setMotivoIsencao] = useState('');
   const [centroProd, setCentroProd] = useState<number | ''>('');
+  const [centrosSecundarios, setCentrosSecundarios] = useState<number[]>([]);
+  const [centrosInformativos, setCentrosInformativos] = useState<number[]>([]);
 
   // Prices 1..10
   const [pvps, setPvps] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -103,6 +105,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       setIva(product.iva !== undefined && product.iva !== null ? product.iva : '');
       setMotivoIsencao(product.isencao || '');
       setCentroProd(product.centro_prod !== undefined && product.centro_prod !== null ? product.centro_prod : '');
+
+      const curCentros = product.centros_prod || [];
+      const secs = curCentros.filter((c: any) => Number(c.informativo) === 0).map((c: any) => Number(c.centro));
+      const infos = curCentros.filter((c: any) => Number(c.informativo) === 1).map((c: any) => Number(c.centro));
+      setCentrosSecundarios(secs);
+      setCentrosInformativos(infos);
 
       setPvps([
         product.pvp1 || 0,
@@ -207,6 +215,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         iva: iva === '' ? 0 : Number(iva),
         motivo_isencao: motivoIsencao.trim(),
         centro_prod: centroProd === '' ? 0 : Number(centroProd),
+        centros_prod_secundarios: centrosSecundarios,
+        centros_prod_informativos: centrosInformativos,
         pvp1: pvps[0],
         pvp2: pvps[1],
         pvp3: pvps[2],
@@ -594,11 +604,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </select>
                 </div>
 
-                {/* Centro de Produção */}
+                {/* Centro de Produção Primário */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Utensils className="w-3.5 h-3.5 text-slate-500" />
-                    Centro de Produção / Cozinha:
+                    <Utensils className="w-3.5 h-3.5 text-indigo-600" />
+                    Centro de Produção Primário (Cozinha):
                   </label>
                   <select
                     value={centroProd}
@@ -626,6 +636,84 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <option value="S">S - Serviço</option>
                     <option value="O">O - Outro (Encargos, etc.)</option>
                   </select>
+                </div>
+
+                {/* Centros de Produção Secundários */}
+                <div className="space-y-1.5 md:col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Utensils className="w-3.5 h-3.5 text-indigo-600" />
+                      Centros de Produção Secundários:
+                    </label>
+                    <span className="text-[10px] text-slate-500">Imprime cópia física adicional noutra estação</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {productionCenters.map((cp) => {
+                      const isChecked = centrosSecundarios.includes(cp.codigo);
+                      return (
+                        <button
+                          key={cp.codigo}
+                          type="button"
+                          onClick={() => {
+                            setCentrosSecundarios((prev) =>
+                              prev.includes(cp.codigo)
+                                ? prev.filter((c) => c !== cp.codigo)
+                                : [...prev, cp.codigo]
+                            );
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border cursor-pointer ${
+                            isChecked
+                              ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isChecked ? '✓ ' : ''}{cp.codigo} - {cp.descricao}
+                        </button>
+                      );
+                    })}
+                    {productionCenters.length === 0 && (
+                      <span className="text-xs text-slate-400 italic">Nenhum centro de produção registado.</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Centros de Produção Informativos */}
+                <div className="space-y-1.5 md:col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Monitor className="w-3.5 h-3.5 text-cyan-600" />
+                      Centros de Produção Informativos:
+                    </label>
+                    <span className="text-[10px] text-slate-500">Apenas monitor / ecrã KDS (sem impressão)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {productionCenters.map((cp) => {
+                      const isChecked = centrosInformativos.includes(cp.codigo);
+                      return (
+                        <button
+                          key={cp.codigo}
+                          type="button"
+                          onClick={() => {
+                            setCentrosInformativos((prev) =>
+                              prev.includes(cp.codigo)
+                                ? prev.filter((c) => c !== cp.codigo)
+                                : [...prev, cp.codigo]
+                            );
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border cursor-pointer ${
+                            isChecked
+                              ? 'bg-cyan-600 text-white border-cyan-700 shadow-2xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isChecked ? '✓ ' : ''}{cp.codigo} - {cp.descricao}
+                        </button>
+                      );
+                    })}
+                    {productionCenters.length === 0 && (
+                      <span className="text-xs text-slate-400 italic">Nenhum centro de produção registado.</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

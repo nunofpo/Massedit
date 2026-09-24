@@ -182,6 +182,19 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
         cols_select.append("bloqueado" if "bloqueado" in c_cols else "0 AS bloqueado")
         cols_select.append("CONVERT(VARCHAR(19), datacriacao, 120) AS datacriacao" if "datacriacao" in c_cols else "NULL AS datacriacao")
         
+        # Vendas associadas ao cliente (dbo.documentos e dbo.cf)
+        sales_subqueries = []
+        if "documentos" in schema and "cliente" in schema["documentos"]:
+            sales_subqueries.append("(SELECT COUNT(*) FROM dbo.documentos d WHERE d.cliente = dbo.clientes.codigo)")
+        if "cf" in schema and "cliente" in schema["cf"]:
+            sales_subqueries.append("(SELECT COUNT(*) FROM dbo.cf f WHERE f.cliente = dbo.clientes.codigo)")
+        
+        if sales_subqueries:
+            sales_expr = f"({' + '.join(sales_subqueries)}) AS sales_count"
+        else:
+            sales_expr = "0 AS sales_count"
+        cols_select.append(sales_expr)
+
         where_clauses = []
         params = []
         if search and search.strip():
@@ -226,6 +239,9 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
             obsaviso = str(r[19] or "").strip() if len(r) > 19 else ""
             bloqueado = int(r[20] or 0) if len(r) > 20 else 0
             datacriacao = str(r[21]) if len(r) > 21 and r[21] else None
+            sales_count = int(r[22] or 0) if len(r) > 22 and r[22] is not None else 0
+            has_sales = (sales_count > 0)
+            can_delete = (code > 1 and not has_sales)
             
             clean_nif = re.sub(r'[^0-9]', '', raw_nif)
             if not clean_nif:
@@ -267,7 +283,10 @@ def get_customers(search: Optional[str] = None, only_invalid: bool = False, limi
                     bloqueado=bloqueado,
                     datacriacao=datacriacao,
                     is_valid_nif=is_valid,
-                    nif_validation_message=val_msg
+                    nif_validation_message=val_msg,
+                    sales_count=sales_count,
+                    has_sales=has_sales,
+                    can_delete=can_delete
                 ))
                 
         return CustomerAuditResponse(
@@ -597,3 +616,97 @@ def update_customer_data(req: BulkCustomerUpdateRequest) -> Tuple[bool, str, int
         return False, f"Erro ao atualizar clientes: {str(e)}", 0
     finally:
         conn.close()
+
+
+def delete_customer(codigo: int) -> Tuple[bool, str]:
+    """
+    Elimina um cliente com segurança e conformidade fiscal:
+    - Impede eliminar clientes de sistema (código <= 1).
+    - Impede eliminar clientes com vendas em dbo.documentos ou dbo.cf (integridade SAF-T).
+    - Cria cópia de segurança antes da eliminação.
+    - Remove registos das tabelas auxiliares (moradas, matrículas, saldos, etc.).
+    - Elimina de dbo.clientes.
+    - Regista a eliminação em dbo.clientes_apagar para replicação e sincronização cloud.
+    """
+    if codigo <= 1:
+        return False, "Não é permitido eliminar clientes de sistema (Código 0 ou 1 / Consumidor Final)."
+
+    conn = db_manager.get_connection()
+    try:
+        cursor = conn.cursor()
+        schema = db_manager.get_schema(cursor)
+        if "clientes" not in schema:
+            return False, "A tabela dbo.clientes não existe nesta base de dados."
+
+        # 1. Verificar se o cliente existe
+        cursor.execute("SELECT codigo, nome FROM dbo.clientes WHERE codigo = ?", (codigo,))
+        row = cursor.fetchone()
+        if not row:
+            return False, f"O cliente #{codigo} não foi encontrado na base de dados."
+        cust_name = str(row[1] or "").strip()
+
+        # 2. Verificar se tem vendas associadas (Regra de Salvaguarda Fiscal e SAF-T)
+        sales_cnt = 0
+        if "documentos" in schema and "cliente" in schema["documentos"]:
+            cursor.execute("SELECT COUNT(*) FROM dbo.documentos WHERE cliente = ?", (codigo,))
+            sales_cnt += int(cursor.fetchone()[0] or 0)
+        if "cf" in schema and "cliente" in schema["cf"]:
+            cursor.execute("SELECT COUNT(*) FROM dbo.cf WHERE cliente = ?", (codigo,))
+            sales_cnt += int(cursor.fetchone()[0] or 0)
+
+        if sales_cnt > 0:
+            return False, (
+                f"Não é possível eliminar o cliente #{codigo} ('{cust_name}') porque possui "
+                f"{sales_cnt} documento(s) de venda associado(s). Para salvaguarda fiscal "
+                f"e conformidade com a Autoridade Tributária (SAF-T), clientes com vendas não podem ser apagados."
+            )
+
+        # 3. Snapshot de segurança (Backup)
+        try:
+            cursor.execute("SELECT * FROM dbo.clientes WHERE codigo = ?", (codigo,))
+            col_names = [col[0] for col in cursor.description]
+            c_data = cursor.fetchone()
+            backup_dict = dict(zip(col_names, c_data)) if c_data else {"codigo": codigo, "nome": cust_name}
+            create_backup_snapshot(
+                products=[],
+                description=f"Eliminação do cliente #{codigo} ({cust_name})",
+                clientes=[backup_dict]
+            )
+        except Exception as e:
+            return False, f"Não foi possível criar a cópia de segurança antes de eliminar: {e}"
+
+        # 4. Eliminação atómica de tabelas auxiliares e do cliente
+        aux_tables = [
+            ("clientes_moradas", "cliente"),
+            ("clientes_matriculas", "cliente"),
+            ("clientes_opcoes", "cliente"),
+            ("clientes_reserva_produtos", "clienteid"),
+            ("clientes_logs", "cliente"),
+            ("saldosclientes", "cliente"),
+            ("cartoes", "cliente"),
+            ("taloesdesconto", "cliente"),
+            ("promocoesclientes", "cliente"),
+        ]
+        for tbl, col in aux_tables:
+            if tbl in schema and col in schema[tbl]:
+                cursor.execute(f"DELETE FROM dbo.{tbl} WHERE {col} = ?", (codigo,))
+
+        # Eliminar da tabela principal
+        cursor.execute("DELETE FROM dbo.clientes WHERE codigo = ?", (codigo,))
+
+        # 5. Registar em dbo.clientes_apagar para sincronização de terminais e cloud
+        if "clientes_apagar" in schema and "codigo" in schema["clientes_apagar"]:
+            cursor.execute(
+                "IF NOT EXISTS (SELECT 1 FROM dbo.clientes_apagar WHERE codigo = ?) "
+                "INSERT INTO dbo.clientes_apagar (codigo) VALUES (?)",
+                (codigo, codigo)
+            )
+
+        conn.commit()
+        return True, f"Cliente #{codigo} ('{cust_name}') eliminado com sucesso da base de dados."
+    except Exception as e:
+        conn.rollback()
+        return False, f"Erro ao eliminar cliente #{codigo}: {str(e)}"
+    finally:
+        conn.close()
+

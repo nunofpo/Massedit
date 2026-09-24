@@ -525,6 +525,142 @@ class TestNewFeatures(unittest.TestCase):
         self.assertTrue(success_edit)
         self.assertEqual(count_edit, 1)
 
+    @patch("backend.services.customers.db_manager")
+    @patch("backend.services.customers.create_backup_snapshot")
+    def test_customer_sales_and_deletion(self, mock_backup, mock_db_mgr):
+        """Testa verificação de vendas e eliminação segura de clientes (Request A)."""
+        from backend.services.customers import delete_customer, get_customers
+
+        # 1. Impede eliminar cliente de sistema (código 0 ou 1)
+        succ, msg = delete_customer(1)
+        self.assertFalse(succ)
+        self.assertIn("sistema", msg.lower())
+
+        succ0, msg0 = delete_customer(0)
+        self.assertFalse(succ0)
+
+        # Configurar mock de base de dados
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db_mgr.get_connection.return_value = mock_conn
+        mock_db_mgr.get_schema.return_value = {
+            "clientes": {"codigo": ("int", None), "nome": ("varchar", 100), "contribuinte": ("varchar", 20)},
+            "documentos": {"id": ("int", None), "cliente": ("int", None)},
+            "cf": {"id": ("int", None), "cliente": ("int", None)},
+            "clientes_apagar": {"codigo": ("int", None)}
+        }
+
+        # 2. Impede eliminar cliente que possua vendas associadas
+        mock_cursor.fetchone.side_effect = [
+            (50, "Cliente Com Vendas Lda"), # SELECT codigo, nome FROM clientes
+            (15,), # SELECT COUNT(*) FROM dbo.documentos (15 vendas)
+            (0,),  # SELECT COUNT(*) FROM dbo.cf
+        ]
+        succ_sales, msg_sales = delete_customer(50)
+        self.assertFalse(succ_sales)
+        self.assertIn("venda", msg_sales.lower())
+        self.assertIn("SAF-T", msg_sales)
+
+        # 3. Permite eliminar cliente sem vendas, criando backup e registando em dbo.clientes_apagar
+        mock_cursor.fetchone.side_effect = [
+            (99, "Cliente Sem Vendas"), # SELECT codigo, nome FROM clientes
+            (0,), # documentos count = 0
+            (0,), # cf count = 0
+            (99, "Cliente Sem Vendas", "123456789"), # SELECT * FROM clientes
+        ]
+        mock_cursor.description = [("codigo",), ("nome",), ("contribuinte",)]
+        succ_del, msg_del = delete_customer(99)
+        self.assertTrue(succ_del)
+        self.assertIn("sucesso", msg_del.lower())
+        mock_backup.assert_called()
+        mock_conn.commit.assert_called()
+
+    @patch("backend.services.pos_layout.db_manager")
+    @patch("backend.services.pos_layout._fetch_products_by_codes")
+    def test_pos_layout_button_colors(self, mock_fetch, mock_db_mgr):
+        """Testa alteração de cores dos botões POS (Request B)."""
+        from backend.services.pos_layout import _compute_pos_layout_changes
+        from backend.models import PosLayoutApplyRequest, ProductItem
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db_mgr.get_connection.return_value = mock_conn
+        mock_cursor.fetchone.return_value = ("Cafetaria",)
+
+        prod = ProductItem(
+            codigo=101,
+            descricao="Café Expresso",
+            pvp1=1.20,
+            has_sales=False,
+            can_edit_description=True,
+            familias=5,
+            fundo_hex="#000000",
+            letra_hex="#FFFFFF",
+            posicaofront=1
+        )
+        mock_fetch.return_value = [prod]
+
+        req = PosLayoutApplyRequest(
+            familia=5,
+            order=[101],
+            step=1,
+            colors={
+                101: {
+                    "fundo_hex": "#2563EB",
+                    "letra_hex": "#FFFF00"
+                }
+            }
+        )
+
+        plan, fam_desc = _compute_pos_layout_changes(mock_cursor, req)
+        self.assertEqual(len(plan), 1)
+        p, changes = plan[0]
+        self.assertEqual(p.codigo, 101)
+        # Deve conter alterações de fundo_hex e letra_hex
+        field_names = [ch.field_name for ch in changes]
+        self.assertIn("fundo_hex", field_names)
+        self.assertIn("letra_hex", field_names)
+
+    @patch("backend.services.products.db_manager")
+    @patch("backend.services.products._fetch_products_by_codes")
+    @patch("backend.services.products.create_backup_snapshot")
+    def test_single_product_production_centers(self, mock_backup, mock_fetch, mock_db_mgr):
+        """Testa atualização de centros secundários e informativos na ficha de artigo (Request C)."""
+        from backend.services.products import update_single_product
+        from backend.models import SingleProductUpdateRequest, ProductItem
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db_mgr.get_connection.return_value = mock_conn
+
+        mock_db_mgr.get_schema.return_value = {
+            "produtos": {"codigo": ("int", None), "descricao": ("varchar", 100), "cozinha": ("int", None), "sync": ("int", None)},
+            "produtoscentrosprod": {"codigo": ("int", None), "centro": ("int", None), "informativo": ("int", None)}
+        }
+
+        prod = ProductItem(
+            codigo=200,
+            descricao="Bife da Vazia",
+            pvp1=15.0,
+            has_sales=False,
+            can_edit_description=True,
+            centro_prod=1
+        )
+        mock_fetch.return_value = [prod]
+
+        req = SingleProductUpdateRequest(
+            centro_prod=1,
+            centros_prod_secundarios=[2, 3],
+            centros_prod_informativos=[4]
+        )
+
+        succ, msg, updated = update_single_product(200, req)
+        self.assertTrue(succ)
+        mock_conn.commit.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

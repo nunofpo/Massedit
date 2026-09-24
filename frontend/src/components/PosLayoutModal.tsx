@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, LayoutGrid, AlertTriangle, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-  RotateCcw, Save, Search, Check, Layers, SlidersHorizontal, Eye, EyeOff
+  RotateCcw, Save, Search, Check, Layers, SlidersHorizontal, Eye, EyeOff, Palette
 } from 'lucide-react';
 import { DetailedFamilyItem, PosLayoutProductItem, PosLayoutApplyRequest, BulkEditPreviewResponse } from '../types';
 
@@ -41,6 +41,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
   const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [selectedProductCode, setSelectedProductCode] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Save column preference
@@ -201,6 +202,51 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
     }
   };
 
+  // Color manipulation helpers
+  const isLowContrastHex = (fundoHex: string, letraHex: string): boolean => {
+    if (!fundoHex || !letraHex) return false;
+    const lum = (hex: string) => {
+      const c = hex.replace('#', '');
+      if (c.length !== 6) return 0;
+      const r = parseInt(c.slice(0, 2), 16) / 255;
+      const g = parseInt(c.slice(2, 4), 16) / 255;
+      const b = parseInt(c.slice(4, 6), 16) / 255;
+      const a = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      return 0.2126 * a(r) + 0.7152 * a(g) + 0.0722 * a(b);
+    };
+    const l1 = lum(fundoHex);
+    const l2 = lum(letraHex);
+    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    return ratio < 3.0;
+  };
+
+  const updateProductColor = (code: number, newFundo: string, newLetra: string) => {
+    setProducts(prev => prev.map(p => {
+      if (p.codigo === code) {
+        return {
+          ...p,
+          fundo_hex: newFundo,
+          letra_hex: newLetra,
+          low_contrast: isLowContrastHex(newFundo, newLetra)
+        };
+      }
+      return p;
+    }));
+  };
+
+  const handleCopyFamilyColorsToAll = () => {
+    if (!currentFamilyObj) return;
+    if (!window.confirm(`Deseja aplicar as cores da família '${currentFamilyObj.descricao}' (Fundo: ${currentFamilyObj.fundo_hex}, Letra: ${currentFamilyObj.letra_hex}) a todos os ${products.length} artigos?`)) {
+      return;
+    }
+    setProducts(prev => prev.map(p => ({
+      ...p,
+      fundo_hex: currentFamilyObj.fundo_hex,
+      letra_hex: currentFamilyObj.letra_hex,
+      low_contrast: isLowContrastHex(currentFamilyObj.fundo_hex, currentFamilyObj.letra_hex)
+    })));
+  };
+
   // Check current order vs initial
   const currentOrder = products.map(p => p.codigo);
 
@@ -210,12 +256,18 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
     setIsSimulating(true);
     setErrorMsg(null);
 
+    const colorsMap: { [code: number]: { fundo_hex: string; letra_hex: string } } = {};
+    products.forEach(p => {
+      colorsMap[p.codigo] = { fundo_hex: p.fundo_hex, letra_hex: p.letra_hex };
+    });
+
     const payload: PosLayoutApplyRequest = {
       familia: selectedFamily,
       order: currentOrder,
       step: step,
       mark_cloud_sync: true,
-      set_ordem_frontoffice: setOrdemFrontoffice
+      set_ordem_frontoffice: setOrdemFrontoffice,
+      colors: colorsMap
     };
 
     try {
@@ -266,6 +318,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
   if (!isOpen) return null;
 
   const currentFamilyObj = families.find(f => f.codigo === selectedFamily);
+  const selectedProduct = products.find(p => p.codigo === selectedProductCode);
   const filteredFamilies = families.filter(f =>
     f.descricao.toLowerCase().includes(searchFamily.toLowerCase()) ||
     f.codigo.toString().includes(searchFamily)
@@ -484,6 +537,19 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                   </div>
                 )}
 
+                {/* Quick Action: Copy Family Colors to All */}
+                {currentFamilyObj && products.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleCopyFamilyColorsToAll}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 px-2.5 py-1 rounded-xl shadow-2xs hover:bg-indigo-50 transition cursor-pointer"
+                    title={`Aplica as cores da família (${currentFamilyObj.descricao}: Fundo ${currentFamilyObj.fundo_hex}, Letra ${currentFamilyObj.letra_hex}) a todos os artigos desta família`}
+                  >
+                    <Palette className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Copiar Cores da Família para Todos</span>
+                  </button>
+                )}
+
               </div>
 
               {/* Status & Counts */}
@@ -510,6 +576,100 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
               </div>
             )}
 
+            {/* Barra de Edição de Cores do Botão Selecionado */}
+            {selectedProduct && (
+              <div className="bg-gradient-to-r from-indigo-50 via-slate-50 to-indigo-50 border-b border-indigo-200 px-6 py-2.5 flex items-center justify-between flex-wrap gap-3 animate-in fade-in slide-in-from-top-1 duration-150 shadow-2xs">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                      #{selectedProduct.codigo}
+                    </span>
+                    <strong className="text-xs text-slate-900 truncate max-w-[200px]" title={selectedProduct.descricao}>
+                      {selectedProduct.descricao}
+                    </strong>
+                  </div>
+
+                  <div className="h-4 w-px bg-slate-300 hidden sm:block" />
+
+                  {/* Color pickers */}
+                  <div className="flex items-center gap-3 text-xs font-semibold text-slate-700">
+                    <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-600 text-[11px]">Fundo:</span>
+                      <input
+                        type="color"
+                        value={selectedProduct.fundo_hex || '#000000'}
+                        onChange={(e) => updateProductColor(selectedProduct.codigo, e.target.value, selectedProduct.letra_hex)}
+                        className="w-6 h-6 rounded border border-slate-300 cursor-pointer p-0 bg-transparent"
+                      />
+                      <span className="font-mono text-[11px] text-slate-500 uppercase">{selectedProduct.fundo_hex}</span>
+                    </label>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-600 text-[11px]">Letra:</span>
+                      <input
+                        type="color"
+                        value={selectedProduct.letra_hex || '#FFFFFF'}
+                        onChange={(e) => updateProductColor(selectedProduct.codigo, selectedProduct.fundo_hex, e.target.value)}
+                        className="w-6 h-6 rounded border border-slate-300 cursor-pointer p-0 bg-transparent"
+                      />
+                      <span className="font-mono text-[11px] text-slate-500 uppercase">{selectedProduct.letra_hex}</span>
+                    </label>
+                  </div>
+
+                  {/* Contrast warning */}
+                  {selectedProduct.low_contrast && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300" title="Aviso: baixo contraste entre fundo e letra">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                      Baixo contraste
+                    </span>
+                  )}
+
+                  {/* Quick Color Presets */}
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
+                    {[
+                      { label: 'Preto', fundo: '#000000', letra: '#FFFFFF' },
+                      { label: 'Branco', fundo: '#FFFFFF', letra: '#000000' },
+                      { label: 'Azul', fundo: '#2563EB', letra: '#FFFFFF' },
+                      { label: 'Verde', fundo: '#16A34A', letra: '#FFFFFF' },
+                      { label: 'Laranja', fundo: '#EA580C', letra: '#FFFFFF' },
+                      { label: 'Vermelho', fundo: '#DC2626', letra: '#FFFFFF' },
+                      { label: 'Amarelo', fundo: '#CA8A04', letra: '#000000' },
+                      { label: 'Roxo', fundo: '#9333EA', letra: '#FFFFFF' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => updateProductColor(selectedProduct.codigo, preset.fundo, preset.letra)}
+                        title={`Cor: ${preset.label}`}
+                        className="w-5 h-5 rounded-md border border-slate-300 shadow-2xs hover:scale-110 transition shrink-0 cursor-pointer"
+                        style={{ backgroundColor: preset.fundo }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Copy Family Colors for this single button */}
+                  {currentFamilyObj && (
+                    <button
+                      type="button"
+                      onClick={() => updateProductColor(selectedProduct.codigo, currentFamilyObj.fundo_hex, currentFamilyObj.letra_hex)}
+                      className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 px-2 py-1 rounded-lg shadow-2xs hover:bg-indigo-50 transition cursor-pointer"
+                      title="Copiar as cores da família para este botão"
+                    >
+                      Copiar cor da família
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductCode(null)}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-bold px-2 py-1 rounded hover:bg-white/80 transition cursor-pointer"
+                >
+                  ✕ Concluir
+                </button>
+              </div>
+            )}
+
             {/* Grid Canvas */}
             <div className="flex-1 overflow-y-auto p-6">
               {isLoadingProducts ? (
@@ -533,6 +693,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                     const actualIndex = products.findIndex(x => x.codigo === p.codigo);
                     const newOrderNum = (actualIndex + 1) * step;
                     const isDragged = draggedIndex === actualIndex;
+                    const isSelected = selectedProductCode === p.codigo;
                     const textContent = (displayField === 'descricaocurta' ? p.descricaocurta : p.descricao) || p.descricao;
 
                     return (
@@ -542,10 +703,13 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                         onDragStart={(e) => handleDragStart(e, actualIndex)}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, actualIndex)}
+                        onClick={() => setSelectedProductCode(p.codigo)}
                         className={`group relative rounded-xl border-2 flex flex-col justify-between p-3 h-28 select-none transition shadow-sm cursor-grab active:cursor-grabbing ${
                           isDragged ? 'opacity-30 border-indigo-500 scale-95' : 'hover:shadow-md'
                         } ${
-                          p.bloqueado ? 'border-dashed border-rose-300' : 'border-slate-300/80'
+                          isSelected
+                            ? 'ring-4 ring-indigo-500 ring-offset-2 scale-[1.02] shadow-lg z-10 border-indigo-600'
+                            : p.bloqueado ? 'border-dashed border-rose-300' : 'border-slate-300/80'
                         }`}
                         style={{
                           backgroundColor: p.fundo_hex || '#000000',
@@ -565,6 +729,17 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
 
                           {/* Quick Controls overlay on hover */}
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-black/60 backdrop-blur-xs p-0.5 rounded-md text-white">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProductCode(p.codigo);
+                              }}
+                              className={`p-1 rounded transition ${isSelected ? 'bg-amber-400 text-slate-900' : 'hover:bg-white/20 text-white'}`}
+                              title="Editar cores de fundo e letra deste botão"
+                            >
+                              <Palette className="w-3 h-3" />
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -684,7 +859,7 @@ export const PosLayoutModal: React.FC<PosLayoutModalProps> = ({
                   className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-md shadow-indigo-600/20 transition disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
-                  {isSimulating ? 'A calcular simulação...' : 'Simular & Gravar Ordem'}
+                  {isSimulating ? 'A calcular simulação...' : 'Simular & Gravar Layout (Ordem e Cores)'}
                 </button>
               </div>
 

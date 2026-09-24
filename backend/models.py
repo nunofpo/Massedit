@@ -255,6 +255,8 @@ class SingleProductUpdateRequest(BaseModel):
     vendersemstock: Optional[int] = None
     autoquebra: Optional[int] = None
     tiposaft: Optional[str] = None
+    centros_prod_secundarios: Optional[List[int]] = None
+    centros_prod_informativos: Optional[List[int]] = None
 
 class FieldDiff(BaseModel):
     field_name: str
@@ -390,6 +392,7 @@ class PosLayoutApplyRequest(BaseModel):
     step: int = 1
     mark_cloud_sync: bool = True
     set_ordem_frontoffice: bool = False
+    colors: Optional[Dict[int, Dict[str, str]]] = None
 
 class MenuPriceItem(BaseModel):
     rotulo: str
@@ -706,6 +709,9 @@ class CustomerItem(BaseModel):
     datacriacao: Optional[str] = None
     is_valid_nif: bool = True
     nif_validation_message: Optional[str] = ""
+    sales_count: Optional[int] = 0
+    has_sales: Optional[bool] = False
+    can_delete: Optional[bool] = False
 
 class CustomerAuditResponse(BaseModel):
     total: int

@@ -2139,15 +2139,47 @@ def update_single_product(codigo: int, req: SingleProductUpdateRequest) -> Tuple
             sets.append("tiposaft = ?")
             params.append(req.tiposaft.strip()[:2])
 
-        if not sets:
+        has_centros_change = (
+            (req.centros_prod_secundarios is not None or req.centros_prod_informativos is not None)
+            and "produtoscentrosprod" in schema
+        )
+
+        if not sets and not has_centros_change:
             return True, "Nenhuma alteração a gravar.", cur
 
-        if "sync" in p_cols:
-            sets.append("sync = 1")
+        if sets:
+            if "sync" in p_cols:
+                sets.append("sync = 1")
 
-        params.append(codigo)
-        sql = f"UPDATE dbo.produtos SET {', '.join(sets)} WHERE codigo = ?"
-        cursor.execute(sql, params)
+            params.append(codigo)
+            sql = f"UPDATE dbo.produtos SET {', '.join(sets)} WHERE codigo = ?"
+            cursor.execute(sql, params)
+
+        # Atualizar centros de produção secundários (informativo = 0)
+        if req.centros_prod_secundarios is not None and "produtoscentrosprod" in schema:
+            cursor.execute(
+                "DELETE FROM dbo.produtoscentrosprod WHERE codigo = ? AND ISNULL(CAST(informativo AS INT), 0) = 0",
+                (codigo,)
+            )
+            for cp_code in req.centros_prod_secundarios:
+                if cp_code:
+                    cursor.execute(
+                        "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, 0)",
+                        (codigo, int(cp_code))
+                    )
+
+        # Atualizar centros de produção informativos (informativo = 1)
+        if req.centros_prod_informativos is not None and "produtoscentrosprod" in schema:
+            cursor.execute(
+                "DELETE FROM dbo.produtoscentrosprod WHERE codigo = ? AND ISNULL(CAST(informativo AS INT), 0) = 1",
+                (codigo,)
+            )
+            for cp_code in req.centros_prod_informativos:
+                if cp_code:
+                    cursor.execute(
+                        "INSERT INTO dbo.produtoscentrosprod (codigo, centro, informativo) VALUES (?, ?, 1)",
+                        (codigo, int(cp_code))
+                    )
 
         # Registar no histórico de preços
         if history_ok:
